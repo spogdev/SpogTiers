@@ -68,8 +68,10 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	}
 
 	/**
-	 * ARGB colour for this tier, using PVPHQ's palette for every list so the
-	 * codes read consistently. Values come from {@code pvphq.com/api/v1/meta}.
+	 * ARGB colour for this tier, using MCTiers' palette for every list so the
+	 * codes read consistently. These are the {@code --ht<n>-foreground} /
+	 * {@code --lt<n>-foreground} CSS variables from mctiers.com; MT (PVPHQ
+	 * only) sits between its neighbouring HT and LT shades.
 	 */
 	public int color() {
 		if (!isRanked()) {
@@ -77,29 +79,29 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		}
 		int base = switch (tier) {
 			case 1 -> switch (position) {
-				case HIGH -> 0xFFFFC53F;
-				case MID -> 0xFFDDAB37;
-				case LOW -> 0xFFBF942F;
+				case HIGH -> 0xFFE8BA3A;
+				case MID -> 0xFFDEB748;
+				case LOW -> 0xFFD5B355;
 			};
 			case 2 -> switch (position) {
-				case HIGH -> 0xFF92A5CC;
-				case MID -> 0xFF7C8DAD;
-				case LOW -> 0xFF64728C;
+				case HIGH -> 0xFFC4D3E7;
+				case MID -> 0xFFB2BDCC;
+				case LOW -> 0xFFA0A7B2;
 			};
 			case 3 -> switch (position) {
-				case HIGH -> 0xFFDD7E46;
-				case MID -> 0xFFBF6C3D;
-				case LOW -> 0xFF9E5A32;
+				case HIGH -> 0xFFF89F5A;
+				case MID -> 0xFFDF8D4E;
+				case LOW -> 0xFFC67B42;
 			};
 			case 4 -> switch (position) {
-				case HIGH -> 0xFFA2A9AD;
-				case MID -> 0xFF83888C;
-				case LOW -> 0xFF64686B;
+				case HIGH -> 0xFF81749A;
+				case MID -> 0xFF736789;
+				case LOW -> 0xFF655B79;
 			};
 			default -> switch (position) {
-				case HIGH -> 0xFF936D42;
-				case MID -> 0xFF705332;
-				case LOW -> 0xFF4C3822;
+				case HIGH -> 0xFF8F82A8;
+				case MID -> 0xFF7A6E90;
+				case LOW -> 0xFF655B79;
 			};
 		};
 		return retired ? desaturate(base) : base;

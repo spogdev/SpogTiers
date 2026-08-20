@@ -1,6 +1,7 @@
 package com.spog.tiers.client.gui;
 
 import com.mojang.authlib.GameProfile;
+import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
@@ -14,19 +15,21 @@ import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Full-screen profile view: the player skin on the left, and one card per tier
- * list they are actually ranked in, laid out in up to two rows and centred.
+ * Full-screen profile view: a profile card down the left with the player skin,
+ * and one fixed-size card per tier list they are ranked in.
  *
  * <p>The skin is rendered from the player GameProfile rather than from an
  * entity, so it works for anyone -- including players not on the current
@@ -42,7 +45,10 @@ public class ProfileScreen extends Screen {
 	private static final int SKIN_HEIGHT = 130;
 	private static final int CARD_PADDING = 10;
 	private static final int CARD_GAP = 10;
-	private static final int MAX_CARD_ROWS = 2;
+	/** Cards are a fixed size so two lists look the same as four. */
+	private static final int CARD_WIDTH = 138;
+	private static final int CARD_ROWS = 11;
+	private static final int LOGO_SIZE = 12;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	private static final int CARD_FILL = 0x50161B22;
@@ -88,7 +94,7 @@ public class ProfileScreen extends Screen {
 				SKIN_WIDTH, SKIN_HEIGHT, client.getEntityModels(), skin);
 		skinWidget.setPosition(
 				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
-				cardTop + CARD_PADDING + FACE_SIZE + 30);
+				cardTop + CARD_PADDING + FACE_SIZE + 14);
 		addRenderableWidget(skinWidget);
 
 		updateButton = addRenderableWidget(Button.builder(
@@ -131,33 +137,43 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
-	/** The profile card: face, name, region/rank, skin model and buttons. */
+	/** The profile card: face, name, region tag, skin model and buttons. */
 	private void drawHeader(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 
 		int left = MARGIN;
 		int top = MARGIN;
-		int right = left + PROFILE_WIDTH;
-		int bottom = height - MARGIN;
-		drawCardFrame(graphics, left, top, right, bottom);
+		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, height - MARGIN);
 
 		int innerX = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
 
 		drawFace(graphics, innerX, y);
-		graphics.text(font, Component.literal(playerName),
-				innerX + FACE_SIZE + 6, y + (FACE_SIZE - font.lineHeight) / 2, 0xFFFFFFFF);
-		y += FACE_SIZE + 8;
 
-		// Region and rank on their own lines so nothing clips into the name.
-		if (SpogTiersClient.cache().isPending(target)) {
-			graphics.text(font, Component.literal("Loading..."), innerX, y, MUTED_COLOR);
-			return;
+		int nameX = innerX + FACE_SIZE + 6;
+		int nameY = y + (FACE_SIZE - font.lineHeight) / 2;
+		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
+
+		// Region reads as a small boxed tag beside the name.
+		String region = region();
+		if (!region.isEmpty()) {
+			drawTag(graphics, nameX + font.width(playerName) + 6, nameY - 3, region);
 		}
-		for (String line : summaryLines()) {
-			graphics.text(font, Component.literal(line), innerX, y, MUTED_COLOR);
-			y += font.lineHeight + 2;
-		}
+	}
+
+	/** A boxed label, e.g. the player's region code. */
+	private void drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
+		Font font = this.font;
+		int boxWidth = font.width(text) + 8;
+		int boxHeight = font.lineHeight + 5;
+
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0x60202A38);
+		graphics.fill(x, y, x + boxWidth, y + 1, 0x8046536B);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, 0x8046536B);
+		graphics.fill(x, y, x + 1, y + boxHeight, 0x8046536B);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, 0x8046536B);
+
+		graphics.text(font, Component.literal(text), x + 4, y + 3, 0xFF8FB6E8);
 	}
 
 	private void drawCardFrame(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
@@ -180,28 +196,65 @@ public class ProfileScreen extends Screen {
 				x, y, 40.0f, 8.0f, FACE_SIZE, FACE_SIZE, 8, 8, 64, 64);
 	}
 
-	/** Region and overall rank, taken from whichever list reports them. */
-	private List<String> summaryLines() {
+	/**
+	 * The player's region code.
+	 *
+	 * <p>PvPTiers, SubTiers and MCTiers report proper codes ("EU", "NA"), so
+	 * those win. PVPHQ instead lists the <em>server locations</em> a player has
+	 * queued on ("MONTREAL", "LOS_ANGELES"), which we fold down to a continent
+	 * so the tag always reads as a region rather than a city.
+	 */
+	private String region() {
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
-		List<String> lines = new ArrayList<>();
+
 		for (TierList list : TierList.values()) {
+			if (list.isPvpHq()) {
+				continue;
+			}
 			PlayerTiers tiers = all.get(list);
-			if (tiers != null && !tiers.region().isEmpty()) {
-				lines.add("Region: " + tiers.region());
-				if (tiers.overall() > 0) {
-					lines.add("Overall: #" + tiers.overall());
-				}
-				lines.add("via " + list.displayName());
-				return lines;
+			if (tiers != null && isRegionCode(tiers.region())) {
+				return tiers.region().toUpperCase(Locale.ROOT);
 			}
 		}
-		if (all.isEmpty()) {
-			lines.add("No rankings");
-		}
-		return lines;
+
+		PlayerTiers pvpHq = all.get(TierList.PVPHQ);
+		return pvpHq == null ? "" : continentOf(pvpHq.region());
 	}
 
-	/** One card per ranked list, wrapped over at most {@value #MAX_CARD_ROWS} rows. */
+	/** True for short codes like EU/NA/AS, false for "??" and city names. */
+	private static boolean isRegionCode(String raw) {
+		if (raw == null || raw.length() < 2 || raw.length() > 4) {
+			return false;
+		}
+		for (int i = 0; i < raw.length(); i++) {
+			if (!Character.isLetter(raw.charAt(i))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Folds a PVPHQ server location down to a continent code. */
+	private static String continentOf(String location) {
+		if (location == null || location.isEmpty()) {
+			return "";
+		}
+		return switch (location.toUpperCase(Locale.ROOT)) {
+			case "MONTREAL", "TORONTO", "LOS_ANGELES", "PORTLAND", "CHICAGO",
+					"ASHBURN", "MIAMI", "DALLAS", "NEW_YORK", "SEATTLE",
+					"DENVER", "ATLANTA", "PHOENIX", "VANCOUVER" -> "NA";
+			case "LONDON", "FRANKFURT", "AMSTERDAM", "PARIS", "WARSAW",
+					"MADRID", "MILAN", "STOCKHOLM", "HELSINKI", "DUBLIN" -> "EU";
+			case "SINGAPORE", "TOKYO", "SEOUL", "MUMBAI", "HONG_KONG",
+					"OSAKA", "JAKARTA" -> "AS";
+			case "SYDNEY", "MELBOURNE", "AUCKLAND" -> "OCE";
+			case "SAO_PAULO", "SANTIAGO", "BUENOS_AIRES", "LIMA", "BOGOTA" -> "SA";
+			case "JOHANNESBURG", "CAPE_TOWN", "LAGOS" -> "AF";
+			default -> "";
+		};
+	}
+
+	/** One fixed-size card per ranked list, arranged in a balanced grid. */
 	private void drawCards(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
@@ -232,16 +285,14 @@ public class ProfileScreen extends Screen {
 					: playerName + " is unranked";
 			graphics.text(font, Component.literal(message),
 					contentLeft + (contentWidth - font.width(message)) / 2,
-					contentTop + 20,
+					contentTop + 40,
 					MUTED_COLOR);
 			return;
 		}
 
-		int cardWidth = 0;
-		for (Card card : cards) {
-			cardWidth = Math.max(cardWidth, card.width(font));
-		}
-		cardWidth += CARD_PADDING * 2;
+		// Fixed geometry: cards are the same size whether two lists load or
+		// four, sized for the tallest list so nothing has to reflow.
+		int cardHeight = CARD_PADDING * 2 + 18 + CARD_ROWS * ROW_HEIGHT;
 
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
@@ -253,81 +304,69 @@ public class ProfileScreen extends Screen {
 		};
 		int rowCount = (cards.size() + perRow - 1) / perRow;
 
-		// Each row is only as tall as its own tallest card, so a short row does
-		// not inherit a tall one's height.
-		int[] rowHeights = new int[rowCount];
-		for (int index = 0; index < cards.size(); index++) {
-			rowHeights[index / perRow] =
-					Math.max(rowHeights[index / perRow], cards.get(index).height());
-		}
-		// A grid reads as a grid only if its cells line up, so give every card
-		// in a row the same height.
+		int blockWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
+		int blockHeight = rowCount * cardHeight + (rowCount - 1) * CARD_GAP;
 
-		int gaps = (rowCount - 1) * CARD_GAP;
-		int blockHeight = gaps;
-		for (int rowHeight : rowHeights) {
-			blockHeight += rowHeight;
-		}
-		int blockWidth = perRow * cardWidth + (perRow - 1) * CARD_GAP;
-
-		// Scale the block to fill the available area instead of dropping rows,
-		// so every ranking stays visible and the cards use the whole panel.
+		// Scale only to fit; never blow the cards up when there is spare room.
 		int availableHeight = contentBottom - contentTop;
-		float scale = Math.min(
+		float scale = Math.min(1.0f, Math.min(
 				(float) contentWidth / blockWidth,
-				(float) availableHeight / blockHeight);
-		scale = Math.clamp(scale, 0.5f, 2.0f);
+				(float) availableHeight / blockHeight));
 
-		int scaledWidth = Math.round(blockWidth * scale);
-		int scaledHeight = Math.round(blockHeight * scale);
-		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
-		int originY = contentTop + Math.max(0, (availableHeight - scaledHeight) / 2);
+		int originX = contentLeft + (contentWidth - Math.round(blockWidth * scale)) / 2;
+		int originY = contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
 
 		graphics.pose().pushMatrix();
 		graphics.pose().translate(originX, originY);
 		graphics.pose().scale(scale, scale);
 
-		int y = 0;
-		for (int row = 0; row < rowCount; row++) {
+		for (int index = 0; index < cards.size(); index++) {
+			int row = index / perRow;
+			int column = index % perRow;
+
 			int inThisRow = Math.min(perRow, cards.size() - row * perRow);
-			int rowWidth = inThisRow * cardWidth + (inThisRow - 1) * CARD_GAP;
+			int rowWidth = inThisRow * CARD_WIDTH + (inThisRow - 1) * CARD_GAP;
 			int rowLeft = (blockWidth - rowWidth) / 2;
 
-			for (int column = 0; column < inThisRow; column++) {
-				Card card = cards.get(row * perRow + column);
-				int x = rowLeft + column * (cardWidth + CARD_GAP);
-				drawCard(graphics, card, x, y, cardWidth, rowHeights[row]);
-			}
-			y += rowHeights[row] + CARD_GAP;
+			int x = rowLeft + column * (CARD_WIDTH + CARD_GAP);
+			int y = row * (cardHeight + CARD_GAP);
+			drawCard(graphics, cards.get(index), x, y, cardHeight);
 		}
 
 		graphics.pose().popMatrix();
 	}
 
-	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardWidth, int cardHeight) {
+	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardHeight) {
 		Font font = this.font;
 
-		graphics.fill(x, y, x + cardWidth, y + cardHeight, CARD_FILL);
-		graphics.fill(x, y, x + cardWidth, y + 1, CARD_BORDER);
-		graphics.fill(x, y + cardHeight - 1, x + cardWidth, y + cardHeight, CARD_BORDER);
-		graphics.fill(x, y, x + 1, y + cardHeight, CARD_BORDER);
-		graphics.fill(x + cardWidth - 1, y, x + cardWidth, y + cardHeight, CARD_BORDER);
+		drawCardFrame(graphics, x, y, x + CARD_WIDTH, y + cardHeight);
 
-		int textX = x + CARD_PADDING;
 		int textY = y + CARD_PADDING;
 
+		// Logo and title are centred together as one unit.
 		String title = card.list().displayName();
+		int headerWidth = LOGO_SIZE + 4 + font.width(title);
+		int headerX = x + (CARD_WIDTH - headerWidth) / 2;
+
+		Identifier logo = Identifier.fromNamespaceAndPath(
+				SpogTiers.MOD_ID, card.list().logoPath());
+		graphics.blit(RenderPipelines.GUI_TEXTURED, logo,
+				headerX, textY + (font.lineHeight - LOGO_SIZE) / 2 - 2,
+				0.0f, 0.0f, LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
 		graphics.text(font, Component.literal(title),
-				x + (cardWidth - font.width(title)) / 2, textY, 0xFFFFFFFF);
-		textY += font.lineHeight + 5;
+				headerX + LOGO_SIZE + 4, textY, 0xFFFFFFFF);
 
-		graphics.fill(x + CARD_PADDING, textY - 3, x + cardWidth - CARD_PADDING, textY - 2, 0x28FFFFFF);
+		textY += font.lineHeight + 4;
+		graphics.fill(x + CARD_PADDING, textY, x + CARD_WIDTH - CARD_PADDING, textY + 1, 0x28FFFFFF);
+		// Extra gap so the first gamemode does not crowd the separator.
+		textY += 7;
 
+		int textX = x + CARD_PADDING;
 		int widestValue = 0;
 		for (Row row : card.rows()) {
 			widestValue = Math.max(widestValue, font.width(row.tier().label()));
 		}
-		int valueX = x + cardWidth - CARD_PADDING - widestValue;
+		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
 
 		for (Row row : card.rows()) {
 			graphics.text(font, Component.literal(row.label()), textX, textY, row.accent());
@@ -360,18 +399,6 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Card(TierList list, List<Row> rows) {
-		/** Widest label + value pair, or the title if that is wider. */
-		int width(Font font) {
-			int widest = font.width(list.displayName());
-			for (Row row : rows) {
-				widest = Math.max(widest, font.width(row.label()) + 20 + font.width(row.tier().label()));
-			}
-			return widest;
-		}
-
-		int height() {
-			return CARD_PADDING * 2 + 14 + rows.size() * ROW_HEIGHT;
-		}
 	}
 
 	@Override

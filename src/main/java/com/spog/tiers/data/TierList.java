@@ -46,4 +46,9 @@ public enum TierList {
 	public boolean isPvpHq() {
 		return this == PVPHQ;
 	}
+
+	/** The site's logo, bundled under assets/spogtiers/textures/gui. */
+	public String logoPath() {
+		return "textures/gui/" + key + ".png";
+	}
 }
