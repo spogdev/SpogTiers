@@ -12,6 +12,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.PlayerSkin;
 
@@ -24,18 +25,19 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Full-screen profile view: the player skin and name on the left, and one
- * column per tier list showing every gamemode they are ranked in.
+ * Full-screen profile view: the player skin on the left, and one column per
+ * tier list they are actually ranked in, centred across the remaining space.
  *
  * <p>The skin is rendered from the player GameProfile rather than from an
- * entity, so it works for anyone -- including players who are not on the
- * current server, or when not connected to one at all.
+ * entity, so it works for anyone -- including players not on the current
+ * server, or when not connected to one at all.
  */
 public class ProfileScreen extends Screen {
 	private static final int MARGIN = 24;
 	private static final int ROW_HEIGHT = 18;
-	private static final int HEADER_HEIGHT = 46;
-	private static final int SKIN_COLUMN = 150;
+	private static final int COLUMN_WIDTH = 150;
+	private static final int SKIN_WIDTH = 130;
+	private static final int FACE_SIZE = 20;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 
@@ -43,7 +45,7 @@ public class ProfileScreen extends Screen {
 	private final String playerName;
 	private final GameProfile profile;
 
-	private PlayerSkinWidget skinWidget;
+	private Supplier<PlayerSkin> skin;
 	private Button updateButton;
 
 	public ProfileScreen(GameProfile profile) {
@@ -57,29 +59,31 @@ public class ProfileScreen extends Screen {
 	protected void init() {
 		Minecraft client = Minecraft.getInstance();
 
-		// The target may never have been seen on this server, so the tick loop
-		// will not have queued them; ask explicitly.
+		// Queued here rather than before the screen opens: the screen shows a
+		// loading state and fills in when the data lands, so it appears at once.
 		SpogTiersClient.service().request(target);
 
 		// createLookup fetches from Mojang in the background and serves a default
 		// skin until it arrives, so this is safe for arbitrary profiles.
-		Supplier<PlayerSkin> skin = client.getSkinManager().createLookup(profile, true);
+		skin = client.getSkinManager().createLookup(profile, true);
 
-		int skinHeight = Math.min(height - HEADER_HEIGHT - MARGIN * 2 - 28, 210);
-		skinWidget = addRenderableWidget(new PlayerSkinWidget(
-				SKIN_COLUMN - 30, skinHeight, client.getEntityModels(), skin));
-		skinWidget.setPosition(MARGIN, HEADER_HEIGHT + 20);
+		int skinTop = MARGIN + FACE_SIZE + 22;
+		int skinHeight = Math.max(80, height - skinTop - MARGIN - 28);
+		PlayerSkinWidget skinWidget = new PlayerSkinWidget(
+				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
+		skinWidget.setPosition(MARGIN, skinTop);
+		addRenderableWidget(skinWidget);
 
 		updateButton = addRenderableWidget(Button.builder(
 						Component.literal("Update"),
 						button -> refresh())
-				.bounds(MARGIN, height - MARGIN - 20, 84, 20)
+				.bounds(MARGIN, height - MARGIN - 20, 62, 20)
 				.build());
 
 		addRenderableWidget(Button.builder(
 						Component.literal("Close"),
 						button -> onClose())
-				.bounds(MARGIN + 90, height - MARGIN - 20, 84, 20)
+				.bounds(MARGIN + 68, height - MARGIN - 20, 62, 20)
 				.build());
 	}
 
@@ -92,16 +96,16 @@ public class ProfileScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		// NB: the background (including its blur) is already drawn for us by
-		// Screen#extractRenderStateWithTooltipAndSubtitles, which calls
-		// extractBackground before this method. Drawing it again here -- or
-		// calling blurBeforeThisStratum() directly -- spends the frame's single
-		// allowed blur a second time and throws "Can only blur once per frame".
+		// NB: the blurred background is drawn for us by the framework, which
+		// calls extractBackground immediately before this method. Blurring again
+		// here throws "Can only blur once per frame".
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
 		drawHeader(graphics);
 		drawColumns(graphics);
 
+		// Widgets (the skin model included) render after our fills, so they are
+		// not painted over.
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
 		if (updateButton != null && !SpogTiersClient.cache().isPending(target)) {
@@ -112,14 +116,32 @@ public class ProfileScreen extends Screen {
 	private void drawHeader(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 
-		graphics.text(font, Component.literal(playerName), MARGIN, MARGIN, 0xFFFFFFFF);
+		drawFace(graphics, MARGIN, MARGIN);
 
+		int textX = MARGIN + FACE_SIZE + 8;
+		int nameY = MARGIN + (FACE_SIZE - font.lineHeight) / 2;
+		graphics.text(font, Component.literal(playerName), textX, nameY, 0xFFFFFFFF);
+
+		// Kept below the face row so it never clips into the name.
 		String subtitle = SpogTiersClient.cache().isPending(target)
 				? "Loading rankings..."
 				: summarise();
-		graphics.text(font, Component.literal(subtitle), MARGIN, MARGIN + 12, MUTED_COLOR);
+		if (!subtitle.isEmpty()) {
+			graphics.text(font, Component.literal(subtitle),
+					MARGIN, MARGIN + FACE_SIZE + 7, MUTED_COLOR);
+		}
+	}
 
-		graphics.fill(MARGIN, HEADER_HEIGHT - 8, width - MARGIN, HEADER_HEIGHT - 7, 0x30FFFFFF);
+	/** Draws the head, then the hat layer, scaled up from the 64x64 skin sheet. */
+	private void drawFace(GuiGraphicsExtractor graphics, int x, int y) {
+		PlayerSkin resolved = skin == null ? null : skin.get();
+		if (resolved == null) {
+			return;
+		}
+		graphics.blit(RenderPipelines.GUI_TEXTURED, resolved.body().texturePath(),
+				x, y, 8.0f, 8.0f, FACE_SIZE, FACE_SIZE, 8, 8, 64, 64);
+		graphics.blit(RenderPipelines.GUI_TEXTURED, resolved.body().texturePath(),
+				x, y, 40.0f, 8.0f, FACE_SIZE, FACE_SIZE, 8, 8, 64, 64);
 	}
 
 	/** Region and overall rank, taken from whichever list reports them. */
@@ -135,50 +157,76 @@ public class ProfileScreen extends Screen {
 				return text + "   (" + list.displayName() + ")";
 			}
 		}
-		return all.isEmpty() ? "No rankings found" : "";
+		return "";
 	}
 
-	/** One column per tier list, laid out across the remaining width. */
+	/** Only lists with actual rankings, centred across the space beside the skin. */
 	private void drawColumns(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
+		int top = MARGIN + FACE_SIZE + 28;
 
-		TierList[] lists = TierList.values();
-		int available = width - MARGIN * 2 - SKIN_COLUMN;
-		int columnWidth = available / lists.length;
-		int top = HEADER_HEIGHT + 8;
-
-		for (int i = 0; i < lists.length; i++) {
-			TierList list = lists[i];
-			int x = MARGIN + SKIN_COLUMN + i * columnWidth;
-			int y = top;
-
-			boolean enabled = SpogTiersClient.config().isEnabled(list);
-			graphics.text(font, Component.literal(list.displayName()), x, y,
-					enabled ? 0xFFFFFFFF : MUTED_COLOR);
-			y += 4 + ROW_HEIGHT;
-
-			if (!enabled) {
-				graphics.text(font, Component.literal("Disabled"), x, y, MUTED_COLOR);
+		List<Ranked> ranked = new ArrayList<>();
+		for (TierList list : TierList.values()) {
+			if (!SpogTiersClient.config().isEnabled(list)) {
 				continue;
 			}
-
 			PlayerTiers tiers = all.get(list);
 			if (tiers == null) {
-				graphics.text(font, Component.literal(
-						SpogTiersClient.cache().isPending(target) ? "..." : "No data"),
-						x, y, MUTED_COLOR);
 				continue;
 			}
-
 			List<Row> rows = collectRows(tiers);
-			if (rows.isEmpty()) {
-				graphics.text(font, Component.literal("Unranked"), x, y, MUTED_COLOR);
-				continue;
+			if (!rows.isEmpty()) {
+				ranked.add(new Ranked(list, rows));
 			}
+		}
 
-			int valueX = x + columnWidth - 52;
+		int contentLeft = MARGIN + SKIN_WIDTH + MARGIN;
+		int contentWidth = Math.max(COLUMN_WIDTH, width - contentLeft - MARGIN);
+
+		if (ranked.isEmpty()) {
+			String message = SpogTiersClient.cache().isPending(target)
+					? "Loading rankings..."
+					: playerName + " is unranked";
+			graphics.text(font, Component.literal(message),
+					contentLeft + (contentWidth - font.width(message)) / 2,
+					top + 20,
+					MUTED_COLOR);
+			return;
+		}
+
+		// Size columns to their widest row so a lone column is not padded out to
+		// a fixed width, then centre the whole block. Removing unranked lists
+		// therefore closes the gap instead of leaving a hole where they sat.
+		int columnWidth = 0;
+		for (Ranked entry : ranked) {
+			for (Row row : entry.rows()) {
+				columnWidth = Math.max(columnWidth,
+						font.width(row.label()) + 24 + font.width(row.tier().label()));
+			}
+			columnWidth = Math.max(columnWidth, font.width(entry.list().displayName()));
+		}
+		columnWidth = Math.min(COLUMN_WIDTH, columnWidth + 20);
+
+		int blockWidth = Math.min(contentWidth, ranked.size() * columnWidth);
+		columnWidth = blockWidth / ranked.size();
+		int startX = contentLeft + (contentWidth - blockWidth) / 2;
+
+		for (int i = 0; i < ranked.size(); i++) {
+			Ranked entry = ranked.get(i);
+			int x = startX + i * columnWidth;
+			int y = top;
+
+			graphics.text(font, Component.literal(entry.list().displayName()), x, y, 0xFFFFFFFF);
+			y += ROW_HEIGHT + 4;
+
+			int widestValue = 0;
+			for (Row row : entry.rows()) {
+				widestValue = Math.max(widestValue, font.width(row.tier().label()));
+			}
+			int valueX = x + columnWidth - 12 - widestValue;
 			int limit = Math.max(1, (height - MARGIN - 28 - y) / ROW_HEIGHT);
+			List<Row> rows = entry.rows();
 			for (int r = 0; r < Math.min(rows.size(), limit); r++) {
 				Row row = rows.get(r);
 				graphics.text(font, Component.literal(row.label()), x, y, row.accent());
@@ -214,6 +262,9 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Row(String label, Tier tier, int accent) {
+	}
+
+	private record Ranked(TierList list, List<Row> rows) {
 	}
 
 	@Override
