@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 public class Dropdown<T> {
 	private static final int ROW_HEIGHT = 16;
 	private static final int ICON_SIZE = 12;
-	private static final int MAX_VISIBLE = 9;
+	private static final int MAX_VISIBLE = 6;
 
 	private static final int FILL = 0x50161B22;
 	private static final int FILL_OPEN = 0xF00E1219;
@@ -179,7 +179,8 @@ public class Dropdown<T> {
 		if (!contains((int) mouseX, (int) mouseY, x, listTop, width, listHeight)) {
 			return false;
 		}
-		scroll = Math.clamp(scroll - (int) Math.signum(amount), 0, entries.size() - MAX_VISIBLE);
+		int max = Math.max(0, entries.size() - MAX_VISIBLE);
+		scroll = Math.clamp(scroll - (int) Math.signum(amount), 0, max);
 		return true;
 	}
 

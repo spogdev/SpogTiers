@@ -58,9 +58,12 @@ public enum TierList {
 	/**
 	 * The gamemodes this list actually ranks.
 	 *
-	 * <p>Drives both the settings dropdowns and the icon font, so a user can
-	 * never pick something the list does not have (PvPTiers has no Bed, for
-	 * instance). Sorted, because the icon font assigns codepoints in this order.
+	 * <p>Drives the settings dropdowns, so a user can never pick something the
+	 * list does not have (PvPTiers has no Bed, for instance).
+	 *
+	 * <p>Taken from what the APIs actually return, not from the icons each site
+	 * ships: SubTiers serves mace, elytra and dia_crystal artwork but ranks
+	 * nobody in them, so offering those would be a dead end.
 	 */
 	public List<Gamemode> gamemodes() {
 		return switch (this) {
@@ -70,9 +73,8 @@ public enum TierList {
 					"pot", "smp", "spear_mace", "sword", "uhc");
 			case PVPTIERS -> modes("axe", "crystal", "mace", "neth_pot", "pot", "smp",
 					"sword", "uhc");
-			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
-					"dia_smp", "elytra", "mace", "manhunt", "minecart", "og_vanilla",
-					"speed", "trident");
+			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_smp",
+					"manhunt", "minecart", "og_vanilla", "speed", "trident");
 		};
 	}
 

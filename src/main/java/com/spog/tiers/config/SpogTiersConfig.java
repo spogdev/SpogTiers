@@ -61,8 +61,13 @@ public class SpogTiersConfig {
 	/** What the right-hand tag shows, or null for none. */
 	public TagSlot rightTag = new TagSlot(false, TierList.PVPTIERS, null);
 
-	/** Show the gamemode icon alongside the tier in tags. */
-	public boolean showTagIcons = true;
+	/**
+	 * Show the gamemode icon alongside the tier in tags.
+	 *
+	 * <p>Always on: the icon is what makes a bare "HT1" legible at a glance,
+	 * so it is no longer exposed as a setting.
+	 */
+	public final boolean showTagIcons = true;
 
 	/**
 	 * One side of the nametag. A null {@code gamemode} means "their best tier

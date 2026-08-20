@@ -32,7 +32,7 @@ public class ConfigScreen extends Screen {
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	private static final int CARD_FILL = 0x50161B22;
 	private static final int CARD_BORDER = 0x70323B47;
-	private static final int ACCENT = 0xFFF2AC44;
+	private static final int ACCENT = 0xFF6FC3E8;
 
 	private enum Tab {
 		GENERAL("General"),
@@ -98,7 +98,7 @@ public class ConfigScreen extends Screen {
 
 		addRenderableWidget(new PanelButton(
 				width - MARGIN - CARD_PADDING - 90,
-				height - MARGIN - CARD_PADDING - 20,
+				height - MARGIN - CARD_PADDING - 14,
 				90, 20,
 				Component.literal("Done"),
 				button -> onClose()));
@@ -129,8 +129,10 @@ public class ConfigScreen extends Screen {
 		drawFrame(graphics, left, bodyTop, right, bottom);
 
 		// Scroll the body, then clamp so a short page cannot drift off.
-		int viewHeight = bottom - bodyTop - 34;
+		int viewHeight = bottom - bodyTop - 40;
 		int originY = bodyTop - scroll;
+
+		graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
 		switch (active) {
 			case GENERAL -> contentHeight = drawGeneral(graphics, left, originY);
 			case TIER_LISTS -> contentHeight =
@@ -138,6 +140,7 @@ public class ConfigScreen extends Screen {
 			case NAMETAG -> contentHeight =
 					drawNametag(graphics, left, originY, right, mouseX, mouseY);
 		}
+		graphics.disableScissor();
 		scroll = Math.clamp(scroll, 0, Math.max(0, contentHeight - viewHeight));
 
 		if (contentHeight > viewHeight) {
@@ -149,10 +152,12 @@ public class ConfigScreen extends Screen {
 		// Open dropdowns paint last so they overlap the rows beneath them.
 		if (active == Tab.NAMETAG) {
 			SpogTiersConfig config = config();
+			graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
 			leftList.drawOverlay(graphics, font, config.leftTag.list, mouseX, mouseY);
 			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
 			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
 			rightMode.drawOverlay(graphics, font, config.rightTag.gamemode, mouseX, mouseY);
+			graphics.disableScissor();
 		}
 	}
 
@@ -220,7 +225,7 @@ public class ConfigScreen extends Screen {
 		int x = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
 
-		graphics.text(font, Component.literal("Tier lists"), x, y, 0xFFFFFFFF);
+		graphics.text(font, Component.literal("Tierlists"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 4;
 		graphics.text(font, Component.literal(
 						"Heart your favourite; hide a list to leave it out of results."),
@@ -255,7 +260,7 @@ public class ConfigScreen extends Screen {
 
 			int toggleWidth = 62;
 			int toggleX = right - CARD_PADDING - toggleWidth;
-			drawToggle(graphics, toggleX, y - 4, toggleWidth, shown ? "Shown" : "Hidden", shown);
+			drawToggle(graphics, toggleX, y - 4, toggleWidth, shown ? "SHOWN" : "HIDDEN", shown);
 			zones.add(new Zone(toggleX, y - 4, toggleX + toggleWidth, y + 12, () -> {
 				// The favourite must stay visible, or tags have no source.
 				if (config.favouriteList == list && shown) {
@@ -295,17 +300,12 @@ public class ConfigScreen extends Screen {
 					config.showRegionOnNametag = !config.showRegionOnNametag;
 					config.save();
 				});
-		y = drawSwitch(graphics, "Gamemode icons in tags", config.showTagIcons, x, y,
-				() -> {
-					config.showTagIcons = !config.showTagIcons;
-					config.save();
-				});
 		y += 10;
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 8;
 
-		y = drawSwitch(graphics, "Above players", config.showNametags, x, y,
+		y = drawSwitch(graphics, "Nametag", config.showNametags, x, y,
 				() -> {
 					config.showNametags = !config.showNametags;
 					config.save();
@@ -364,7 +364,7 @@ public class ConfigScreen extends Screen {
 			cursor += font.width(" | ");
 		}
 
-		if (config().showTagIcons) {
+		{
 			Gamemode mode = slot.gamemode != null ? slot.gamemode
 					: slot.list.gamemodes().stream().findFirst().orElse(null);
 			if (mode != null) {
@@ -392,7 +392,7 @@ public class ConfigScreen extends Screen {
 		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
 
 		int toggleX = x + 118;
-		drawToggle(graphics, toggleX, y - 4, 44, slot.enabled ? "On" : "Off", slot.enabled);
+		drawToggle(graphics, toggleX, y - 4, 44, slot.enabled ? "ON" : "OFF", slot.enabled);
 		zones.add(new Zone(toggleX, y - 4, toggleX + 44, y + 12, () -> {
 			slot.enabled = !slot.enabled;
 			config.save();
@@ -427,7 +427,7 @@ public class ConfigScreen extends Screen {
 			int x, int y, Runnable onClick) {
 		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
 		int toggleX = x + 118;
-		drawToggle(graphics, toggleX, y - 4, 44, on ? "On" : "Off", on);
+		drawToggle(graphics, toggleX, y - 4, 44, on ? "ON" : "OFF", on);
 		zones.add(new Zone(toggleX, y - 4, toggleX + 44, y + 12, () -> {
 			onClick.run();
 			click();
@@ -468,27 +468,10 @@ public class ConfigScreen extends Screen {
 				if (shape[row][column] == 0) {
 					continue;
 				}
-				if (!filled && !isEdge(shape, row, column)) {
-					continue;
-				}
 				graphics.fill(x + column * 2, y + row * 2,
 						x + column * 2 + 2, y + row * 2 + 2, color);
 			}
 		}
-	}
-
-	private static boolean isEdge(int[][] shape, int row, int column) {
-		for (int dr = -1; dr <= 1; dr++) {
-			for (int dc = -1; dc <= 1; dc++) {
-				int r = row + dr;
-				int c = column + dc;
-				if (r < 0 || r >= shape.length || c < 0 || c >= shape[r].length
-						|| shape[r][c] == 0) {
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 
 	private static Identifier logoOf(TierList list) {
