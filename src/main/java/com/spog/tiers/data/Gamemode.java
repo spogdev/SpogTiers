@@ -22,7 +22,8 @@ public enum Gamemode {
 	DIA_SMP("dia_smp", "Dia SMP", 0xFF66DDEE),
 	ELYTRA("elytra", "Elytra", 0xFFE8E8E8),
 	BEDWARS("bedwars", "Bedwars", 0xFFFF9F45),
-	CART("cart", "Cart", 0xFFB98A5A),
+	CART("cart", "Cart", 0xFFC98F4F),
+	DIA_CRYSTAL("dia_crystal", "Dia Crystal", 0xFF9AA8FF),
 	SPEAR_MACE("spear_mace", "Spear Mace", 0xFFD8B4FE),
 	BED("bed", "Bed", 0xFFFF6B6B),
 	BOW("bow", "Bow", 0xFFB5E48C),
@@ -76,6 +77,8 @@ public enum Gamemode {
 			case "nethop", "netherite", "nethpot", "npot" -> NETH_POT;
 			case "diamondsmp", "diasmp" -> DIA_SMP;
 			case "crystalpvp" -> CRYSTAL;
+			case "htcart", "hightiercart" -> CART;
+			case "diamondcrystal" -> DIA_CRYSTAL;
 			default -> null;
 		};
 	}

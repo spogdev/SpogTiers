@@ -87,9 +87,9 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			// Shades of #f2ac44: MCTiers' own tier-1 foreground reads beige
 			// in-game against our darker panel.
 			case 1 -> switch (position) {
-				case HIGH -> 0xFFF2AC44;
-				case MID -> 0xFFD9973B;
-				case LOW -> 0xFFC08432;
+				case HIGH -> 0xFFFFC14C;
+				case MID -> 0xFFF2AC44;
+				case LOW -> 0xFFD5973C;
 			};
 			case 2 -> switch (position) {
 				case HIGH -> 0xFFC4D3E7;

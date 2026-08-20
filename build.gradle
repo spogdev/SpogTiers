@@ -11,8 +11,18 @@ base {
 }
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
 	// Fabric's repositories are added by Loom automatically.
+	exclusiveContent {
+		forRepository {
+			maven {
+				name = "Modrinth"
+				url = "https://api.modrinth.com/maven"
+			}
+		}
+		filter {
+			includeGroup "maven.modrinth"
+		}
+	}
 }
 
 dependencies {
@@ -25,6 +35,10 @@ dependencies {
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// ModMenu is only needed to compile the config-screen entrypoint; the mod
+	// runs fine without it, so it is not bundled or required at runtime.
+	modCompileOnly "maven.modrinth:modmenu:${project.modmenu_version}"
 
 }
 

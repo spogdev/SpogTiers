@@ -328,8 +328,19 @@ public class ProfileScreen extends Screen {
 		}
 
 		// Fixed geometry: cards are the same size whether two lists load or
-		// four, sized for the tallest list so nothing has to reflow.
-		int cardHeight = CARD_PADDING * 2 + 18 + CARD_ROWS * ROW_HEIGHT;
+		// four. The grid is sized to fill the profile card's height so the
+		// longest list (SubTiers can hit 13 modes) has room instead of
+		// spilling past the card edge.
+		int rowsNeeded = CARD_ROWS;
+		for (Card card : cards) {
+			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
+		}
+
+		int gridRows = cards.size() <= 3 ? 1 : 2;
+		int availableForCards = (contentBottom - contentTop) - (gridRows - 1) * CARD_GAP;
+		int cardHeight = Math.max(
+				CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
+				availableForCards / gridRows);
 
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
@@ -427,7 +438,7 @@ public class ProfileScreen extends Screen {
 				Identifier icon = Identifier.fromNamespaceAndPath(
 						SpogTiers.MOD_ID, card.list().modeIconPath(row.iconKey()));
 				graphics.blit(RenderPipelines.GUI_TEXTURED, icon,
-						textX, textY - 3, 0.0f, 0.0f,
+						textX, textY - 2, 0.0f, 0.0f,
 						MODE_ICON, MODE_ICON, 64, 64, 64, 64);
 				labelX += MODE_ICON + 3;
 			}

@@ -47,11 +47,13 @@ PVPHQ = {
     "sword": "sword", "axe": "axe", "mace": "mace", "uhc": "uhc",
     "pot": "pot", "smp": "smp", "cart": "cart", "spear_mace": "spear",
     "neth_pot": "nethpot", "dia_smp": "diasmp", "crystal": "crystal",
+    "vanilla": "vanilla",
 }
 # SubTiers uses content-hashed filenames; resolved from its JS bundle at runtime.
 SUBTIERS = [
     "bed", "bow", "creeper", "debuff", "dia_crystal", "dia_smp", "elytra",
     "mace", "manhunt", "minecart", "og_vanilla", "speed", "trident",
+    "sword", "axe", "uhc", "pot", "smp", "crystal", "vanilla",
 ]
 
 

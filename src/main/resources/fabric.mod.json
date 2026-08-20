@@ -12,6 +12,9 @@
 	"entrypoints": {
 		"client": [
 			"com.spog.tiers.SpogTiersClient"
+		],
+		"modmenu": [
+			"com.spog.tiers.client.SpogTiersModMenu"
 		]
 	},
 	"mixins": [
