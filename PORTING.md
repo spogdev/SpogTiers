@@ -180,9 +180,15 @@ command through that method.
   and `GuiRenderState.firstStratumAfterBlur` is private with no getter, so there
   is no way to ask whether the budget is already spent. Guarding on game state
   (e.g. `level != null`) is *not* enough -- other mods and vanilla screens blur
-  in-world too. Call `Screen#extractBackground(...)` instead: it invokes
-  `extractBlurredBackground` once, does the accounting, and honours the user's
-  menu-blur setting.
+  in-world too.
+
+  Do not call `Screen#extractBackground(...)` from your own
+  `extractRenderState` either: the framework
+  (`extractRenderStateWithTooltipAndSubtitles`) already calls it immediately
+  *before* `extractRenderState`, so doing it yourself spends the blur twice and
+  throws the same way. A `Screen` gets its blurred background for free -- draw
+  nothing, and override `extractBlurredBackground` only if you need to change
+  it.
 - The player model is drawn with
   `InventoryScreen.extractEntityInInventoryFollowsMouse(...)`.
 - Skins can be rendered without an entity: `Minecraft#getSkinManager()` plus

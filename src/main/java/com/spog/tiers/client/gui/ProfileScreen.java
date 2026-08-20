@@ -92,11 +92,11 @@ public class ProfileScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		// Let vanilla draw the blurred/menu background. Calling
-		// blurBeforeThisStratum() directly throws "Can only blur once per frame"
-		// whenever anything else already blurred this frame; extractBackground
-		// does the accounting itself and honours the menu-blur setting.
-		extractBackground(graphics, mouseX, mouseY, partialTick);
+		// NB: the background (including its blur) is already drawn for us by
+		// Screen#extractRenderStateWithTooltipAndSubtitles, which calls
+		// extractBackground before this method. Drawing it again here -- or
+		// calling blurBeforeThisStratum() directly -- spends the frame's single
+		// allowed blur a second time and throws "Can only blur once per frame".
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
 		drawHeader(graphics);
