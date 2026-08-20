@@ -41,7 +41,17 @@ public class Dropdown<T> {
 		this.onPick = onPick;
 	}
 
+	/**
+	 * Replaces the entries.
+	 *
+	 * <p>Called every frame from the draw pass, so the scroll offset is only
+	 * reset when the contents actually change -- resetting unconditionally
+	 * wiped any scrolling before it could render.
+	 */
 	public void setEntries(List<Entry<T>> values) {
+		if (entries.equals(values)) {
+			return;
+		}
 		entries.clear();
 		entries.addAll(values);
 		scroll = 0;
@@ -101,8 +111,8 @@ public class Dropdown<T> {
 		}
 
 		int visible = Math.min(MAX_VISIBLE, entries.size());
-		int listTop = y + height(font) + 2;
 		int listHeight = visible * ROW_HEIGHT + 4;
+		int listTop = listTop(font, listHeight);
 
 		frame(graphics, x, listTop, x + width, listTop + listHeight, FILL_OPEN, BORDER_OPEN);
 
@@ -155,7 +165,7 @@ public class Dropdown<T> {
 		}
 
 		int visible = Math.min(MAX_VISIBLE, entries.size());
-		int listTop = y + boxHeight + 2;
+		int listTop = listTop(font, visible * ROW_HEIGHT + 4);
 		for (int i = 0; i < visible; i++) {
 			int rowY = listTop + 2 + i * ROW_HEIGHT;
 			if (contains((int) mouseX, (int) mouseY, x + 1, rowY, width - 2, ROW_HEIGHT)) {
@@ -170,18 +180,25 @@ public class Dropdown<T> {
 		return true;
 	}
 
-	public boolean scroll(double mouseX, double mouseY, double amount, Font font) {
+	/**
+	 * Scrolls the open list.
+	 *
+	 * <p>An open dropdown takes the wheel wherever the cursor is: requiring the
+	 * cursor to be inside the list made scrolling feel broken, because the page
+	 * moved underneath instead.
+	 */
+	public boolean scroll(double amount) {
 		if (!open || entries.size() <= MAX_VISIBLE) {
-			return false;
-		}
-		int listTop = y + height(font) + 2;
-		int listHeight = Math.min(MAX_VISIBLE, entries.size()) * ROW_HEIGHT + 4;
-		if (!contains((int) mouseX, (int) mouseY, x, listTop, width, listHeight)) {
 			return false;
 		}
 		int max = Math.max(0, entries.size() - MAX_VISIBLE);
 		scroll = Math.clamp(scroll - (int) Math.signum(amount), 0, max);
 		return true;
+	}
+
+	/** Always below the control, so the list opens in a predictable place. */
+	private int listTop(Font font, int listHeight) {
+		return y + height(font) + 2;
 	}
 
 	private Entry<T> find(T value) {

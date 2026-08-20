@@ -54,6 +54,8 @@ public class ConfigScreen extends Screen {
 
 	private int scroll;
 	private int contentHeight;
+	/** Largest valid scroll offset, refreshed each frame for the input handler. */
+	private int maxScroll;
 
 	private Dropdown<TierList> leftList;
 	private Dropdown<Gamemode> leftMode;
@@ -141,7 +143,10 @@ public class ConfigScreen extends Screen {
 					drawNametag(graphics, left, originY, right, mouseX, mouseY);
 		}
 		graphics.disableScissor();
-		scroll = Math.clamp(scroll, 0, Math.max(0, contentHeight - viewHeight));
+		// Clamping here as well as on input keeps a resize or a tab switch from
+		// leaving the view scrolled past the end.
+		maxScroll = Math.max(0, contentHeight - viewHeight);
+		scroll = Math.clamp(scroll, 0, maxScroll);
 
 		if (contentHeight > viewHeight) {
 			drawScrollbar(graphics, right - 5, bodyTop + 4, viewHeight, contentHeight);
@@ -152,12 +157,10 @@ public class ConfigScreen extends Screen {
 		// Open dropdowns paint last so they overlap the rows beneath them.
 		if (active == Tab.NAMETAG) {
 			SpogTiersConfig config = config();
-			graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
 			leftList.drawOverlay(graphics, font, config.leftTag.list, mouseX, mouseY);
 			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
 			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
 			rightMode.drawOverlay(graphics, font, config.rightTag.gamemode, mouseX, mouseY);
-			graphics.disableScissor();
 		}
 	}
 
@@ -289,13 +292,13 @@ public class ConfigScreen extends Screen {
 		drawPreview(graphics, x, y, right);
 		y += 34;
 
-		y = drawSlot(graphics, "Left of name", config.leftTag, leftList, leftMode,
+		y = drawSlot(graphics, "Left", config.leftTag, leftList, leftMode,
 				x, y, mouseX, mouseY);
-		y = drawSlot(graphics, "Right of name", config.rightTag, rightList, rightMode,
+		y = drawSlot(graphics, "Right", config.rightTag, rightList, rightMode,
 				x, y, mouseX, mouseY);
 		y += 8;
 
-		y = drawSwitch(graphics, "Region before name", config.showRegionOnNametag, x, y,
+		y = drawSwitch(graphics, "Region", config.showRegionOnNametag, x, y,
 				() -> {
 					config.showRegionOnNametag = !config.showRegionOnNametag;
 					config.save();
@@ -521,12 +524,12 @@ public class ConfigScreen extends Screen {
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
 		if (active == Tab.NAMETAG) {
 			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
-				if (dropdown.scroll(mouseX, mouseY, deltaY, font)) {
+				if (dropdown.scroll(deltaY)) {
 					return true;
 				}
 			}
 		}
-		scroll = Math.max(0, scroll - (int) (deltaY * 12));
+		scroll = Math.clamp(scroll - (int) (deltaY * 12), 0, maxScroll);
 		return true;
 	}
 
