@@ -40,10 +40,13 @@ PVPTIERS = {
     "sword": "sword", "axe": "axe", "mace": "mace", "uhc": "uhc",
     "pot": "pot", "neth_pot": "neth_pot", "smp": "smp", "crystal": "crystal",
 }
-# PVPHQ only ships eight icons, and calls the spear kit just "spear".
+# PVPHQ abbreviates several filenames: the spear kit is "spear", netherite pot
+# is "nethpot" and diamond SMP is "diasmp" -- none match the ids its API
+# returns, so these are mapped by hand.
 PVPHQ = {
     "sword": "sword", "axe": "axe", "mace": "mace", "uhc": "uhc",
     "pot": "pot", "smp": "smp", "cart": "cart", "spear_mace": "spear",
+    "neth_pot": "nethpot", "dia_smp": "diasmp", "crystal": "crystal",
 }
 # SubTiers uses content-hashed filenames; resolved from its JS bundle at runtime.
 SUBTIERS = [

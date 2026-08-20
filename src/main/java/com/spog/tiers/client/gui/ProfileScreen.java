@@ -10,7 +10,6 @@ import com.spog.tiers.data.TierList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
@@ -95,7 +94,7 @@ public class ProfileScreen extends Screen {
 		int skinBottom = cardBottom - CARD_PADDING - 20 - 10;
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
-		PlayerSkinWidget skinWidget = new PlayerSkinWidget(
+		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
 				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
 		skinWidget.setPosition(
 				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
@@ -395,7 +394,7 @@ public class ProfileScreen extends Screen {
 				Identifier icon = Identifier.fromNamespaceAndPath(
 						SpogTiers.MOD_ID, card.list().modeIconPath(row.iconKey()));
 				graphics.blit(RenderPipelines.GUI_TEXTURED, icon,
-						textX, textY - 1, 0.0f, 0.0f,
+						textX, textY - 3, 0.0f, 0.0f,
 						MODE_ICON, MODE_ICON, 64, 64, 64, 64);
 				labelX += MODE_ICON + 3;
 			}
