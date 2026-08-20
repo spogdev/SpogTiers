@@ -67,20 +67,40 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		}
 	}
 
-	/** ARGB colour: the provider's own if it gave one, else our palette. */
+	/**
+	 * ARGB colour for this tier, using PVPHQ's palette for every list so the
+	 * codes read consistently. Values come from {@code pvphq.com/api/v1/meta}.
+	 */
 	public int color() {
-		if (colorOverride != 0) {
-			return 0xFF000000 | colorOverride;
-		}
 		if (!isRanked()) {
 			return 0xFF9CA3AF;
 		}
 		int base = switch (tier) {
-			case 1 -> 0xFFFF5555;
-			case 2 -> 0xFFFFAA00;
-			case 3 -> 0xFFFFFF55;
-			case 4 -> 0xFF55FF55;
-			default -> 0xFF55FFFF;
+			case 1 -> switch (position) {
+				case HIGH -> 0xFFFFC53F;
+				case MID -> 0xFFDDAB37;
+				case LOW -> 0xFFBF942F;
+			};
+			case 2 -> switch (position) {
+				case HIGH -> 0xFF92A5CC;
+				case MID -> 0xFF7C8DAD;
+				case LOW -> 0xFF64728C;
+			};
+			case 3 -> switch (position) {
+				case HIGH -> 0xFFDD7E46;
+				case MID -> 0xFFBF6C3D;
+				case LOW -> 0xFF9E5A32;
+			};
+			case 4 -> switch (position) {
+				case HIGH -> 0xFFA2A9AD;
+				case MID -> 0xFF83888C;
+				case LOW -> 0xFF64686B;
+			};
+			default -> switch (position) {
+				case HIGH -> 0xFF936D42;
+				case MID -> 0xFF705332;
+				case LOW -> 0xFF4C3822;
+			};
 		};
 		return retired ? desaturate(base) : base;
 	}

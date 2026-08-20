@@ -1,11 +1,13 @@
 package com.spog.tiers.client;
 
-import com.google.gson.JsonArray;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.client.gui.ProfileScreen;
 import net.minecraft.ChatFormatting;
@@ -122,7 +124,7 @@ public final class ClientCommands {
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 			String id = root.get("id").getAsString();
 			String resolved = root.has("name") ? root.get("name").getAsString() : name;
-			return withTextures(new GameProfile(parseUndashed(id), resolved), id);
+			return withTextures(parseUndashed(id), resolved, id);
 		} catch (Exception e) {
 			SpogTiers.LOGGER.debug("Profile lookup failed for {}", name, e);
 			return null;
@@ -137,7 +139,7 @@ public final class ClientCommands {
 	 * model falls back to the default Steve/Alex skin. The session server is
 	 * what carries that property.
 	 */
-	private static GameProfile withTextures(GameProfile profile, String undashedId) {
+	private static GameProfile withTextures(UUID id, String name, String undashedId) {
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(MOJANG_SESSION + undashedId))
 					.header("Accept", "application/json")
@@ -148,35 +150,38 @@ public final class ClientCommands {
 
 			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() != 200 || response.body().isBlank()) {
-				return profile;
+				return new GameProfile(id, name);
 			}
 
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 			JsonElement properties = root.get("properties");
 			if (properties == null || !properties.isJsonArray()) {
-				return profile;
+				return new GameProfile(id, name);
 			}
 
-			JsonArray entries = properties.getAsJsonArray();
-			for (JsonElement element : entries) {
+			// PropertyMap copies its argument into an ImmutableMultimap, so it is
+			// immutable however it is built -- populate a plain multimap first
+			// and only then wrap it, or put() throws UnsupportedOperationException.
+			Multimap<String, Property> collected = ArrayListMultimap.create();
+			for (JsonElement element : properties.getAsJsonArray()) {
 				if (!element.isJsonObject()) {
 					continue;
 				}
 				JsonObject property = element.getAsJsonObject();
-				if (!"textures".equals(optString(property, "name"))) {
+				String propertyName = optString(property, "name");
+				if (propertyName.isEmpty()) {
 					continue;
 				}
 				String value = optString(property, "value");
 				String signature = optString(property, "signature");
-				profile.properties().put("textures", signature.isEmpty()
-						? new Property("textures", value)
-						: new Property("textures", value, signature));
-				break;
+				collected.put(propertyName, signature.isEmpty()
+						? new Property(propertyName, value)
+						: new Property(propertyName, value, signature));
 			}
-			return profile;
+			return new GameProfile(id, name, new PropertyMap(collected));
 		} catch (Exception e) {
-			SpogTiers.LOGGER.debug("Texture lookup failed for {}", profile.name(), e);
-			return profile;
+			SpogTiers.LOGGER.warn("Texture lookup failed for {}", name, e);
+			return new GameProfile(id, name);
 		}
 	}
 

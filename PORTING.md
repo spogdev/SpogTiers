@@ -210,3 +210,13 @@ command through that method.
      texture properties, and `createLookup(profile, true)` filters those out
      via `PlayerSkin#secure()`. Pass `false` or every looked-up player renders
      as Steve/Alex.
+  3. `PropertyMap` is **always immutable**: its constructor runs
+     `ImmutableMultimap.copyOf(...)` on whatever you hand it, and the two-arg
+     `GameProfile` constructor installs an empty one. So
+     `profile.properties().put(...)` throws `UnsupportedOperationException`,
+     and so does putting into a `PropertyMap` you just built. Populate a plain
+     `ArrayListMultimap` first, wrap it in `PropertyMap` last, and pass that to
+     the three-arg `GameProfile` constructor.
+
+  All three fail *silently* into the default skin, so log the failure rather
+  than swallowing it -- a bare `catch (Exception)` here hides the cause.

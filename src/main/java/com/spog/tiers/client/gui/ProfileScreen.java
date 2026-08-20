@@ -37,7 +37,8 @@ public class ProfileScreen extends Screen {
 	private static final int MARGIN = 24;
 	private static final int ROW_HEIGHT = 14;
 	private static final int FACE_SIZE = 20;
-	private static final int SKIN_WIDTH = 70;
+	private static final int PROFILE_WIDTH = 150;
+	private static final int SKIN_WIDTH = 90;
 	private static final int SKIN_HEIGHT = 130;
 	private static final int CARD_PADDING = 10;
 	private static final int CARD_GAP = 10;
@@ -78,21 +79,29 @@ public class ProfileScreen extends Screen {
 		// every looked-up player renders as Steve/Alex.
 		skin = client.getSkinManager().createLookup(profile, false);
 
+		int cardLeft = MARGIN;
+		int cardTop = MARGIN;
+		int cardBottom = height - MARGIN;
+		int buttonWidth = (PROFILE_WIDTH - CARD_PADDING * 2 - 6) / 2;
+
 		PlayerSkinWidget skinWidget = new PlayerSkinWidget(
 				SKIN_WIDTH, SKIN_HEIGHT, client.getEntityModels(), skin);
-		skinWidget.setPosition(MARGIN, MARGIN + FACE_SIZE + 24);
+		skinWidget.setPosition(
+				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
+				cardTop + CARD_PADDING + FACE_SIZE + 30);
 		addRenderableWidget(skinWidget);
 
 		updateButton = addRenderableWidget(Button.builder(
 						Component.literal("Update"),
 						button -> refresh())
-				.bounds(MARGIN, height - MARGIN - 20, 62, 20)
+				.bounds(cardLeft + CARD_PADDING, cardBottom - CARD_PADDING - 20, buttonWidth, 20)
 				.build());
 
 		addRenderableWidget(Button.builder(
 						Component.literal("Close"),
 						button -> onClose())
-				.bounds(MARGIN + 68, height - MARGIN - 20, 62, 20)
+				.bounds(cardLeft + CARD_PADDING + buttonWidth + 6,
+						cardBottom - CARD_PADDING - 20, buttonWidth, 20)
 				.build());
 	}
 
@@ -122,23 +131,41 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
+	/** The profile card: face, name, region/rank, skin model and buttons. */
 	private void drawHeader(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 
-		drawFace(graphics, MARGIN, MARGIN);
+		int left = MARGIN;
+		int top = MARGIN;
+		int right = left + PROFILE_WIDTH;
+		int bottom = height - MARGIN;
+		drawCardFrame(graphics, left, top, right, bottom);
 
-		int textX = MARGIN + FACE_SIZE + 8;
-		int nameY = MARGIN + (FACE_SIZE - font.lineHeight) / 2;
-		graphics.text(font, Component.literal(playerName), textX, nameY, 0xFFFFFFFF);
+		int innerX = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
 
-		// Kept below the face row so it never clips into the name.
-		String subtitle = SpogTiersClient.cache().isPending(target)
-				? "Loading rankings..."
-				: summarise();
-		if (!subtitle.isEmpty()) {
-			graphics.text(font, Component.literal(subtitle),
-					MARGIN, MARGIN + FACE_SIZE + 7, MUTED_COLOR);
+		drawFace(graphics, innerX, y);
+		graphics.text(font, Component.literal(playerName),
+				innerX + FACE_SIZE + 6, y + (FACE_SIZE - font.lineHeight) / 2, 0xFFFFFFFF);
+		y += FACE_SIZE + 8;
+
+		// Region and rank on their own lines so nothing clips into the name.
+		if (SpogTiersClient.cache().isPending(target)) {
+			graphics.text(font, Component.literal("Loading..."), innerX, y, MUTED_COLOR);
+			return;
 		}
+		for (String line : summaryLines()) {
+			graphics.text(font, Component.literal(line), innerX, y, MUTED_COLOR);
+			y += font.lineHeight + 2;
+		}
+	}
+
+	private void drawCardFrame(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
+		graphics.fill(left, top, right, bottom, CARD_FILL);
+		graphics.fill(left, top, right, top + 1, CARD_BORDER);
+		graphics.fill(left, bottom - 1, right, bottom, CARD_BORDER);
+		graphics.fill(left, top, left + 1, bottom, CARD_BORDER);
+		graphics.fill(right - 1, top, right, bottom, CARD_BORDER);
 	}
 
 	/** Draws the head, then the hat layer, scaled up from the 64x64 skin sheet. */
@@ -154,19 +181,24 @@ public class ProfileScreen extends Screen {
 	}
 
 	/** Region and overall rank, taken from whichever list reports them. */
-	private String summarise() {
+	private List<String> summaryLines() {
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
+		List<String> lines = new ArrayList<>();
 		for (TierList list : TierList.values()) {
 			PlayerTiers tiers = all.get(list);
 			if (tiers != null && !tiers.region().isEmpty()) {
-				String text = "Region: " + tiers.region();
+				lines.add("Region: " + tiers.region());
 				if (tiers.overall() > 0) {
-					text += "   Overall: #" + tiers.overall();
+					lines.add("Overall: #" + tiers.overall());
 				}
-				return text + "   (" + list.displayName() + ")";
+				lines.add("via " + list.displayName());
+				return lines;
 			}
 		}
-		return "";
+		if (all.isEmpty()) {
+			lines.add("No rankings");
+		}
+		return lines;
 	}
 
 	/** One card per ranked list, wrapped over at most {@value #MAX_CARD_ROWS} rows. */
@@ -189,10 +221,10 @@ public class ProfileScreen extends Screen {
 			}
 		}
 
-		int contentLeft = MARGIN + SKIN_WIDTH + MARGIN;
+		int contentLeft = MARGIN + PROFILE_WIDTH + MARGIN;
 		int contentWidth = Math.max(160, width - contentLeft - MARGIN);
-		int contentTop = MARGIN + FACE_SIZE + 26;
-		int contentBottom = height - MARGIN - 28;
+		int contentTop = MARGIN;
+		int contentBottom = height - MARGIN;
 
 		if (cards.isEmpty()) {
 			String message = SpogTiersClient.cache().isPending(target)
