@@ -68,6 +68,12 @@ public class ProfileScreen extends Screen {
 	private Supplier<PlayerSkin> skin;
 	/** Row under the cursor this frame, resolved during card layout. */
 	private Hover hover;
+	/** Region tag bounds, so hovering it can name the region in full. */
+	private int tagLeft;
+	private int tagTop;
+	private int tagRight;
+	private int tagBottom;
+	private String tagRegion = "";
 	private PanelButton closeButton;
 
 	public ProfileScreen(GameProfile profile) {
@@ -140,6 +146,10 @@ public class ProfileScreen extends Screen {
 		// or scaled with the grid.
 		if (hover != null) {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
+		} else if (!tagRegion.isEmpty()
+				&& mouseX >= tagLeft && mouseX <= tagRight
+				&& mouseY >= tagTop && mouseY <= tagBottom) {
+			drawRegionTooltip(graphics, mouseX, mouseY);
 		}
 
 	}
@@ -164,6 +174,7 @@ public class ProfileScreen extends Screen {
 
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
+		tagRegion = region;
 		if (!region.isEmpty()) {
 			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
 		}
@@ -177,6 +188,11 @@ public class ProfileScreen extends Screen {
 		Font font = this.font;
 		int boxWidth = font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
+
+		tagLeft = x;
+		tagTop = y;
+		tagRight = x + boxWidth;
+		tagBottom = y + boxHeight;
 
 		int foreground = regionForeground(text);
 		int background = regionBackground(text);
@@ -336,11 +352,13 @@ public class ProfileScreen extends Screen {
 			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
 		}
 
-		int gridRows = cards.size() <= 3 ? 1 : 2;
-		int availableForCards = (contentBottom - contentTop) - (gridRows - 1) * CARD_GAP;
+		// Always size cards as if the grid were two rows deep, so a single row
+		// of cards is the same height as one row of a 2x2 grid rather than
+		// stretching to fill the screen.
+		int available = (contentBottom - contentTop) - CARD_GAP;
 		int cardHeight = Math.max(
 				CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
-				availableForCards / gridRows);
+				available / 2);
 
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
@@ -419,7 +437,9 @@ public class ProfileScreen extends Screen {
 		int widestValue = 0;
 		int widestPeak = 0;
 		for (Row row : card.rows()) {
-			widestValue = Math.max(widestValue, font.width(row.tier().label()));
+			// Measure the bare label: the R on a retired tier hangs into the
+			// gap on the left, so the tier codes stay aligned down the column.
+			widestValue = Math.max(widestValue, font.width(row.tier().bareLabel()));
 			if (row.showsPeak()) {
 				widestPeak = Math.max(widestPeak, font.width(row.peak().label()));
 			}
@@ -455,7 +475,12 @@ public class ProfileScreen extends Screen {
 						peakX + font.width(peakLabel), textY + font.lineHeight / 2 + 1, peakColor);
 			}
 
-			graphics.text(font, Component.literal(row.tier().label()), valueX, textY, row.tier().color());
+			// Draw from the bare label's slot so the R extends leftward and the
+			// tier codes themselves stay in one column.
+			String label = row.tier().label();
+			int labelOffset = font.width(label) - font.width(row.tier().bareLabel());
+			graphics.text(font, Component.literal(label),
+					valueX - labelOffset, textY, row.tier().color());
 			textY += ROW_HEIGHT;
 		}
 	}
@@ -514,16 +539,16 @@ public class ProfileScreen extends Screen {
 		TierDetail detail = tiers.detail(target.row().label());
 		List<Line> lines = new ArrayList<>();
 
-		lines.add(new Line(target.row().label() + " " + target.row().tier().label(),
-				target.row().tier().color()));
+		Tier tier = target.row().tier();
+		lines.add(new Line(target.row().label() + " " + tier.bareLabel(), tier.color()));
+		if (tier.retired()) {
+			lines.add(new Line("(Retired)", MUTED_COLOR));
+		}
 
 		boolean bar = false;
 		if (detail.hasRating()) {
 			lines.add(new Line(detail.hasTr() ? "TP " + detail.rating() : "Elo " + detail.rating(),
 					0xFFE4EAF2));
-			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
-				lines.add(new Line("Peak " + detail.peakRating(), MUTED_COLOR));
-			}
 			// The bar shows how far through the current tier the rating sits;
 			// naming the next tier is redundant, players know the ladder.
 			bar = detail.tierCeiling() > detail.tierFloor();
@@ -531,6 +556,16 @@ public class ProfileScreen extends Screen {
 			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
 		} else {
 			lines.add(new Line("No detail available", MUTED_COLOR));
+		}
+
+		// Spell the peak out rather than leaving the struck-through label to
+		// speak for itself.
+		if (target.row().showsPeak()) {
+			Tier peak = target.row().peak();
+			lines.add(new Line("Peak tier " + peak.bareLabel(), peak.color()));
+			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
+				lines.add(new Line("Peak rating " + detail.peakRating(), MUTED_COLOR));
+			}
 		}
 
 		int textWidth = 0;
@@ -581,6 +616,36 @@ public class ProfileScreen extends Screen {
 	/** Half-strength version of a colour, for the struck-through peak. */
 	private static int fade(int argb) {
 		return (0x80 << 24) | (argb & 0xFFFFFF);
+	}
+
+	/** Names the region in full, in the tag's own colour. */
+	private void drawRegionTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+		Font font = this.font;
+		String name = regionName(tagRegion);
+		int color = regionForeground(tagRegion);
+
+		int boxWidth = font.width(name) + TOOLTIP_PADDING * 2;
+		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.text(font, Component.literal(name),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, color);
+	}
+
+	private static String regionName(String region) {
+		return switch (region) {
+			case "NA" -> "North America";
+			case "EU" -> "Europe";
+			case "AS" -> "Asia";
+			case "AU", "OCE" -> "Oceania";
+			case "SA" -> "South America";
+			case "AF" -> "Africa";
+			case "ME" -> "Middle East";
+			default -> region;
+		};
 	}
 
 	private record Line(String text, int color) {

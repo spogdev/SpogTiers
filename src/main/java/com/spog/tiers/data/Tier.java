@@ -48,6 +48,11 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		return (retired ? "R" : "") + position.prefix() + tier;
 	}
 
+	/** The label without the retired marker, e.g. {@code LT2} for an RLT2. */
+	public String bareLabel() {
+		return isRanked() ? position.prefix() + tier : "?";
+	}
+
 	/**
 	 * Parses a label like {@code "HT3"}, {@code "MT3"} or {@code "Unranked"}.
 	 * Returns {@link #UNRANKED} for anything unrecognised.

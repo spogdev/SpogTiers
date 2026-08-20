@@ -3,6 +3,7 @@
 	"id": "spogtiers",
 	"version": "${version}",
 	"name": "SpogTiers",
+	"icon": "assets/spogtiers/icon.png",
 	"authors": [
 		"Spog"
 	],
