@@ -8,11 +8,18 @@ import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.authlib.properties.PropertyMap;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.client.gui.ProfileScreen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 
 import java.net.URI;
@@ -44,6 +51,34 @@ public final class ClientCommands {
 			.build();
 
 	private ClientCommands() {
+	}
+
+	/**
+	 * Adds our commands to the client's dispatcher so they autocomplete and are
+	 * not underlined as unknown while typing.
+	 *
+	 * <p>Execution still happens in {@link #handle(String)}: the dispatcher the
+	 * client builds is only ever used for parsing and suggestions, so the node
+	 * registered here carries suggestions and an inert executor.
+	 */
+	public static void register(CommandDispatcher<ClientSuggestionProvider> dispatcher) {
+		if (dispatcher == null) {
+			return;
+		}
+
+		SuggestionProvider<ClientSuggestionProvider> players = (context, builder) ->
+				SharedSuggestionProvider.suggest(
+						context.getSource().getOnlinePlayerNames(), builder);
+
+		LiteralArgumentBuilder<ClientSuggestionProvider> root =
+				LiteralArgumentBuilder.<ClientSuggestionProvider>literal(PREFIX)
+						.executes(context -> 0)
+						.then(RequiredArgumentBuilder
+								.<ClientSuggestionProvider, String>argument("player", StringArgumentType.word())
+								.suggests(players)
+								.executes(context -> 0));
+
+		dispatcher.register(root);
 	}
 
 	/**

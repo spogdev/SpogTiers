@@ -5,7 +5,8 @@
 	"client": [
 		"PlayerTabOverlayMixin",
 		"EntityRendererMixin",
-		"ClientPacketListenerMixin"
+		"ClientPacketListenerMixin",
+		"ClientCommandsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
