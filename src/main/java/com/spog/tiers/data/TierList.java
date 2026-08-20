@@ -1,5 +1,8 @@
 package com.spog.tiers.data;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * The tier lists SpogTiers can pull from.
  *
@@ -50,6 +53,38 @@ public enum TierList {
 	/** The site's logo, bundled under assets/spogtiers/textures/gui. */
 	public String logoPath() {
 		return "textures/gui/" + key + ".png";
+	}
+
+	/**
+	 * The gamemodes this list actually ranks.
+	 *
+	 * <p>Drives both the settings dropdowns and the icon font, so a user can
+	 * never pick something the list does not have (PvPTiers has no Bed, for
+	 * instance). Sorted, because the icon font assigns codepoints in this order.
+	 */
+	public List<Gamemode> gamemodes() {
+		return switch (this) {
+			case MCTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
+					"uhc", "vanilla");
+			case PVPHQ -> modes("axe", "cart", "crystal", "dia_smp", "mace", "neth_pot",
+					"pot", "smp", "spear_mace", "sword", "uhc");
+			case PVPTIERS -> modes("axe", "crystal", "mace", "neth_pot", "pot", "smp",
+					"sword", "uhc");
+			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
+					"dia_smp", "elytra", "mace", "manhunt", "minecart", "og_vanilla",
+					"speed", "trident");
+		};
+	}
+
+	private static List<Gamemode> modes(String... keys) {
+		List<Gamemode> out = new ArrayList<>(keys.length);
+		for (String key : keys) {
+			Gamemode mode = Gamemode.byKey(key);
+			if (mode != null) {
+				out.add(mode);
+			}
+		}
+		return List.copyOf(out);
 	}
 
 	/**

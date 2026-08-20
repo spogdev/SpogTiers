@@ -1,87 +1,560 @@
 package com.spog.tiers.client.gui;
 
-import net.minecraft.client.gui.Font;
+import com.spog.tiers.SpogTiers;
+import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.config.SpogTiersConfig;
+import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.Tier;
+import com.spog.tiers.data.TierList;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * SpogTiers settings, styled to match the tier viewer: a dimmed backdrop and a
- * single bordered panel.
- *
- * <p>Deliberately empty for now -- it exists so ModMenu has somewhere to send
- * people, and so options have a home to land in.
+ * Full-screen settings, styled to match the tier viewer: a dimmed backdrop, a
+ * row of tabs and one bordered, scrollable panel per tab.
  */
 public class ConfigScreen extends Screen {
-	private static final int PANEL_WIDTH = 320;
-	private static final int PANEL_HEIGHT = 200;
-	private static final int CARD_PADDING = 10;
+	private static final int MARGIN = 10;
+	private static final int CARD_PADDING = 12;
+	private static final int ROW_HEIGHT = 22;
+	private static final int TAB_HEIGHT = 22;
+	private static final int LOGO_SIZE = 14;
+	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	private static final int CARD_FILL = 0x50161B22;
 	private static final int CARD_BORDER = 0x70323B47;
+	private static final int ACCENT = 0xFFF2AC44;
+
+	private enum Tab {
+		GENERAL("General"),
+		TIER_LISTS("Tierlists"),
+		NAMETAG("Nametag");
+
+		private final String title;
+
+		Tab(String title) {
+			this.title = title;
+		}
+	}
 
 	private final Screen parent;
+	private Tab active = Tab.GENERAL;
+
+	/** Click targets rebuilt every frame, so painting and hit-testing agree. */
+	private final List<Zone> zones = new ArrayList<>();
+
+	private int scroll;
+	private int contentHeight;
+
+	private Dropdown<TierList> leftList;
+	private Dropdown<Gamemode> leftMode;
+	private Dropdown<TierList> rightList;
+	private Dropdown<Gamemode> rightMode;
 
 	public ConfigScreen(Screen parent) {
 		super(Component.literal("SpogTiers"));
 		this.parent = parent;
 	}
 
-	private int panelLeft() {
-		return (width - PANEL_WIDTH) / 2;
-	}
-
-	private int panelTop() {
-		return (height - PANEL_HEIGHT) / 2;
+	private SpogTiersConfig config() {
+		return SpogTiersClient.config();
 	}
 
 	@Override
 	protected void init() {
-		int buttonWidth = 100;
+		SpogTiersConfig config = config();
+
+		leftList = new Dropdown<>(value -> {
+			config.leftTag.list = value;
+			config.leftTag.gamemode = null;
+			config.save();
+			click();
+		});
+		leftMode = new Dropdown<>(value -> {
+			config.leftTag.gamemode = value;
+			config.save();
+			click();
+		});
+		rightList = new Dropdown<>(value -> {
+			config.rightTag.list = value;
+			config.rightTag.gamemode = null;
+			config.save();
+			click();
+		});
+		rightMode = new Dropdown<>(value -> {
+			config.rightTag.gamemode = value;
+			config.save();
+			click();
+		});
+
 		addRenderableWidget(new PanelButton(
-				panelLeft() + (PANEL_WIDTH - buttonWidth) / 2,
-				panelTop() + PANEL_HEIGHT - CARD_PADDING - 20,
-				buttonWidth,
-				20,
+				width - MARGIN - CARD_PADDING - 90,
+				height - MARGIN - CARD_PADDING - 20,
+				90, 20,
 				Component.literal("Done"),
 				button -> onClose()));
+	}
+
+	/** Vanilla's UI click, so the panel feels like the rest of the game. */
+	private void click() {
+		Minecraft.getInstance().getSoundManager()
+				.play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
 	}
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
 		// NB: the blurred background is drawn for us by the framework, which
-		// calls extractBackground immediately before this method. Blurring again
-		// here throws "Can only blur once per frame".
+		// calls extractBackground immediately before this method.
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
+		zones.clear();
 
-		Font font = this.font;
-		int left = panelLeft();
-		int top = panelTop();
-		int right = left + PANEL_WIDTH;
-		int bottom = top + PANEL_HEIGHT;
+		int left = MARGIN;
+		int top = MARGIN;
+		int right = width - MARGIN;
+		int bottom = height - MARGIN;
 
+		drawFrame(graphics, left, top, right, top + TAB_HEIGHT + CARD_PADDING);
+		drawTabs(graphics, left, top, mouseX, mouseY);
+
+		int bodyTop = top + TAB_HEIGHT + CARD_PADDING + 6;
+		drawFrame(graphics, left, bodyTop, right, bottom);
+
+		// Scroll the body, then clamp so a short page cannot drift off.
+		int viewHeight = bottom - bodyTop - 34;
+		int originY = bodyTop - scroll;
+		switch (active) {
+			case GENERAL -> contentHeight = drawGeneral(graphics, left, originY);
+			case TIER_LISTS -> contentHeight =
+					drawTierLists(graphics, left, originY, right, mouseX, mouseY);
+			case NAMETAG -> contentHeight =
+					drawNametag(graphics, left, originY, right, mouseX, mouseY);
+		}
+		scroll = Math.clamp(scroll, 0, Math.max(0, contentHeight - viewHeight));
+
+		if (contentHeight > viewHeight) {
+			drawScrollbar(graphics, right - 5, bodyTop + 4, viewHeight, contentHeight);
+		}
+
+		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+
+		// Open dropdowns paint last so they overlap the rows beneath them.
+		if (active == Tab.NAMETAG) {
+			SpogTiersConfig config = config();
+			leftList.drawOverlay(graphics, font, config.leftTag.list, mouseX, mouseY);
+			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
+			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
+			rightMode.drawOverlay(graphics, font, config.rightTag.gamemode, mouseX, mouseY);
+		}
+	}
+
+	private void drawScrollbar(GuiGraphicsExtractor graphics, int x, int top, int viewHeight, int total) {
+		int thumbHeight = Math.max(16, viewHeight * viewHeight / total);
+		int thumbY = top + (viewHeight - thumbHeight) * scroll / Math.max(1, total - viewHeight);
+		graphics.fill(x, top, x + 3, top + viewHeight, 0x40202A38);
+		graphics.fill(x, thumbY, x + 3, thumbY + thumbHeight, 0x90727F8F);
+	}
+
+	private void drawFrame(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
 		graphics.fill(left, top, right, bottom, CARD_FILL);
 		graphics.fill(left, top, right, top + 1, CARD_BORDER);
 		graphics.fill(left, bottom - 1, right, bottom, CARD_BORDER);
 		graphics.fill(left, top, left + 1, bottom, CARD_BORDER);
 		graphics.fill(right - 1, top, right, bottom, CARD_BORDER);
+	}
 
-		String title = "SpogTiers";
-		graphics.text(font, Component.literal(title),
-				left + (PANEL_WIDTH - font.width(title)) / 2, top + CARD_PADDING, 0xFFFFFFFF);
+	private void drawTabs(GuiGraphicsExtractor graphics, int left, int top, int mouseX, int mouseY) {
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING / 2;
 
-		int ruleY = top + CARD_PADDING + font.lineHeight + 5;
-		graphics.fill(left + CARD_PADDING, ruleY, right - CARD_PADDING, ruleY + 1, 0x28FFFFFF);
+		for (Tab tab : Tab.values()) {
+			int tabWidth = font.width(tab.title) + 24;
+			boolean selected = tab == active;
+			boolean hovered = mouseX >= x && mouseX <= x + tabWidth
+					&& mouseY >= y && mouseY <= y + TAB_HEIGHT;
 
-		String empty = "No settings yet";
-		graphics.text(font, Component.literal(empty),
-				left + (PANEL_WIDTH - font.width(empty)) / 2, ruleY + 20, MUTED_COLOR);
+			if (selected) {
+				graphics.fill(x, y, x + tabWidth, y + TAB_HEIGHT, 0x6022303F);
+				graphics.fill(x, y + TAB_HEIGHT - 2, x + tabWidth, y + TAB_HEIGHT, ACCENT);
+			} else if (hovered) {
+				graphics.fill(x, y, x + tabWidth, y + TAB_HEIGHT, 0x3016202B);
+			}
 
-		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+			graphics.text(font, Component.literal(tab.title),
+					x + (tabWidth - font.width(tab.title)) / 2,
+					y + (TAB_HEIGHT - font.lineHeight) / 2,
+					selected ? 0xFFFFFFFF : (hovered ? LABEL_COLOR : MUTED_COLOR));
+
+			zones.add(new Zone(x, y, x + tabWidth, y + TAB_HEIGHT, () -> {
+				active = tab;
+				scroll = 0;
+				closeDropdowns();
+				click();
+			}));
+			x += tabWidth + 4;
+		}
+	}
+
+	private int drawGeneral(GuiGraphicsExtractor graphics, int left, int top) {
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
+
+		graphics.text(font, Component.literal("General"), x, y, 0xFFFFFFFF);
+		y += font.lineHeight + 10;
+		graphics.text(font, Component.literal("No settings yet"), x, y, MUTED_COLOR);
+		return y + font.lineHeight + CARD_PADDING - top;
+	}
+
+	/** Favourite (single-choice heart) and per-list visibility. */
+	private int drawTierLists(GuiGraphicsExtractor graphics, int left, int top, int right,
+			int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
+
+		graphics.text(font, Component.literal("Tier lists"), x, y, 0xFFFFFFFF);
+		y += font.lineHeight + 4;
+		graphics.text(font, Component.literal(
+						"Heart your favourite; hide a list to leave it out of results."),
+				x, y, MUTED_COLOR);
+		y += font.lineHeight + 10;
+
+		for (TierList list : TierList.values()) {
+			boolean favourite = config.favouriteList == list;
+			boolean shown = config.isEnabled(list);
+
+			int rowTop = y - 4;
+			int rowBottom = y + ROW_HEIGHT - 8;
+			if (mouseY >= rowTop && mouseY <= rowBottom && mouseX >= x
+					&& mouseX <= right - CARD_PADDING) {
+				graphics.fill(x - 4, rowTop, right - CARD_PADDING, rowBottom, 0x2016202B);
+			}
+
+			graphics.blit(RenderPipelines.GUI_TEXTURED, logoOf(list), x, y - 2, 0.0f, 0.0f,
+					LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
+			graphics.text(font, Component.literal(list.displayName()),
+					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);
+
+			int heartX = right - CARD_PADDING - 130;
+			drawHeart(graphics, heartX, y - 1, favourite);
+			zones.add(new Zone(heartX - 3, y - 4, heartX + 12, y + 10, () -> {
+				config.favouriteList = list;
+				// Favouriting a hidden list would be meaningless, so show it.
+				config.setEnabled(list, true);
+				config.save();
+				click();
+			}));
+
+			int toggleWidth = 62;
+			int toggleX = right - CARD_PADDING - toggleWidth;
+			drawToggle(graphics, toggleX, y - 4, toggleWidth, shown ? "Shown" : "Hidden", shown);
+			zones.add(new Zone(toggleX, y - 4, toggleX + toggleWidth, y + 12, () -> {
+				// The favourite must stay visible, or tags have no source.
+				if (config.favouriteList == list && shown) {
+					return;
+				}
+				config.setEnabled(list, !shown);
+				config.save();
+				click();
+			}));
+
+			y += ROW_HEIGHT;
+		}
+		return y + CARD_PADDING - top;
+	}
+
+	/** Tag slots, region prefix, surfaces and a live preview. */
+	private int drawNametag(GuiGraphicsExtractor graphics, int left, int top, int right,
+			int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
+
+		graphics.text(font, Component.literal("Nametag"), x, y, 0xFFFFFFFF);
+		y += font.lineHeight + 10;
+
+		drawPreview(graphics, x, y, right);
+		y += 34;
+
+		y = drawSlot(graphics, "Left of name", config.leftTag, leftList, leftMode,
+				x, y, mouseX, mouseY);
+		y = drawSlot(graphics, "Right of name", config.rightTag, rightList, rightMode,
+				x, y, mouseX, mouseY);
+		y += 8;
+
+		y = drawSwitch(graphics, "Region before name", config.showRegionOnNametag, x, y,
+				() -> {
+					config.showRegionOnNametag = !config.showRegionOnNametag;
+					config.save();
+				});
+		y = drawSwitch(graphics, "Gamemode icons in tags", config.showTagIcons, x, y,
+				() -> {
+					config.showTagIcons = !config.showTagIcons;
+					config.save();
+				});
+		y += 10;
+
+		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);
+		y += font.lineHeight + 8;
+
+		y = drawSwitch(graphics, "Above players", config.showNametags, x, y,
+				() -> {
+					config.showNametags = !config.showNametags;
+					config.save();
+				});
+		y = drawSwitch(graphics, "Tab list", config.showTabList, x, y,
+				() -> {
+					config.showTabList = !config.showTabList;
+					config.save();
+				});
+		y = drawSwitch(graphics, "Chat", config.showInChat, x, y,
+				() -> {
+					config.showInChat = !config.showInChat;
+					config.save();
+				});
+		graphics.text(font, Component.literal("Chat tags need the player looked up first."),
+				x, y + 2, MUTED_COLOR);
+
+		return y + font.lineHeight + CARD_PADDING - top;
+	}
+
+	/** A sample nametag built from the current settings. */
+	private void drawPreview(GuiGraphicsExtractor graphics, int x, int y, int right) {
+		SpogTiersConfig config = config();
+
+		int boxWidth = Math.min(380, right - CARD_PADDING - x);
+		int boxHeight = 26;
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0x60101720);
+		graphics.fill(x, y, x + boxWidth, y + 1, CARD_BORDER);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, CARD_BORDER);
+		graphics.fill(x, y, x + 1, y + boxHeight, CARD_BORDER);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, CARD_BORDER);
+
+		// Sample values, so the preview works with nobody looked up.
+		Tier sample = new Tier(1, Tier.Position.HIGH, false);
+		int cursor = x + 8;
+		int textY = y + (boxHeight - font.lineHeight) / 2;
+
+		if (config.showRegionOnNametag) {
+			graphics.text(font, Component.literal("EU"), cursor, textY, 0xFF89F19C);
+			cursor += font.width("EU") + 5;
+		}
+		cursor = drawPreviewTag(graphics, config.leftTag, sample, cursor, textY, true);
+		graphics.text(font, Component.literal("Notch"), cursor, textY, 0xFFFFFFFF);
+		cursor += font.width("Notch");
+		drawPreviewTag(graphics, config.rightTag, sample, cursor, textY, false);
+	}
+
+	private int drawPreviewTag(GuiGraphicsExtractor graphics, SpogTiersConfig.TagSlot slot,
+			Tier sample, int cursor, int textY, boolean before) {
+		if (slot == null || !slot.enabled || slot.list == null) {
+			return cursor;
+		}
+
+		if (!before) {
+			graphics.text(font, Component.literal(" | "), cursor, textY, 0xFF555F6B);
+			cursor += font.width(" | ");
+		}
+
+		if (config().showTagIcons) {
+			Gamemode mode = slot.gamemode != null ? slot.gamemode
+					: slot.list.gamemodes().stream().findFirst().orElse(null);
+			if (mode != null) {
+				graphics.blit(RenderPipelines.GUI_TEXTURED, modeIcon(slot.list, mode),
+						cursor, textY - 1, 0.0f, 0.0f, 10, 10, 64, 64, 64, 64);
+				cursor += 13;
+			}
+		}
+
+		String label = sample.label();
+		graphics.text(font, Component.literal(label), cursor, textY, sample.color());
+		cursor += font.width(label);
+
+		if (before) {
+			graphics.text(font, Component.literal(" | "), cursor, textY, 0xFF555F6B);
+			cursor += font.width(" | ");
+		}
+		return cursor;
+	}
+
+	private int drawSlot(GuiGraphicsExtractor graphics, String title, SpogTiersConfig.TagSlot slot,
+			Dropdown<TierList> listDropdown, Dropdown<Gamemode> modeDropdown,
+			int x, int y, int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
+		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
+
+		int toggleX = x + 118;
+		drawToggle(graphics, toggleX, y - 4, 44, slot.enabled ? "On" : "Off", slot.enabled);
+		zones.add(new Zone(toggleX, y - 4, toggleX + 44, y + 12, () -> {
+			slot.enabled = !slot.enabled;
+			config.save();
+			click();
+		}));
+
+		List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
+		for (TierList list : TierList.values()) {
+			lists.add(new Dropdown.Entry<>(list, list.displayName(), logoOf(list)));
+		}
+		listDropdown.setEntries(lists);
+		listDropdown.setBounds(toggleX + 50, y - 4, 104);
+		listDropdown.draw(graphics, font, slot.list, mouseX, mouseY);
+
+		// Gamemodes come from the chosen list, so an impossible pairing
+		// (PvPTiers + Bed) simply cannot be selected.
+		List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
+		modes.add(new Dropdown.Entry<>(null, "Best tier", null));
+		if (slot.list != null) {
+			for (Gamemode mode : slot.list.gamemodes()) {
+				modes.add(new Dropdown.Entry<>(mode, mode.displayName(), modeIcon(slot.list, mode)));
+			}
+		}
+		modeDropdown.setEntries(modes);
+		modeDropdown.setBounds(toggleX + 160, y - 4, 108);
+		modeDropdown.draw(graphics, font, slot.gamemode, mouseX, mouseY);
+
+		return y + ROW_HEIGHT;
+	}
+
+	private int drawSwitch(GuiGraphicsExtractor graphics, String title, boolean on,
+			int x, int y, Runnable onClick) {
+		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
+		int toggleX = x + 118;
+		drawToggle(graphics, toggleX, y - 4, 44, on ? "On" : "Off", on);
+		zones.add(new Zone(toggleX, y - 4, toggleX + 44, y + 12, () -> {
+			onClick.run();
+			click();
+		}));
+		return y + ROW_HEIGHT;
+	}
+
+	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,
+			String text, boolean on) {
+		int boxHeight = font.lineHeight + 8;
+		int fill = on ? 0x5023351F : 0x50241A1D;
+		int border = on ? 0xA05F9A56 : 0xA0955A5A;
+
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, fill);
+		graphics.fill(x, y, x + boxWidth, y + 1, border);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
+		graphics.fill(x, y, x + 1, y + boxHeight, border);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+
+		graphics.text(font, Component.literal(text),
+				x + (boxWidth - font.width(text)) / 2, y + 4,
+				on ? 0xFFA8E39B : 0xFFE0A0A0);
+	}
+
+	/** A filled heart marks the favourite; an outline marks the rest. */
+	private void drawHeart(GuiGraphicsExtractor graphics, int x, int y, boolean filled) {
+		int color = filled ? 0xFFE2586B : 0xFF5B6673;
+		int[][] shape = {
+			{0, 1, 1, 0, 1, 1, 0},
+			{1, 1, 1, 1, 1, 1, 1},
+			{1, 1, 1, 1, 1, 1, 1},
+			{0, 1, 1, 1, 1, 1, 0},
+			{0, 0, 1, 1, 1, 0, 0},
+			{0, 0, 0, 1, 0, 0, 0},
+		};
+		for (int row = 0; row < shape.length; row++) {
+			for (int column = 0; column < shape[row].length; column++) {
+				if (shape[row][column] == 0) {
+					continue;
+				}
+				if (!filled && !isEdge(shape, row, column)) {
+					continue;
+				}
+				graphics.fill(x + column * 2, y + row * 2,
+						x + column * 2 + 2, y + row * 2 + 2, color);
+			}
+		}
+	}
+
+	private static boolean isEdge(int[][] shape, int row, int column) {
+		for (int dr = -1; dr <= 1; dr++) {
+			for (int dc = -1; dc <= 1; dc++) {
+				int r = row + dr;
+				int c = column + dc;
+				if (r < 0 || r >= shape.length || c < 0 || c >= shape[r].length
+						|| shape[r][c] == 0) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static Identifier logoOf(TierList list) {
+		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.logoPath());
+	}
+
+	private static Identifier modeIcon(TierList list, Gamemode mode) {
+		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.modeIconPath(mode.key()));
+	}
+
+	private void closeDropdowns() {
+		if (leftList != null) {
+			leftList.close();
+			leftMode.close();
+			rightList.close();
+			rightMode.close();
+		}
+	}
+
+	@Override
+	public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubled) {
+		// Dropdowns first: an open list sits above everything else.
+		if (active == Tab.NAMETAG) {
+			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+				if (dropdown.isOpen() && dropdown.click(font, event.x(), event.y())) {
+					return true;
+				}
+			}
+			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+				if (dropdown.click(font, event.x(), event.y())) {
+					click();
+					return true;
+				}
+			}
+		}
+
+		for (Zone zone : zones) {
+			if (zone.contains(event.x(), event.y())) {
+				zone.action().run();
+				return true;
+			}
+		}
+		return super.mouseClicked(event, doubled);
+	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		if (active == Tab.NAMETAG) {
+			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+				if (dropdown.scroll(mouseX, mouseY, deltaY, font)) {
+					return true;
+				}
+			}
+		}
+		scroll = Math.max(0, scroll - (int) (deltaY * 12));
+		return true;
 	}
 
 	@Override
 	public void onClose() {
 		minecraft.setScreen(parent);
+	}
+
+	private record Zone(int left, int top, int right, int bottom, Runnable action) {
+		boolean contains(double x, double y) {
+			return x >= left && x <= right && y >= top && y <= bottom;
+		}
 	}
 }

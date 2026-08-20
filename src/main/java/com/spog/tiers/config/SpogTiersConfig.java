@@ -46,6 +46,43 @@ public class SpogTiersConfig {
 	/** Max lookups dispatched per second, to stay friendly to the APIs. */
 	public int requestsPerSecond = 5;
 
+	/** The one favourited list, used wherever a single tier must be picked. */
+	public TierList favouriteList = TierList.PVPTIERS;
+
+	/** Show the region code before the name. */
+	public boolean showRegionOnNametag = false;
+
+	/** Where tier tags appear. */
+	public boolean showInChat = false;
+
+	/** What the left-hand tag shows, or null for none. */
+	public TagSlot leftTag = new TagSlot(true, TierList.PVPTIERS, null);
+
+	/** What the right-hand tag shows, or null for none. */
+	public TagSlot rightTag = new TagSlot(false, TierList.PVPTIERS, null);
+
+	/** Show the gamemode icon alongside the tier in tags. */
+	public boolean showTagIcons = true;
+
+	/**
+	 * One side of the nametag. A null {@code gamemode} means "their best tier
+	 * on that list", which is what most people want by default.
+	 */
+	public static class TagSlot {
+		public boolean enabled;
+		public TierList list;
+		public Gamemode gamemode;
+
+		public TagSlot() {
+		}
+
+		public TagSlot(boolean enabled, TierList list, Gamemode gamemode) {
+			this.enabled = enabled;
+			this.list = list;
+			this.gamemode = gamemode;
+		}
+	}
+
 	/** Panel background opacity, 0-255. */
 	public int panelOpacity = 190;
 
@@ -107,6 +144,21 @@ public class SpogTiersConfig {
 		}
 		if (displayMode == null) {
 			displayMode = Gamemode.VANILLA;
+		}
+		if (favouriteList == null) {
+			favouriteList = TierList.PVPTIERS;
+		}
+		if (leftTag == null) {
+			leftTag = new TagSlot(true, favouriteList, null);
+		}
+		if (rightTag == null) {
+			rightTag = new TagSlot(false, favouriteList, null);
+		}
+		if (leftTag.list == null) {
+			leftTag.list = favouriteList;
+		}
+		if (rightTag.list == null) {
+			rightTag.list = favouriteList;
 		}
 		panelOpacity = Math.clamp(panelOpacity, 0, 255);
 		requestsPerSecond = Math.max(1, requestsPerSecond);

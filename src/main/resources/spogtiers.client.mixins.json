@@ -6,7 +6,8 @@
 		"PlayerTabOverlayMixin",
 		"EntityRendererMixin",
 		"ClientPacketListenerMixin",
-		"ClientCommandsMixin"
+		"ClientCommandsMixin",
+		"ChatComponentMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
