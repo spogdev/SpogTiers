@@ -8,7 +8,7 @@ package com.spog.tiers.data;
  * three share one JSON schema; PVPHQ has its own (see {@code TierService}).
  */
 public enum TierList {
-	PVPHQ("pvphq", "PVPHQ Ranked", "https://pvphq.com/api/v1/players/", true),
+	PVPHQ("pvphq", "PVPHQ", "https://pvphq.com/api/v1/players/", true),
 	PVPTIERS("pvptiers", "PvPTiers", "https://pvptiers.com/api/profile/", false),
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/profile/", false),
 	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/profile/", false);
@@ -50,5 +50,14 @@ public enum TierList {
 	/** The site's logo, bundled under assets/spogtiers/textures/gui. */
 	public String logoPath() {
 		return "textures/gui/" + key + ".png";
+	}
+
+	/**
+	 * This list's own icon for a gamemode. Each site draws its own artwork, so
+	 * a row shows the icon of whichever list it came from. Returns null when
+	 * the list ships no icon for that mode.
+	 */
+	public String modeIconPath(String modeKey) {
+		return "textures/gui/modes/" + key + "/" + modeKey + ".png";
 	}
 }

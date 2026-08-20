@@ -78,10 +78,12 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			return 0xFF9CA3AF;
 		}
 		int base = switch (tier) {
+			// MCTiers' own tier-1 foreground reads beige in-game against our
+			// darker panel, so this is pushed toward a truer gold.
 			case 1 -> switch (position) {
-				case HIGH -> 0xFFE8BA3A;
-				case MID -> 0xFFDEB748;
-				case LOW -> 0xFFD5B355;
+				case HIGH -> 0xFFFFC61A;
+				case MID -> 0xFFF0B012;
+				case LOW -> 0xFFDD9B08;
 			};
 			case 2 -> switch (position) {
 				case HIGH -> 0xFFC4D3E7;

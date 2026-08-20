@@ -10,7 +10,6 @@ import com.spog.tiers.data.TierList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -37,18 +36,19 @@ import java.util.function.Supplier;
  * {@code textures} property or the model falls back to the default skin.
  */
 public class ProfileScreen extends Screen {
-	private static final int MARGIN = 24;
-	private static final int ROW_HEIGHT = 14;
+	private static final int MARGIN = 10;
+	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
-	private static final int PROFILE_WIDTH = 150;
-	private static final int SKIN_WIDTH = 90;
-	private static final int SKIN_HEIGHT = 130;
+	private static final int PROFILE_WIDTH = 172;
+	private static final int SKIN_WIDTH = 110;
+	private static final int SKIN_HEIGHT = 170;
 	private static final int CARD_PADDING = 10;
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
-	private static final int CARD_WIDTH = 138;
+	private static final int CARD_WIDTH = 162;
 	private static final int CARD_ROWS = 11;
-	private static final int LOGO_SIZE = 12;
+	private static final int LOGO_SIZE = 14;
+	private static final int MODE_ICON = 12;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	private static final int CARD_FILL = 0x50161B22;
@@ -59,7 +59,7 @@ public class ProfileScreen extends Screen {
 	private final GameProfile profile;
 
 	private Supplier<PlayerSkin> skin;
-	private Button updateButton;
+	private PanelButton closeButton;
 
 	public ProfileScreen(GameProfile profile) {
 		super(Component.literal(profile.name()));
@@ -88,34 +88,28 @@ public class ProfileScreen extends Screen {
 		int cardLeft = MARGIN;
 		int cardTop = MARGIN;
 		int cardBottom = height - MARGIN;
-		int buttonWidth = (PROFILE_WIDTH - CARD_PADDING * 2 - 6) / 2;
+
+		// Fit the model to whatever is left between the header and the button,
+		// so it never spills out of the profile card.
+		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + 12;
+		int skinBottom = cardBottom - CARD_PADDING - 20 - 10;
+		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
 		PlayerSkinWidget skinWidget = new PlayerSkinWidget(
-				SKIN_WIDTH, SKIN_HEIGHT, client.getEntityModels(), skin);
+				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
 		skinWidget.setPosition(
 				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
-				cardTop + CARD_PADDING + FACE_SIZE + 14);
+				skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2));
 		addRenderableWidget(skinWidget);
 
-		updateButton = addRenderableWidget(Button.builder(
-						Component.literal("Update"),
-						button -> refresh())
-				.bounds(cardLeft + CARD_PADDING, cardBottom - CARD_PADDING - 20, buttonWidth, 20)
-				.build());
-
-		addRenderableWidget(Button.builder(
-						Component.literal("Close"),
-						button -> onClose())
-				.bounds(cardLeft + CARD_PADDING + buttonWidth + 6,
-						cardBottom - CARD_PADDING - 20, buttonWidth, 20)
-				.build());
-	}
-
-	private void refresh() {
-		SpogTiersClient.service().refresh(target);
-		if (updateButton != null) {
-			updateButton.active = false;
-		}
+		closeButton = new PanelButton(
+				cardLeft + CARD_PADDING,
+				cardBottom - CARD_PADDING - 20,
+				PROFILE_WIDTH - CARD_PADDING * 2,
+				20,
+				Component.literal("Close"),
+				button -> onClose());
+		addRenderableWidget(closeButton);
 	}
 
 	@Override
@@ -132,9 +126,6 @@ public class ProfileScreen extends Screen {
 		// not painted over.
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
-		if (updateButton != null && !SpogTiersClient.cache().isPending(target)) {
-			updateButton.active = true;
-		}
 	}
 
 	/** The profile card: face, name, region tag, skin model and buttons. */
@@ -151,7 +142,8 @@ public class ProfileScreen extends Screen {
 		drawFace(graphics, innerX, y);
 
 		int nameX = innerX + FACE_SIZE + 6;
-		int nameY = y + (FACE_SIZE - font.lineHeight) / 2;
+		// +1 so the text sits optically centred against the face icon.
+		int nameY = y + (FACE_SIZE - font.lineHeight) / 2 + 1;
 		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
 
 		// Region reads as a small boxed tag beside the name.
@@ -161,19 +153,48 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
-	/** A boxed label, e.g. the player's region code. */
+	/**
+	 * A boxed region label, coloured with MCTiers' region palette (its
+	 * {@code --<region>} / {@code --<region>-foreground} CSS variables).
+	 */
 	private void drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
 		Font font = this.font;
 		int boxWidth = font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
 
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0x60202A38);
-		graphics.fill(x, y, x + boxWidth, y + 1, 0x8046536B);
-		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, 0x8046536B);
-		graphics.fill(x, y, x + 1, y + boxHeight, 0x8046536B);
-		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, 0x8046536B);
+		int foreground = regionForeground(text);
+		int background = regionBackground(text);
+		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
 
-		graphics.text(font, Component.literal(text), x + 4, y + 3, 0xFF8FB6E8);
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
+		graphics.fill(x, y, x + boxWidth, y + 1, border);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
+		graphics.fill(x, y, x + 1, y + boxHeight, border);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+
+		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+	}
+
+	private static int regionForeground(String region) {
+		return switch (region) {
+			case "NA" -> 0xFFD95C6A;
+			case "EU" -> 0xFF89F19C;
+			case "AS" -> 0xFFAF7F91;
+			case "AU", "OCE" -> 0xFFD5AD80;
+			case "SA" -> 0xFF5DCCDC;
+			default -> 0xFFB9C4D0;
+		};
+	}
+
+	private static int regionBackground(String region) {
+		return switch (region) {
+			case "NA" -> 0xE0442228;
+			case "EU" -> 0xE01C3E20;
+			case "AS" -> 0xE0422C3F;
+			case "AU", "OCE" -> 0xE0392E27;
+			case "SA" -> 0xE0193845;
+			default -> 0xE0232B36;
+		};
 	}
 
 	private void drawCardFrame(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
@@ -369,7 +390,16 @@ public class ProfileScreen extends Screen {
 		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
 
 		for (Row row : card.rows()) {
-			graphics.text(font, Component.literal(row.label()), textX, textY, row.accent());
+			int labelX = textX;
+			if (row.iconKey() != null) {
+				Identifier icon = Identifier.fromNamespaceAndPath(
+						SpogTiers.MOD_ID, card.list().modeIconPath(row.iconKey()));
+				graphics.blit(RenderPipelines.GUI_TEXTURED, icon,
+						textX, textY - 1, 0.0f, 0.0f,
+						MODE_ICON, MODE_ICON, 64, 64, 64, 64);
+				labelX += MODE_ICON + 3;
+			}
+			graphics.text(font, Component.literal(row.label()), labelX, textY, row.accent());
 			graphics.text(font, Component.literal(row.tier().label()), valueX, textY, row.tier().color());
 			textY += ROW_HEIGHT;
 		}
@@ -383,19 +413,19 @@ public class ProfileScreen extends Screen {
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
 			if (tier.isRanked()) {
-				rows.add(new Row(mode.displayName(), tier, mode.accent()));
+				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key()));
 				seen.add(mode.displayName());
 			}
 		}
 		for (Map.Entry<String, Tier> entry : tiers.unknown().entrySet()) {
 			if (entry.getValue().isRanked() && seen.add(entry.getKey())) {
-				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR));
+				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null));
 			}
 		}
 		return rows;
 	}
 
-	private record Row(String label, Tier tier, int accent) {
+	private record Row(String label, Tier tier, int accent, String iconKey) {
 	}
 
 	private record Card(TierList list, List<Row> rows) {
