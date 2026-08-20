@@ -12,7 +12,17 @@ branches — see [PORTING.md](PORTING.md).
 ./gradlew build
 ```
 
-The jar lands in `build/libs/`. Use the one *without* the `-sources` suffix.
+The jar lands in **`dist/`**, named per Minecraft version
+(`spogtiers-1.0.0+mc1.21.11.jar`), so builds from different version branches sit
+side by side instead of overwriting each other. `build/libs/` still holds the
+raw Gradle output including the `-sources` jar.
+
+`dist/` is deliberately outside `build/`, so `./gradlew clean` does not wipe it.
+To clear just this version's jars:
+
+```bash
+./gradlew cleanDist
+```
 
 ## Running a dev client
 
