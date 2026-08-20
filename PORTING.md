@@ -175,10 +175,14 @@ command through that method.
 - `GuiGraphics` is now **`GuiGraphicsExtractor`**, and `Screen`/`Renderable`
   render through `extractRenderState(...)` rather than `render(...)`.
 - Text is drawn with `text(...)` / `centeredText(...)`.
-- `blurBeforeThisStratum()` gives real frosted-glass blur, but vanilla permits
-  **exactly one blur per frame** and throws `Can only blur once per frame` on a
-  second call. The title screen blurs its own panorama, so any screen that can
-  open over it must guard the call (see `ProfileScreen#blurAllowed`).
+- **Do not call `blurBeforeThisStratum()` directly.** Vanilla permits exactly
+  one blur per frame and throws `Can only blur once per frame` on a second call,
+  and `GuiRenderState.firstStratumAfterBlur` is private with no getter, so there
+  is no way to ask whether the budget is already spent. Guarding on game state
+  (e.g. `level != null`) is *not* enough -- other mods and vanilla screens blur
+  in-world too. Call `Screen#extractBackground(...)` instead: it invokes
+  `extractBlurredBackground` once, does the accounting, and honours the user's
+  menu-blur setting.
 - The player model is drawn with
   `InventoryScreen.extractEntityInInventoryFollowsMouse(...)`.
 - Skins can be rendered without an entity: `Minecraft#getSkinManager()` plus
