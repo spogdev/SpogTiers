@@ -28,3 +28,6 @@ run/
 
 # generated mod jars, collected per version branch
 dist/
+
+# cached vanilla jar used to synthesise identity mappings (26.x+)
+mappings/client-*.jar
