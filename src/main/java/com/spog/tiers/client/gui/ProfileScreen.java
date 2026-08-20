@@ -3,6 +3,7 @@ package com.spog.tiers.client.gui;
 import com.mojang.authlib.GameProfile;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
@@ -21,6 +22,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -212,8 +214,10 @@ public class ProfileScreen extends Screen {
 			case "NA" -> 0xFFD95C6A;
 			case "EU" -> 0xFF89F19C;
 			case "AS" -> 0xFFAF7F91;
-			case "AU", "OCE" -> 0xFFD5AD80;
+			case "AU", "OCE", "OC" -> 0xFFD5AD80;
 			case "SA" -> 0xFF5DCCDC;
+			case "ME" -> 0xFFE0B36A;
+			case "AF" -> 0xFF9FD18A;
 			default -> 0xFFB9C4D0;
 		};
 	}
@@ -223,8 +227,10 @@ public class ProfileScreen extends Screen {
 			case "NA" -> 0xE0442228;
 			case "EU" -> 0xE01C3E20;
 			case "AS" -> 0xE0422C3F;
-			case "AU", "OCE" -> 0xE0392E27;
+			case "AU", "OCE", "OC" -> 0xE0392E27;
 			case "SA" -> 0xE0193845;
+			case "ME" -> 0xE0433A22;
+			case "AF" -> 0xE0253A1E;
 			default -> 0xE0232B36;
 		};
 	}
@@ -485,7 +491,10 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
-	/** Known gamemodes in enum order, then anything the provider added. */
+	/**
+	 * Known gamemodes in enum order, then anything the provider added, with the
+	 * user's chosen ordering applied.
+	 */
 	private List<Row> collectRows(PlayerTiers tiers) {
 		List<Row> rows = new ArrayList<>();
 		Set<String> seen = new LinkedHashSet<>();
@@ -493,21 +502,55 @@ public class ProfileScreen extends Screen {
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
 			if (tier.isRanked()) {
+				TierDetail detail = tiers.detail(mode.displayName());
 				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key(),
-						tiers.detail(mode.displayName()).peak()));
+						detail.peak(), detail.attainedSeconds()));
 				seen.add(mode.displayName());
 			}
 		}
 		for (Map.Entry<String, Tier> entry : tiers.unknown().entrySet()) {
 			if (entry.getValue().isRanked() && seen.add(entry.getKey())) {
+				TierDetail detail = tiers.detail(entry.getKey());
 				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null,
-						tiers.detail(entry.getKey()).peak()));
+						detail.peak(), detail.attainedSeconds()));
 			}
 		}
+
+		sort(rows);
 		return rows;
 	}
 
-	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak) {
+	/**
+	 * Applies the configured row order in place.
+	 *
+	 * <p>Default is the order they were collected in, so nothing to do. The
+	 * others sort on data the list may not report -- rows missing it keep their
+	 * relative order and sink to the bottom, rather than shuffling at random.
+	 */
+	private void sort(List<Row> rows) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		SpogTiersConfig.SortOrder order =
+				config == null ? SpogTiersConfig.SortOrder.DEFAULT : config.sortOrder;
+		if (order == null || order == SpogTiersConfig.SortOrder.DEFAULT) {
+			return;
+		}
+
+		switch (order) {
+			// Most recently earned first.
+			case DATE_OBTAINED -> rows.sort(Comparator
+					.comparingLong((Row row) -> row.attained() > 0 ? 0 : 1)
+					.thenComparing(Comparator.comparingLong(Row::attained).reversed()));
+			// Best tier first: lower number wins, HT before MT before LT.
+			case RANKING -> rows.sort(Comparator
+					.comparingInt((Row row) -> row.tier().tier())
+					.thenComparingInt(row -> row.tier().position().ordinal()));
+			default -> {
+			}
+		}
+	}
+
+	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak,
+			long attained) {
 		/** Only worth showing a peak that is actually better than the current tier. */
 		boolean showsPeak() {
 			if (peak == null || !peak.isRanked()) {
@@ -640,7 +683,7 @@ public class ProfileScreen extends Screen {
 			case "NA" -> "North America";
 			case "EU" -> "Europe";
 			case "AS" -> "Asia";
-			case "AU", "OCE" -> "Oceania";
+			case "AU", "OCE", "OC" -> "Oceania";
 			case "SA" -> "South America";
 			case "AF" -> "Africa";
 			case "ME" -> "Middle East";

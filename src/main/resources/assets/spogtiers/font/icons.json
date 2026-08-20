@@ -2,7 +2,7 @@
 	"providers": [
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/axe.png",
+			"file": "spogtiers:gui/modes/mcpvp/axe.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -11,7 +11,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/mace.png",
+			"file": "spogtiers:gui/modes/mcpvp/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -20,7 +20,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/neth_pot.png",
+			"file": "spogtiers:gui/modes/mcpvp/neth_pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -29,7 +29,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/pot.png",
+			"file": "spogtiers:gui/modes/mcpvp/pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -38,7 +38,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/smp.png",
+			"file": "spogtiers:gui/modes/mcpvp/smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -47,7 +47,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/sword.png",
+			"file": "spogtiers:gui/modes/mcpvp/sword.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -56,7 +56,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/uhc.png",
+			"file": "spogtiers:gui/modes/mcpvp/uhc.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -65,7 +65,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/mctiers/vanilla.png",
+			"file": "spogtiers:gui/modes/mcpvp/vanilla.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -74,7 +74,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/axe.png",
+			"file": "spogtiers:gui/modes/mctiers/axe.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -83,7 +83,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/cart.png",
+			"file": "spogtiers:gui/modes/mctiers/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -92,7 +92,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/crystal.png",
+			"file": "spogtiers:gui/modes/mctiers/neth_pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -101,7 +101,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/dia_smp.png",
+			"file": "spogtiers:gui/modes/mctiers/pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -110,7 +110,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/mace.png",
+			"file": "spogtiers:gui/modes/mctiers/smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -119,7 +119,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/neth_pot.png",
+			"file": "spogtiers:gui/modes/mctiers/sword.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -128,7 +128,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/pot.png",
+			"file": "spogtiers:gui/modes/mctiers/uhc.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -137,7 +137,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/smp.png",
+			"file": "spogtiers:gui/modes/mctiers/vanilla.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -146,7 +146,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/spear_mace.png",
+			"file": "spogtiers:gui/modes/pvphq/axe.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -155,7 +155,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/sword.png",
+			"file": "spogtiers:gui/modes/pvphq/cart.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -164,7 +164,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvphq/uhc.png",
+			"file": "spogtiers:gui/modes/pvphq/crystal.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -173,7 +173,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/axe.png",
+			"file": "spogtiers:gui/modes/pvphq/dia_smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -182,7 +182,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/crystal.png",
+			"file": "spogtiers:gui/modes/pvphq/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -191,7 +191,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/mace.png",
+			"file": "spogtiers:gui/modes/pvphq/neth_pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -200,7 +200,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/neth_pot.png",
+			"file": "spogtiers:gui/modes/pvphq/pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -209,7 +209,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/pot.png",
+			"file": "spogtiers:gui/modes/pvphq/smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -218,7 +218,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/smp.png",
+			"file": "spogtiers:gui/modes/pvphq/spear_mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -227,7 +227,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/sword.png",
+			"file": "spogtiers:gui/modes/pvphq/sword.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -236,7 +236,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/uhc.png",
+			"file": "spogtiers:gui/modes/pvphq/uhc.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -245,7 +245,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/bed.png",
+			"file": "spogtiers:gui/modes/pvptiers/axe.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -254,7 +254,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/bow.png",
+			"file": "spogtiers:gui/modes/pvptiers/crystal.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -263,7 +263,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/creeper.png",
+			"file": "spogtiers:gui/modes/pvptiers/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -272,7 +272,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/debuff.png",
+			"file": "spogtiers:gui/modes/pvptiers/neth_pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -281,7 +281,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/dia_crystal.png",
+			"file": "spogtiers:gui/modes/pvptiers/pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -290,7 +290,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/dia_smp.png",
+			"file": "spogtiers:gui/modes/pvptiers/smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -299,7 +299,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/elytra.png",
+			"file": "spogtiers:gui/modes/pvptiers/sword.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -308,7 +308,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/mace.png",
+			"file": "spogtiers:gui/modes/pvptiers/uhc.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -317,7 +317,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
+			"file": "spogtiers:gui/modes/subtiers/bed.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -326,7 +326,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/minecart.png",
+			"file": "spogtiers:gui/modes/subtiers/bow.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -335,7 +335,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
+			"file": "spogtiers:gui/modes/subtiers/creeper.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -344,7 +344,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/speed.png",
+			"file": "spogtiers:gui/modes/subtiers/debuff.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -353,11 +353,83 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/trident.png",
+			"file": "spogtiers:gui/modes/subtiers/dia_crystal.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
 				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/dia_smp.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/elytra.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/mace.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/minecart.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/speed.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/trident.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
 			]
 		}
 	]

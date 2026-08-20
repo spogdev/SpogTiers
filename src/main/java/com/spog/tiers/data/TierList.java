@@ -14,7 +14,8 @@ public enum TierList {
 	PVPHQ("pvphq", "PVPHQ", "https://pvphq.com/api/v1/players/", true),
 	PVPTIERS("pvptiers", "PvPTiers", "https://pvptiers.com/api/profile/", false),
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/profile/", false),
-	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/profile/", false);
+	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/profile/", false),
+	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false);
 
 	private final String key;
 	private final String displayName;
@@ -50,6 +51,19 @@ public enum TierList {
 		return this == PVPHQ;
 	}
 
+	/** MCPvP has no UUID route; it is searched by name. See {@code TierService}. */
+	public boolean isMcPvp() {
+		return this == MCPVP;
+	}
+
+	/**
+	 * True when the endpoint takes a player name rather than a UUID, and so
+	 * needs the name resolved before a lookup can be made.
+	 */
+	public boolean usesNameLookup() {
+		return this == MCPVP;
+	}
+
 	/** The site's logo, bundled under assets/spogtiers/textures/gui. */
 	public String logoPath() {
 		return "textures/gui/" + key + ".png";
@@ -75,6 +89,8 @@ public enum TierList {
 					"sword", "uhc");
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_smp",
 					"manhunt", "minecart", "og_vanilla", "speed", "trident");
+			case MCPVP -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
+					"uhc", "vanilla");
 		};
 	}
 

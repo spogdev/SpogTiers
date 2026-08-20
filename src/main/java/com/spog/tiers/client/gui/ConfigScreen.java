@@ -61,6 +61,7 @@ public class ConfigScreen extends Screen {
 	private Dropdown<Gamemode> leftMode;
 	private Dropdown<TierList> rightList;
 	private Dropdown<Gamemode> rightMode;
+	private Dropdown<SpogTiersConfig.SortOrder> sortOrder;
 
 	public ConfigScreen(Screen parent) {
 		super(Component.literal("SpogTiers"));
@@ -94,6 +95,11 @@ public class ConfigScreen extends Screen {
 		});
 		rightMode = new Dropdown<>(value -> {
 			config.rightTag.gamemode = value;
+			config.save();
+			click();
+		});
+		sortOrder = new Dropdown<>(value -> {
+			config.sortOrder = value;
 			config.save();
 			click();
 		});
@@ -136,7 +142,8 @@ public class ConfigScreen extends Screen {
 
 		graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
 		switch (active) {
-			case GENERAL -> contentHeight = drawGeneral(graphics, left, originY);
+			case GENERAL -> contentHeight =
+					drawGeneral(graphics, left, originY, mouseX, mouseY);
 			case TIER_LISTS -> contentHeight =
 					drawTierLists(graphics, left, originY, right, mouseX, mouseY);
 			case NAMETAG -> contentHeight =
@@ -161,6 +168,8 @@ public class ConfigScreen extends Screen {
 			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
 			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
 			rightMode.drawOverlay(graphics, font, config.rightTag.gamemode, mouseX, mouseY);
+		} else if (active == Tab.GENERAL) {
+			sortOrder.drawOverlay(graphics, font, config().sortOrder, mouseX, mouseY);
 		}
 	}
 
@@ -211,17 +220,33 @@ public class ConfigScreen extends Screen {
 		}
 	}
 
-	private int drawGeneral(GuiGraphicsExtractor graphics, int left, int top) {
+	private int drawGeneral(GuiGraphicsExtractor graphics, int left, int top,
+			int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
 		int x = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
 
 		graphics.text(font, Component.literal("General"), x, y, 0xFFFFFFFF);
+		y += font.lineHeight + 4;
+		graphics.text(font, Component.literal("How the rows inside each tierlist card are ordered."),
+				x, y, MUTED_COLOR);
 		y += font.lineHeight + 10;
-		graphics.text(font, Component.literal("No settings yet"), x, y, MUTED_COLOR);
-		return y + font.lineHeight + CARD_PADDING - top;
+
+		graphics.text(font, Component.literal("Sorting"), x, y, LABEL_COLOR);
+
+		List<Dropdown.Entry<SpogTiersConfig.SortOrder>> orders = new ArrayList<>();
+		for (SpogTiersConfig.SortOrder value : SpogTiersConfig.SortOrder.values()) {
+			orders.add(new Dropdown.Entry<>(value, value.title(), null));
+		}
+		sortOrder.setEntries(orders);
+		sortOrder.setBounds(x + 118, y - 4, 130);
+		sortOrder.draw(graphics, font, config.sortOrder, mouseX, mouseY);
+
+		y += ROW_HEIGHT;
+		return y + CARD_PADDING - top;
 	}
 
-	/** Favourite (single-choice heart) and per-list visibility. */
+	/** Per-list visibility. */
 	private int drawTierLists(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int mouseX, int mouseY) {
 		SpogTiersConfig config = config();
@@ -231,12 +256,11 @@ public class ConfigScreen extends Screen {
 		graphics.text(font, Component.literal("Tierlists"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 4;
 		graphics.text(font, Component.literal(
-						"Heart your favourite; hide a list to leave it out of results."),
+						"Hide a list to leave it out of results."),
 				x, y, MUTED_COLOR);
 		y += font.lineHeight + 10;
 
 		for (TierList list : TierList.values()) {
-			boolean favourite = config.favouriteList == list;
 			boolean shown = config.isEnabled(list);
 
 			int rowTop = y - 4;
@@ -251,24 +275,10 @@ public class ConfigScreen extends Screen {
 			graphics.text(font, Component.literal(list.displayName()),
 					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);
 
-			int heartX = right - CARD_PADDING - 130;
-			drawHeart(graphics, heartX, y - 1, favourite);
-			zones.add(new Zone(heartX - 3, y - 4, heartX + 12, y + 10, () -> {
-				config.favouriteList = list;
-				// Favouriting a hidden list would be meaningless, so show it.
-				config.setEnabled(list, true);
-				config.save();
-				click();
-			}));
-
 			int toggleWidth = 62;
 			int toggleX = right - CARD_PADDING - toggleWidth;
 			drawToggle(graphics, toggleX, y - 4, toggleWidth, shown ? "SHOWN" : "HIDDEN", shown);
 			zones.add(new Zone(toggleX, y - 4, toggleX + toggleWidth, y + 12, () -> {
-				// The favourite must stay visible, or tags have no source.
-				if (config.favouriteList == list && shown) {
-					return;
-				}
 				config.setEnabled(list, !shown);
 				config.save();
 				click();
@@ -358,7 +368,8 @@ public class ConfigScreen extends Screen {
 
 	private int drawPreviewTag(GuiGraphicsExtractor graphics, SpogTiersConfig.TagSlot slot,
 			Tier sample, int cursor, int textY, boolean before) {
-		if (slot == null || !slot.enabled || slot.list == null) {
+		// A null list is the Best option, which still previews.
+		if (slot == null || !slot.enabled) {
 			return cursor;
 		}
 
@@ -368,10 +379,14 @@ public class ConfigScreen extends Screen {
 		}
 
 		{
-			Gamemode mode = slot.gamemode != null ? slot.gamemode
-					: slot.list.gamemodes().stream().findFirst().orElse(null);
-			if (mode != null) {
-				graphics.blit(RenderPipelines.GUI_TEXTURED, modeIcon(slot.list, mode),
+			TierList source = slot.list != null ? slot.list
+					: (slot.gamemode != null ? firstListWith(slot.gamemode) : firstEnabledList());
+			Gamemode mode = slot.gamemode;
+			if (mode == null && source != null) {
+				mode = source.gamemodes().stream().findFirst().orElse(null);
+			}
+			if (source != null && mode != null) {
+				graphics.blit(RenderPipelines.GUI_TEXTURED, modeIcon(source, mode),
 						cursor, textY - 1, 0.0f, 0.0f, 10, 10, 64, 64, 64, 64);
 				cursor += 13;
 			}
@@ -403,6 +418,8 @@ public class ConfigScreen extends Screen {
 		}));
 
 		List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
+		// null means "across every list" -- see TagRenderer.
+		lists.add(new Dropdown.Entry<>(null, "Best", null));
 		for (TierList list : TierList.values()) {
 			lists.add(new Dropdown.Entry<>(list, list.displayName(), logoOf(list)));
 		}
@@ -411,12 +428,21 @@ public class ConfigScreen extends Screen {
 		listDropdown.draw(graphics, font, slot.list, mouseX, mouseY);
 
 		// Gamemodes come from the chosen list, so an impossible pairing
-		// (PvPTiers + Bed) simply cannot be selected.
+		// (PvPTiers + Bed) simply cannot be selected. Under Best there is no one
+		// list, so every mode any enabled list ranks is offered, each drawn with
+		// the artwork of a list that has it.
 		List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
 		modes.add(new Dropdown.Entry<>(null, "Best tier", null));
 		if (slot.list != null) {
 			for (Gamemode mode : slot.list.gamemodes()) {
 				modes.add(new Dropdown.Entry<>(mode, mode.displayName(), modeIcon(slot.list, mode)));
+			}
+		} else {
+			for (Gamemode mode : Gamemode.values()) {
+				TierList owner = firstListWith(mode);
+				if (owner != null) {
+					modes.add(new Dropdown.Entry<>(mode, mode.displayName(), modeIcon(owner, mode)));
+				}
 			}
 		}
 		modeDropdown.setEntries(modes);
@@ -455,28 +481,6 @@ public class ConfigScreen extends Screen {
 				on ? 0xFFA8E39B : 0xFFE0A0A0);
 	}
 
-	/** A filled heart marks the favourite; an outline marks the rest. */
-	private void drawHeart(GuiGraphicsExtractor graphics, int x, int y, boolean filled) {
-		int color = filled ? 0xFFE2586B : 0xFF5B6673;
-		int[][] shape = {
-			{0, 1, 1, 0, 1, 1, 0},
-			{1, 1, 1, 1, 1, 1, 1},
-			{1, 1, 1, 1, 1, 1, 1},
-			{0, 1, 1, 1, 1, 1, 0},
-			{0, 0, 1, 1, 1, 0, 0},
-			{0, 0, 0, 1, 0, 0, 0},
-		};
-		for (int row = 0; row < shape.length; row++) {
-			for (int column = 0; column < shape[row].length; column++) {
-				if (shape[row][column] == 0) {
-					continue;
-				}
-				graphics.fill(x + column * 2, y + row * 2,
-						x + column * 2 + 2, y + row * 2 + 2, color);
-			}
-		}
-	}
-
 	private static Identifier logoOf(TierList list) {
 		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.logoPath());
 	}
@@ -485,18 +489,45 @@ public class ConfigScreen extends Screen {
 		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.modeIconPath(mode.key()));
 	}
 
+	/** Any enabled list, for a preview that is not bound to one. */
+	private TierList firstEnabledList() {
+		SpogTiersConfig config = config();
+		for (TierList list : TierList.values()) {
+			if (config.isEnabled(list)) {
+				return list;
+			}
+		}
+		return null;
+	}
+
+	/** An enabled list that ranks this mode, for borrowing its icon. */
+	private TierList firstListWith(Gamemode mode) {
+		SpogTiersConfig config = config();
+		for (TierList list : TierList.values()) {
+			if (config.isEnabled(list) && list.gamemodes().contains(mode)) {
+				return list;
+			}
+		}
+		return null;
+	}
+
 	private void closeDropdowns() {
 		if (leftList != null) {
 			leftList.close();
 			leftMode.close();
 			rightList.close();
 			rightMode.close();
+			sortOrder.close();
 		}
 	}
 
 	@Override
 	public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubled) {
 		// Dropdowns first: an open list sits above everything else.
+		if (active == Tab.GENERAL && sortOrder.click(font, event.x(), event.y())) {
+			click();
+			return true;
+		}
 		if (active == Tab.NAMETAG) {
 			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
 				if (dropdown.isOpen() && dropdown.click(font, event.x(), event.y())) {
@@ -522,6 +553,9 @@ public class ConfigScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		if (active == Tab.GENERAL && sortOrder.scroll(deltaY)) {
+			return true;
+		}
 		if (active == Tab.NAMETAG) {
 			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
 				if (dropdown.scroll(deltaY)) {

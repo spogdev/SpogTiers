@@ -57,7 +57,7 @@ public final class TagRenderer {
 		return out;
 	}
 
-	/** The badge for whichever list the user favourited, for compact contexts. */
+	/** The badge for the left-hand slot, for compact contexts. */
 	public static Component badgeFor(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
@@ -69,26 +69,42 @@ public final class TagRenderer {
 	/** One configured side, or null when it is off or nothing is ranked. */
 	private static Component tagFor(UUID uuid, SpogTiersConfig.TagSlot slot) {
 		SpogTiersConfig config = SpogTiersClient.config();
-		if (slot == null || !slot.enabled || slot.list == null) {
-			return null;
-		}
-		if (!config.isEnabled(slot.list)) {
+		if (slot == null || !slot.enabled) {
 			return null;
 		}
 
-		PlayerTiers tiers = SpogTiersClient.cache().get(uuid, slot.list);
-		if (tiers == null) {
-			return null;
+		// A null list is the Best option: search every enabled list rather than
+		// one in particular.
+		TierList source = slot.list;
+		PlayerTiers tiers;
+		Tier tier;
+
+		if (source == null) {
+			Best best = bestAcrossLists(uuid, slot.gamemode);
+			if (best == null) {
+				return null;
+			}
+			source = best.list();
+			tiers = best.tiers();
+			tier = best.tier();
+		} else {
+			if (!config.isEnabled(source)) {
+				return null;
+			}
+			tiers = SpogTiersClient.cache().get(uuid, source);
+			if (tiers == null) {
+				return null;
+			}
+			tier = slot.gamemode == null ? tiers.best() : tiers.get(slot.gamemode);
 		}
 
-		Tier tier = slot.gamemode == null ? tiers.best() : tiers.get(slot.gamemode);
 		if (tier == null || !tier.isRanked()) {
 			return null;
 		}
 
 		MutableComponent out = Component.empty();
 		if (config.showTagIcons) {
-			Component icon = iconFor(slot.list, slot.gamemode, tiers, tier);
+			Component icon = iconFor(source, slot.gamemode, tiers, tier);
 			if (icon != null) {
 				out.append(icon).append(Component.literal(" "));
 			}
@@ -96,6 +112,52 @@ public final class TagRenderer {
 		out.append(Component.literal(tier.label())
 				.setStyle(Style.EMPTY.withColor(tier.color())));
 		return out;
+	}
+
+	/**
+	 * The single best tier a player holds across every enabled list.
+	 *
+	 * <p>With no gamemode it considers every mode on every list; with one, only
+	 * that mode, on the lists that rank it. The owning list comes back too, so
+	 * the caller can draw that list's own artwork for the mode.
+	 */
+	private static Best bestAcrossLists(UUID uuid, Gamemode mode) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		Best best = null;
+
+		for (Map.Entry<TierList, PlayerTiers> entry
+				: SpogTiersClient.cache().allLists(uuid).entrySet()) {
+			TierList list = entry.getKey();
+			PlayerTiers tiers = entry.getValue();
+			if (tiers == null || !config.isEnabled(list)) {
+				continue;
+			}
+			// A list that does not rank the chosen mode has no say here.
+			if (mode != null && !list.gamemodes().contains(mode)) {
+				continue;
+			}
+
+			Tier candidate = mode == null ? tiers.best() : tiers.get(mode);
+			if (candidate == null || !candidate.isRanked()) {
+				continue;
+			}
+			if (best == null || outranks(candidate, best.tier())) {
+				best = new Best(list, tiers, candidate);
+			}
+		}
+		return best;
+	}
+
+	/** True when {@code candidate} is the better of the two tiers. */
+	private static boolean outranks(Tier candidate, Tier current) {
+		if (candidate.tier() != current.tier()) {
+			return candidate.tier() < current.tier();
+		}
+		return candidate.position().ordinal() < current.position().ordinal();
+	}
+
+	/** A winning tier along with the list it came from. */
+	private record Best(TierList list, PlayerTiers tiers, Tier tier) {
 	}
 
 	/**
@@ -135,8 +197,10 @@ public final class TagRenderer {
 			case "NA" -> 0xD95C6A;
 			case "EU" -> 0x89F19C;
 			case "AS" -> 0xAF7F91;
-			case "AU", "OCE" -> 0xD5AD80;
+			case "AU", "OCE", "OC" -> 0xD5AD80;
 			case "SA" -> 0x5DCCDC;
+			case "ME" -> 0xE0B36A;
+			case "AF" -> 0x9FD18A;
 			default -> 0xB9C4D0;
 		};
 	}

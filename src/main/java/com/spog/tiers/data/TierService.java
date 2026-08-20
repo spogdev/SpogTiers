@@ -10,13 +10,17 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -27,12 +31,16 @@ import java.util.concurrent.Executors;
  */
 public class TierService {
 	private static final long FAILURE_BACKOFF_MILLIS = 60_000L;
+	private static final String SESSION_PROFILE =
+			"https://sessionserver.mojang.com/session/minecraft/profile/";
 
 	private final SpogTiersConfig config;
 	private final TierCache cache;
 	private final Deque<UUID> queue = new ArrayDeque<>();
 	private final ExecutorService workers;
 	private final HttpClient http;
+	/** UUID to name, for the lists that can only be searched by name. */
+	private final Map<UUID, String> names = new ConcurrentHashMap<>();
 
 	private long lastDispatchMillis;
 
@@ -130,6 +138,9 @@ public class TierService {
 	}
 
 	private PlayerTiers fetchOne(TierList list, UUID uuid) throws Exception {
+		if (list.usesNameLookup()) {
+			return fetchByName(list, uuid);
+		}
 		String id = list.usesDashedUuid() ? uuid.toString() : uuid.toString().replace("-", "");
 		HttpRequest request = HttpRequest.newBuilder(URI.create(list.endpoint() + id))
 				.header("Accept", "application/json")
@@ -149,6 +160,192 @@ public class TierService {
 
 		JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 		return list.isPvpHq() ? parsePvpHq(list, root) : parseStandard(list, root);
+	}
+
+	/**
+	 * Looks a player up on a list that only searches by name.
+	 *
+	 * <p>MCPvP exposes no UUID route, so the name is resolved first and the
+	 * results are then matched back on UUID -- the search is a prefix match and
+	 * happily returns other players whose names merely start the same way, so
+	 * picking by name alone would tag the wrong person.
+	 */
+	private PlayerTiers fetchByName(TierList list, UUID uuid) throws Exception {
+		String name = resolveName(uuid);
+		if (name == null || name.isEmpty()) {
+			return new PlayerTiers(list, "", System.currentTimeMillis());
+		}
+
+		String query = list.endpoint() + "?q="
+				+ URLEncoder.encode(name, StandardCharsets.UTF_8)
+				+ "&kit=overall&include_retired=1";
+
+		HttpRequest request = HttpRequest.newBuilder(URI.create(query))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() == 404) {
+			return new PlayerTiers(list, "", System.currentTimeMillis());
+		}
+		if (response.statusCode() != 200) {
+			throw new IllegalStateException(list.key() + " returned HTTP " + response.statusCode());
+		}
+
+		JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+		JsonElement players = root.get("players");
+		if (players == null || !players.isJsonArray()) {
+			return new PlayerTiers(list, name, System.currentTimeMillis());
+		}
+
+		String wanted = uuid.toString().replace("-", "");
+		for (JsonElement element : players.getAsJsonArray()) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject player = element.getAsJsonObject();
+			if (string(player, "uuid").replace("-", "").equalsIgnoreCase(wanted)) {
+				return parseMcPvp(list, player);
+			}
+		}
+		// The search worked, this player simply is not ranked on the list.
+		return new PlayerTiers(list, name, System.currentTimeMillis());
+	}
+
+	/**
+	 * UUID to current name, via the session server.
+	 *
+	 * <p>The tab list is checked first: for anyone on this server the name is
+	 * already to hand and costs nothing. Results are memoised, because names
+	 * change rarely and every refresh would otherwise re-ask.
+	 */
+	private String resolveName(UUID uuid) {
+		String cached = names.get(uuid);
+		if (cached != null) {
+			return cached;
+		}
+
+		String online = onlineName(uuid);
+		if (online != null) {
+			names.put(uuid, online);
+			return online;
+		}
+
+		try {
+			HttpRequest request = HttpRequest.newBuilder(URI.create(
+							SESSION_PROFILE + uuid.toString().replace("-", "")))
+					.header("Accept", "application/json")
+					.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+					.timeout(Duration.ofSeconds(10))
+					.GET()
+					.build();
+
+			HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() != 200 || response.body().isBlank()) {
+				return null;
+			}
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String name = string(root, "name");
+			if (!name.isEmpty()) {
+				names.put(uuid, name);
+			}
+			return name;
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Name lookup failed for {}", uuid, e);
+			return null;
+		}
+	}
+
+	/** The name from the tab list, or null when that player is not connected. */
+	private static String onlineName(UUID uuid) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() == null) {
+			return null;
+		}
+		for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
+			if (uuid.equals(info.getProfile().id())) {
+				String name = info.getProfile().name();
+				return name == null || name.isEmpty() ? null : name;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * MCPvP hands back a whole search row per player, with the tiers flattened
+	 * into parallel maps:
+	 * <pre>
+	 * { "uuid":"..", "name":"x", "points":316, "rank":2, "region":"EU",
+	 *   "kitRanks":     { "sword":"LT1" },
+	 *   "kitPeakRanks": { "sword":"HT1" },
+	 *   "kitRetired":   { "sword":true } }
+	 * </pre>
+	 */
+	private PlayerTiers parseMcPvp(TierList list, JsonObject root) {
+		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
+		result.region(string(root, "region"));
+		result.overall(intOr(root, "rank", 0));
+		result.points(intOr(root, "points", 0));
+
+		JsonElement ranks = root.get("kitRanks");
+		if (ranks == null || !ranks.isJsonObject()) {
+			return result;
+		}
+		JsonObject peaks = object(root, "kitPeakRanks");
+		JsonObject retired = object(root, "kitRetired");
+
+		for (var entry : ranks.getAsJsonObject().entrySet()) {
+			if (entry.getValue().isJsonNull()) {
+				continue;
+			}
+			String key = entry.getKey();
+			Tier parsed = Tier.parseLabel(entry.getValue().getAsString(), 0);
+			if (!parsed.isRanked()) {
+				continue;
+			}
+			boolean isRetired = retired.has(key)
+					&& !retired.get(key).isJsonNull()
+					&& retired.get(key).getAsBoolean();
+			Tier tier = new Tier(parsed.tier(), parsed.position(), isRetired);
+
+			Gamemode mode = Gamemode.byKey(key);
+			String label = mode != null ? mode.displayName() : key;
+			if (mode != null) {
+				result.put(mode, tier);
+			} else {
+				result.putUnknown(key, tier);
+			}
+
+			// Only a genuinely higher peak is worth showing.
+			Tier peak = null;
+			if (peaks.has(key) && !peaks.get(key).isJsonNull()) {
+				Tier candidate = Tier.parseLabel(peaks.get(key).getAsString(), 0);
+				if (candidate.isRanked() && isBetter(candidate, tier)) {
+					peak = candidate;
+				}
+			}
+			result.detail(label, new TierDetail(0L, 0, 0, 0, 0, "", 0, peak));
+		}
+		return result;
+	}
+
+	/** True when {@code candidate} outranks {@code current}. */
+	private static boolean isBetter(Tier candidate, Tier current) {
+		if (candidate.tier() != current.tier()) {
+			return candidate.tier() < current.tier();
+		}
+		return candidate.position().ordinal() < current.position().ordinal();
+	}
+
+	/** A nested object, or an empty one when absent -- saves null checks. */
+	private static JsonObject object(JsonObject parent, String key) {
+		JsonElement element = parent.get(key);
+		return element != null && element.isJsonObject()
+				? element.getAsJsonObject()
+				: new JsonObject();
 	}
 
 	/**

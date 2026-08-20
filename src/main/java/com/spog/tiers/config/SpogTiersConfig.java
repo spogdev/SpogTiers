@@ -46,8 +46,8 @@ public class SpogTiersConfig {
 	/** Max lookups dispatched per second, to stay friendly to the APIs. */
 	public int requestsPerSecond = 5;
 
-	/** The one favourited list, used wherever a single tier must be picked. */
-	public TierList favouriteList = TierList.PVPTIERS;
+	/** How the rows inside each tier list card are ordered. */
+	public SortOrder sortOrder = SortOrder.DEFAULT;
 
 	/** Show the region code before the name. */
 	public boolean showRegionOnNametag = false;
@@ -71,7 +71,8 @@ public class SpogTiersConfig {
 
 	/**
 	 * One side of the nametag. A null {@code gamemode} means "their best tier
-	 * on that list", which is what most people want by default.
+	 * on that list", which is what most people want by default; a null
+	 * {@code list} means "across every list", the Best option.
 	 */
 	public static class TagSlot {
 		public boolean enabled;
@@ -85,6 +86,29 @@ public class SpogTiersConfig {
 			this.enabled = enabled;
 			this.list = list;
 			this.gamemode = gamemode;
+		}
+	}
+
+	/**
+	 * Row ordering inside a tier list card.
+	 *
+	 * <p>{@link #DEFAULT} is the gamemode order the mod declares, which keeps
+	 * the same mode in the same place across every card and makes the grid easy
+	 * to scan. The other two sort by the data instead.
+	 */
+	public enum SortOrder {
+		DEFAULT("Default"),
+		DATE_OBTAINED("Date obtained"),
+		RANKING("Ranking");
+
+		private final String title;
+
+		SortOrder(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
 		}
 	}
 
@@ -150,21 +174,17 @@ public class SpogTiersConfig {
 		if (displayMode == null) {
 			displayMode = Gamemode.VANILLA;
 		}
-		if (favouriteList == null) {
-			favouriteList = TierList.PVPTIERS;
+		if (sortOrder == null) {
+			sortOrder = SortOrder.DEFAULT;
 		}
 		if (leftTag == null) {
-			leftTag = new TagSlot(true, favouriteList, null);
+			leftTag = new TagSlot(true, TierList.PVPTIERS, null);
 		}
 		if (rightTag == null) {
-			rightTag = new TagSlot(false, favouriteList, null);
+			rightTag = new TagSlot(false, TierList.PVPTIERS, null);
 		}
-		if (leftTag.list == null) {
-			leftTag.list = favouriteList;
-		}
-		if (rightTag.list == null) {
-			rightTag.list = favouriteList;
-		}
+		// A null list is meaningful here (Best, across every list), so unlike
+		// the fields above it is deliberately left alone.
 		panelOpacity = Math.clamp(panelOpacity, 0, 255);
 		requestsPerSecond = Math.max(1, requestsPerSecond);
 	}
