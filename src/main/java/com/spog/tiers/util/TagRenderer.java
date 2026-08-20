@@ -4,10 +4,10 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 
 import java.util.UUID;
 
@@ -21,16 +21,16 @@ public final class TagRenderer {
 	}
 
 	/** Returns {@code original} with a tier badge prepended, if one is known. */
-	public static Text withTag(UUID uuid, Text original) {
-		Text badge = badgeFor(uuid);
+	public static Component withTag(UUID uuid, Component original) {
+		Component badge = badgeFor(uuid);
 		if (badge == null) {
 			return original;
 		}
-		return Text.empty().append(badge).append(Text.literal(" ")).append(original);
+		return Component.empty().append(badge).append(Component.literal(" ")).append(original);
 	}
 
 	/** The badge alone, e.g. a bracketed "HT2", or null when unranked/unknown. */
-	public static Text badgeFor(UUID uuid) {
+	public static Component badgeFor(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
 			return null;
@@ -45,10 +45,10 @@ public final class TagRenderer {
 			return null;
 		}
 
-		MutableText label = Text.literal(tier.label())
+		MutableComponent label = Component.literal(tier.label())
 				.setStyle(Style.EMPTY.withColor(tier.color()));
-		return Text.literal("[").formatted(Formatting.DARK_GRAY)
+		return Component.literal("[").withStyle(ChatFormatting.DARK_GRAY)
 				.append(label)
-				.append(Text.literal("]").formatted(Formatting.DARK_GRAY));
+				.append(Component.literal("]").withStyle(ChatFormatting.DARK_GRAY));
 	}
 }

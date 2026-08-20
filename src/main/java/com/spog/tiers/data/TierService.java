@@ -5,8 +5,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.config.SpogTiersConfig;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -59,11 +59,11 @@ public class TierService {
 	}
 
 	private void enqueueVisiblePlayers() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.getNetworkHandler() == null) {
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() == null) {
 			return;
 		}
-		for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
+		for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
 			UUID uuid = entry.getProfile().id();
 			if (uuid != null && cache.needsLookup(uuid) && !queue.contains(uuid)) {
 				queue.add(uuid);

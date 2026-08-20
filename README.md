@@ -3,8 +3,14 @@
 A client-side Fabric mod that shows PvP tier tags (e.g. `[HT2]`) next to player
 names, in the tab list and above player heads.
 
-Targets **Minecraft 1.21.11** on Java 21. Other versions live on their own
+This branch targets **Minecraft 26.1.2** on **Java 25**, built against official
+Mojang names (26.x ships deobfuscated). Other versions live on their own
 branches — see [PORTING.md](PORTING.md).
+
+| Branch | Minecraft | Java | Mappings |
+| --- | --- | --- | --- |
+| `mc/26.1.2` | 26.1.2 | 25 | mojmap (identity) |
+| `mc/1.21.11` | 1.21.11 | 21 | yarn |
 
 ## Building
 
@@ -12,7 +18,26 @@ branches — see [PORTING.md](PORTING.md).
 ./gradlew build
 ```
 
-The jar lands in `build/libs/`. Use the one *without* the `-sources` suffix.
+The jar lands in **`dist/`**, named per Minecraft version
+(`spogtiers-1.0.0+mc26.1.2.jar`), so builds from different version branches sit
+side by side instead of overwriting each other. `build/libs/` still holds the
+raw Gradle output including the `-sources` jar.
+
+`dist/` is deliberately outside `build/`, so `./gradlew clean` does not wipe it.
+To clear just this version's jars:
+
+```bash
+./gradlew cleanDist
+```
+
+### First-time setup on this branch
+
+26.x needs a synthesised identity mapping jar (see [PORTING.md](PORTING.md) for
+why). It is committed, but regenerate it with:
+
+```bash
+python mappings/generate_identity_mappings.py --version 26.1.2
+```
 
 ## Running a dev client
 
