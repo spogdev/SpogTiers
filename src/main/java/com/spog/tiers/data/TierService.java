@@ -187,11 +187,23 @@ public class TierService {
 					value.has("retired") && value.get("retired").getAsBoolean());
 
 			Gamemode mode = Gamemode.byKey(entry.getKey());
+			String label = mode != null ? mode.displayName() : entry.getKey();
 			if (mode != null) {
 				result.put(mode, tier);
 			} else {
 				result.putUnknown(entry.getKey(), tier);
 			}
+
+			Tier peak = null;
+			if (value.has("peak_tier")) {
+				peak = new Tier(
+						value.get("peak_tier").getAsInt(),
+						intOr(value, "peak_pos", 0) == 0 ? Tier.Position.HIGH : Tier.Position.LOW,
+						false);
+			}
+			result.detail(label, new TierDetail(
+					value.has("attained") ? value.get("attained").getAsLong() : 0L,
+					0, 0, 0, 0, "", 0, peak));
 		}
 		return result;
 	}
@@ -233,12 +245,25 @@ public class TierService {
 
 			String key = string(value, "gametype");
 			Gamemode mode = Gamemode.byKey(key);
+			String label;
 			if (mode != null) {
 				result.put(mode, tier);
+				label = mode.displayName();
 			} else {
-				String label = string(value, "gametypeName");
-				result.putUnknown(label.isEmpty() ? key : label, tier);
+				label = string(value, "gametypeName");
+				label = label.isEmpty() ? key : label;
+				result.putUnknown(label, tier);
 			}
+
+			result.detail(label, new TierDetail(
+					0L,
+					intOr(value, "rating", 0),
+					intOr(value, "peakRating", 0),
+					intOr(value, "tierFloor", 0),
+					intOr(value, "tierCeiling", 0),
+					string(value, "nextTier"),
+					intOr(value, "peakTr", 0),
+					Tier.parseLabel(string(value, "peakTier"), 0)));
 		}
 		return result;
 	}

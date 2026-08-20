@@ -10,13 +10,15 @@ import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
  * A {@link PlayerSkinWidget} that idles rather than standing perfectly still:
- * the body rises and falls a little and the arms drift in and out, the way the
- * skin preview in the Modrinth app does.
+ * the whole body rises and falls a little and the arms drift in and out, the
+ * way the skin preview in the Modrinth app does.
  *
  * <p>Vanilla keeps its two {@code PlayerModel} instances private and rebuilds
  * the pose from the render state each frame, so the pose is applied here just
@@ -33,6 +35,9 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 	private static final float ARM_PITCH = 0.018f;
 
 	private final List<PlayerModel> models = new ArrayList<>();
+	/** Rest y of every animated part, so offsets never accumulate. */
+	private final Map<ModelPart, Float> restY = new HashMap<>();
+
 	private float elapsed;
 
 	public AnimatedSkinWidget(int width, int height, EntityModelSet models, Supplier<PlayerSkin> skin) {
@@ -53,14 +58,33 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 			}
 			try {
 				field.setAccessible(true);
-				Object value = field.get(this);
-				if (value instanceof PlayerModel model) {
+				if (field.get(this) instanceof PlayerModel model) {
 					models.add(model);
+					rememberRest(model);
 				}
 			} catch (ReflectiveOperationException | RuntimeException ignored) {
 				// Leave the widget static rather than failing to draw at all.
 			}
 		}
+	}
+
+	/**
+	 * Parts do not all rest at y=0 -- arms and legs sit lower down the rig --
+	 * so their rest positions are captured once and everything is animated as
+	 * an offset from those.
+	 */
+	private void rememberRest(PlayerModel model) {
+		for (ModelPart part : parts(model)) {
+			restY.putIfAbsent(part, part.y);
+		}
+	}
+
+	private static ModelPart[] parts(PlayerModel model) {
+		return new ModelPart[] {
+			model.head, model.hat, model.body, model.jacket,
+			model.rightArm, model.leftArm, model.rightSleeve, model.leftSleeve,
+			model.rightLeg, model.leftLeg, model.rightPants, model.leftPants,
+		};
 	}
 
 	@Override
@@ -77,13 +101,23 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 
 		float breath = Mth.sin(elapsed / BREATH_PERIOD * Mth.TWO_PI);
 		float sway = Mth.sin(elapsed / SWAY_PERIOD * Mth.TWO_PI);
+		float lift = breath * BODY_LIFT;
 
 		for (PlayerModel model : models) {
-			// Chest rises, and the head follows a beat later so it does not
-			// look bolted to the body.
-			model.body.y = 0.0f + breath * BODY_LIFT;
-			model.head.y = breath * BODY_LIFT;
-			model.hat.y = model.head.y;
+			// Everything above the feet rises together, so the torso never
+			// detaches from the legs. The legs stay planted.
+			liftFrom(model.head, lift);
+			liftFrom(model.hat, lift);
+			liftFrom(model.body, lift);
+			liftFrom(model.jacket, lift);
+			liftFrom(model.rightArm, lift);
+			liftFrom(model.leftArm, lift);
+			liftFrom(model.rightSleeve, lift);
+			liftFrom(model.leftSleeve, lift);
+			liftFrom(model.rightLeg, 0.0f);
+			liftFrom(model.leftLeg, 0.0f);
+			liftFrom(model.rightPants, 0.0f);
+			liftFrom(model.leftPants, 0.0f);
 
 			// Arms drift away from the torso and back, mirrored left to right.
 			float swing = ARM_SWING + sway * ARM_SWING * 0.6f;
@@ -93,11 +127,14 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 			pose(model.leftArm, pitch, -swing);
 			pose(model.rightSleeve, pitch, swing);
 			pose(model.leftSleeve, pitch, -swing);
+		}
+	}
 
-			model.rightArm.y = breath * BODY_LIFT;
-			model.leftArm.y = model.rightArm.y;
-			model.rightSleeve.y = model.rightArm.y;
-			model.leftSleeve.y = model.rightArm.y;
+	/** Moves a part relative to its captured rest position. */
+	private void liftFrom(ModelPart part, float offset) {
+		Float rest = restY.get(part);
+		if (rest != null) {
+			part.y = rest + offset;
 		}
 	}
 

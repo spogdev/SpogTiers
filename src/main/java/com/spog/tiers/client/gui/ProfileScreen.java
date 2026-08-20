@@ -6,6 +6,7 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
+import com.spog.tiers.data.TierDetail;
 import com.spog.tiers.data.TierList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -16,6 +17,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,16 +52,22 @@ public class ProfileScreen extends Screen {
 	private static final int CARD_ROWS = 11;
 	private static final int LOGO_SIZE = 14;
 	private static final int MODE_ICON = 12;
+	private static final int TOOLTIP_PADDING = 6;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	private static final int CARD_FILL = 0x50161B22;
 	private static final int CARD_BORDER = 0x70323B47;
+
+	private static final DateTimeFormatter DATE_FORMAT =
+			DateTimeFormatter.ofPattern("d MMM yyyy").withZone(ZoneId.systemDefault());
 
 	private final UUID target;
 	private final String playerName;
 	private final GameProfile profile;
 
 	private Supplier<PlayerSkin> skin;
+	/** Row under the cursor this frame, resolved during card layout. */
+	private Hover hover;
 	private PanelButton closeButton;
 
 	public ProfileScreen(GameProfile profile) {
@@ -118,12 +128,19 @@ public class ProfileScreen extends Screen {
 		// here throws "Can only blur once per frame".
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
+		hover = null;
 		drawHeader(graphics);
-		drawCards(graphics);
+		drawCards(graphics, mouseX, mouseY);
 
 		// Widgets (the skin model included) render after our fills, so they are
 		// not painted over.
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+
+		// Tooltip last and outside the card transform, so it is never clipped
+		// or scaled with the grid.
+		if (hover != null) {
+			drawTierTooltip(graphics, hover, mouseX, mouseY);
+		}
 
 	}
 
@@ -275,7 +292,7 @@ public class ProfileScreen extends Screen {
 	}
 
 	/** One fixed-size card per ranked list, arranged in a balanced grid. */
-	private void drawCards(GuiGraphicsExtractor graphics) {
+	private void drawCards(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		Font font = this.font;
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
 
@@ -350,13 +367,19 @@ public class ProfileScreen extends Screen {
 
 			int x = rowLeft + column * (CARD_WIDTH + CARD_GAP);
 			int y = row * (cardHeight + CARD_GAP);
-			drawCard(graphics, cards.get(index), x, y, cardHeight);
+
+			// Mouse mapped into the scaled card space, so hit-testing matches
+			// what is actually drawn.
+			float localX = (mouseX - originX) / scale;
+			float localY = (mouseY - originY) / scale;
+			drawCard(graphics, cards.get(index), x, y, cardHeight, localX, localY);
 		}
 
 		graphics.pose().popMatrix();
 	}
 
-	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardHeight) {
+	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardHeight,
+			float localX, float localY) {
 		Font font = this.font;
 
 		drawCardFrame(graphics, x, y, x + CARD_WIDTH, y + cardHeight);
@@ -389,6 +412,12 @@ public class ProfileScreen extends Screen {
 		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
 
 		for (Row row : card.rows()) {
+			// Whole row is the hit target, not just the label.
+			if (localX >= x && localX <= x + CARD_WIDTH
+					&& localY >= textY - 2 && localY < textY + ROW_HEIGHT - 2) {
+				hover = new Hover(card.list(), row);
+			}
+
 			int labelX = textX;
 			if (row.iconKey() != null) {
 				Identifier icon = Identifier.fromNamespaceAndPath(
@@ -425,6 +454,92 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Row(String label, Tier tier, int accent, String iconKey) {
+	}
+
+	private record Hover(TierList list, Row row) {
+	}
+
+	/**
+	 * Tooltip for a hovered ranking, drawn in the panel's own style.
+	 *
+	 * <p>Ranked lists date the placement; ELO lists show the rating and how far
+	 * it sits through the current tier, with a bar toward the next one.
+	 */
+	private void drawTierTooltip(GuiGraphicsExtractor graphics, Hover target, int mouseX, int mouseY) {
+		Font font = this.font;
+		PlayerTiers tiers = SpogTiersClient.cache().get(this.target, target.list());
+		if (tiers == null) {
+			return;
+		}
+
+		TierDetail detail = tiers.detail(target.row().label());
+		List<Line> lines = new ArrayList<>();
+
+		lines.add(new Line(target.row().label() + "  " + target.row().tier().label(),
+				target.row().tier().color()));
+
+		boolean bar = false;
+		if (detail.hasRating()) {
+			lines.add(new Line(detail.hasTr() ? "TP " + detail.rating() : "Elo " + detail.rating(),
+					0xFFE4EAF2));
+			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
+				lines.add(new Line("Peak " + detail.peakRating(), MUTED_COLOR));
+			}
+			if (detail.hasNextTier()) {
+				lines.add(new Line("Next: " + detail.nextTier(), MUTED_COLOR));
+				bar = true;
+			}
+		} else if (detail.hasAttained()) {
+			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
+		} else {
+			lines.add(new Line("No detail available", MUTED_COLOR));
+		}
+
+		if (target.row().tier().retired()) {
+			lines.add(new Line("Retired", 0xFFD08A6A));
+		}
+
+		int textWidth = 0;
+		for (Line line : lines) {
+			textWidth = Math.max(textWidth, font.width(line.text()));
+		}
+		int boxWidth = textWidth + TOOLTIP_PADDING * 2;
+		int boxHeight = TOOLTIP_PADDING * 2 + lines.size() * (font.lineHeight + 2) - 2
+				+ (bar ? 8 : 0);
+
+		// Keep the tooltip on screen rather than letting it run off an edge.
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+
+		int lineY = boxY + TOOLTIP_PADDING;
+		for (Line line : lines) {
+			graphics.text(font, Component.literal(line.text()),
+					boxX + TOOLTIP_PADDING, lineY, line.color());
+			lineY += font.lineHeight + 2;
+		}
+
+		if (bar) {
+			int barLeft = boxX + TOOLTIP_PADDING;
+			int barRight = boxX + boxWidth - TOOLTIP_PADDING;
+			int barTop = lineY;
+			graphics.fill(barLeft, barTop, barRight, barTop + 4, 0xFF1B2430);
+			int filled = Math.round((barRight - barLeft) * detail.progress());
+			if (filled > 0) {
+				graphics.fill(barLeft, barTop, barLeft + filled, barTop + 4,
+						target.row().tier().color());
+			}
+		}
+	}
+
+	private record Line(String text, int color) {
+	}
+
+	/** Formats an epoch-seconds timestamp as a plain calendar date. */
+	private static String formatDate(long epochSeconds) {
+		return DATE_FORMAT.format(Instant.ofEpochSecond(epochSeconds));
 	}
 
 	private record Card(TierList list, List<Row> rows) {

@@ -10,6 +10,8 @@ public final class PlayerTiers {
 	private final String name;
 	private final Map<Gamemode, Tier> tiers = new EnumMap<>(Gamemode.class);
 	private final Map<String, Tier> unknownModes = new LinkedHashMap<>();
+	/** Tooltip facts, keyed by the same label the row is drawn with. */
+	private final Map<String, TierDetail> details = new LinkedHashMap<>();
 	private final long fetchedAtMillis;
 
 	private String region = "";
@@ -68,6 +70,17 @@ public final class PlayerTiers {
 	 */
 	public void putUnknown(String label, Tier tier) {
 		unknownModes.put(label, tier);
+	}
+
+	/** Records the tooltip detail for a row, keyed by its display label. */
+	public void detail(String label, TierDetail detail) {
+		if (detail != null && detail != TierDetail.EMPTY) {
+			details.put(label, detail);
+		}
+	}
+
+	public TierDetail detail(String label) {
+		return details.getOrDefault(label, TierDetail.EMPTY);
 	}
 
 	public Tier get(Gamemode mode) {
