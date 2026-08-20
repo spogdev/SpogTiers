@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "spogtiers",
+	"version": "${version}",
+	"name": "SpogTiers",
+	"description": "Displays PvP tier tags next to player names.",
+	"authors": [
+		"Stan"
+	],
+	"contact": {},
+	"license": "MIT",
+	"icon": "assets/spogtiers/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.spog.tiers.SpogTiersClient"
+		]
+	},
+	"mixins": [
+		"spogtiers.client.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=${loader_version}",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
