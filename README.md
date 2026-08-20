@@ -47,9 +47,18 @@ python mappings/generate_identity_mappings.py --version 26.1.2
 
 ## Usage
 
-Press **R** while looking at a player to open their profile panel (rebindable in
-Controls). Tabs along the bottom switch between tier lists; **Update** forces a
-re-fetch for that player.
+```
+/tiers <player>
+```
+
+Opens a full-screen profile showing every tier list side by side. The command is
+handled entirely client-side and never reaches the server.
+
+The player does **not** have to be online, or even on the same server: names not
+found in the tab list are resolved through Mojang's profile API, and the skin is
+rendered from the resolved profile rather than from a loaded entity.
+
+**Update** forces a re-fetch for that player.
 
 ## Tier lists
 

@@ -1,93 +1,86 @@
 package com.spog.tiers.client.gui;
 
+import com.mojang.authlib.GameProfile;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.PlayerSkin;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
- * The frosted profile panel: skin model on the left, rankings on the right, and
- * a row of tabs for switching between tier lists.
+ * Full-screen profile view: the player skin and name on the left, and one
+ * column per tier list showing every gamemode they are ranked in.
  *
- * <p>The blur comes from {@code blurBeforeThisStratum()}, which frosts whatever
- * is already on screen; the panel fills are translucent so that blur shows
- * through instead of being painted over.
+ * <p>The skin is rendered from the player GameProfile rather than from an
+ * entity, so it works for anyone -- including players who are not on the
+ * current server, or when not connected to one at all.
  */
 public class ProfileScreen extends Screen {
-	private static final int PANEL_WIDTH = 340;
-	private static final int PANEL_HEIGHT = 240;
-	private static final int PADDING = 12;
-	private static final int ROW_HEIGHT = 17;
-	private static final int TAB_HEIGHT = 18;
+	private static final int MARGIN = 24;
+	private static final int ROW_HEIGHT = 18;
+	private static final int HEADER_HEIGHT = 46;
+	private static final int SKIN_COLUMN = 150;
+	private static final int LABEL_COLOR = 0xFFB9C4D0;
+	private static final int MUTED_COLOR = 0xFF6C7683;
 
 	private final UUID target;
 	private final String playerName;
-	private final AbstractClientPlayer model;
+	private final GameProfile profile;
 
-	private TierList activeList;
+	private PlayerSkinWidget skinWidget;
 	private Button updateButton;
-	private float animation;
 
-	public ProfileScreen(UUID target, String playerName, AbstractClientPlayer model) {
-		super(Component.literal(playerName));
-		this.target = target;
-		this.playerName = playerName;
-		this.model = model;
-		this.activeList = SpogTiersClient.config().displayList;
-	}
-
-	private int panelLeft() {
-		return (width - PANEL_WIDTH) / 2;
-	}
-
-	private int panelTop() {
-		return (height - PANEL_HEIGHT) / 2;
+	public ProfileScreen(GameProfile profile) {
+		super(Component.literal(profile.name()));
+		this.profile = profile;
+		this.target = profile.id();
+		this.playerName = profile.name();
 	}
 
 	@Override
 	protected void init() {
-		int left = panelLeft();
-		int top = panelTop();
+		Minecraft client = Minecraft.getInstance();
 
-		int tabWidth = (PANEL_WIDTH - PADDING * 2) / TierList.values().length;
-		int tabX = left + PADDING;
-		for (TierList list : TierList.values()) {
-			TierList captured = list;
-			addRenderableWidget(Button.builder(
-							Component.literal(shortName(list)),
-							button -> selectList(captured))
-					.bounds(tabX, top + PANEL_HEIGHT - PADDING - TAB_HEIGHT, tabWidth - 2, TAB_HEIGHT)
-					.build());
-			tabX += tabWidth;
-		}
+		// The target may never have been seen on this server, so the tick loop
+		// will not have queued them; ask explicitly.
+		SpogTiersClient.service().request(target);
+
+		// createLookup fetches from Mojang in the background and serves a default
+		// skin until it arrives, so this is safe for arbitrary profiles.
+		Supplier<PlayerSkin> skin = client.getSkinManager().createLookup(profile, true);
+
+		int skinHeight = Math.min(height - HEADER_HEIGHT - MARGIN * 2 - 28, 210);
+		skinWidget = addRenderableWidget(new PlayerSkinWidget(
+				SKIN_COLUMN - 30, skinHeight, client.getEntityModels(), skin));
+		skinWidget.setPosition(MARGIN, HEADER_HEIGHT + 20);
 
 		updateButton = addRenderableWidget(Button.builder(
 						Component.literal("Update"),
 						button -> refresh())
-				.bounds(left + PADDING, top + PANEL_HEIGHT - PADDING - TAB_HEIGHT * 2 - 4, 70, TAB_HEIGHT)
+				.bounds(MARGIN, height - MARGIN - 20, 84, 20)
 				.build());
-	}
 
-	private void selectList(TierList list) {
-		activeList = list;
-		SpogTiersClient.config().displayList = list;
-		SpogTiersClient.config().save();
+		addRenderableWidget(Button.builder(
+						Component.literal("Close"),
+						button -> onClose())
+				.bounds(MARGIN + 90, height - MARGIN - 20, 84, 20)
+				.build());
 	}
 
 	private void refresh() {
@@ -97,37 +90,17 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
-	/** Tab labels have to fit a quarter of the panel, so abbreviate. */
-	private static String shortName(TierList list) {
-		return switch (list) {
-			case PVPHQ -> "PVPHQ";
-			case PVPTIERS -> "PvPTiers";
-			case SUBTIERS -> "SubTiers";
-			case MCTIERS -> "MCTiers";
-		};
-	}
-
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-		animation += partialTick;
-
-		// Frost everything behind the panel, then lay translucent fills on top.
-		// Vanilla allows exactly one blur per frame and throws on a second, so a
-		// screen that already blurred this frame (the title panorama does) must
-		// not blur again -- we just dim instead.
-		if (blurAllowed()) {
+		// Vanilla permits exactly one blur per frame and throws on a second, so
+		// only blur when nothing else already has (the title panorama does).
+		if (Minecraft.getInstance().level != null) {
 			graphics.blurBeforeThisStratum();
 		}
-		graphics.fill(0, 0, width, height, 0x40000000);
+		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
-		int left = panelLeft();
-		int top = panelTop();
-		int right = left + PANEL_WIDTH;
-		int bottom = top + PANEL_HEIGHT;
-
-		drawPanel(graphics, left, top, right, bottom);
-		drawSkin(graphics, left, top, mouseX, mouseY);
-		drawRankings(graphics, left, top);
+		drawHeader(graphics);
+		drawColumns(graphics);
 
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
@@ -136,132 +109,105 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
-	/**
-	 * Whether this frame still has its one allowed blur. The title screen blurs
-	 * its own panorama, so opening the panel over it would otherwise crash.
-	 */
-	private boolean blurAllowed() {
-		Minecraft client = Minecraft.getInstance();
-		return client.level != null;
-	}
-
-	/** Rounded-ish translucent body with a soft top highlight and a hairline border. */
-	private void drawPanel(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
-		int alpha = SpogTiersClient.config().panelOpacity;
-		int body = (alpha << 24) | 0x0E1116;
-		int sheen = ((alpha / 3) << 24) | 0x6E8399;
-
-		// Clip the corners by insetting the first and last rows by a pixel.
-		graphics.fill(left + 1, top, right - 1, top + 1, body);
-		graphics.fill(left, top + 1, right, bottom - 1, body);
-		graphics.fill(left + 1, bottom - 1, right - 1, bottom, body);
-
-		graphics.fillGradient(left, top + 1, right, top + 40, sheen, 0x00000000);
-
-		int border = ((Math.min(255, alpha + 40)) << 24) | 0x3C4654;
-		graphics.fill(left, top + 1, left + 1, bottom - 1, border);
-		graphics.fill(right - 1, top + 1, right, bottom - 1, border);
-		graphics.fill(left + 1, top, right - 1, top + 1, border);
-		graphics.fill(left + 1, bottom - 1, right - 1, bottom, border);
-	}
-
-	private void drawSkin(GuiGraphicsExtractor graphics, int left, int top, int mouseX, int mouseY) {
+	private void drawHeader(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
-		int centreX = left + PADDING + 46;
 
-		graphics.centeredText(font, Component.literal(playerName), centreX, top + PADDING, 0xFFFFFFFF);
+		graphics.text(font, Component.literal(playerName), MARGIN, MARGIN, 0xFFFFFFFF);
 
-		int boxTop = top + PADDING + 14;
-		int boxBottom = boxTop + 116;
-		graphics.fill(left + PADDING, boxTop, left + PADDING + 92, boxBottom, 0x30000000);
+		String subtitle = SpogTiersClient.cache().isPending(target)
+				? "Loading rankings..."
+				: summarise();
+		graphics.text(font, Component.literal(subtitle), MARGIN, MARGIN + 12, MUTED_COLOR);
 
-		// No model when opened outside a world (or for an offline player); the
-		// framed box still renders so the layout does not jump.
-		if (model == null) {
-			graphics.centeredText(font, Component.literal("?"), centreX, boxTop + 52, 0xFF6C7683);
-			return;
-		}
-
-		// Idle spin, or follow the cursor when the user disables rotation.
-		float yaw = SpogTiersClient.config().rotateSkin
-				? animation * 0.6f
-				: (centreX - mouseX) * 0.5f;
-		float pitch = SpogTiersClient.config().rotateSkin
-				? 0.0f
-				: (boxTop + 58 - mouseY) * 0.3f;
-
-		InventoryScreen.extractEntityInInventoryFollowsMouse(
-				graphics,
-				left + PADDING, boxTop, left + PADDING + 92, boxBottom,
-				42,
-				0.0625f,
-				yaw,
-				Mth.clamp(pitch, -25.0f, 25.0f),
-				model);
+		graphics.fill(MARGIN, HEADER_HEIGHT - 8, width - MARGIN, HEADER_HEIGHT - 7, 0x30FFFFFF);
 	}
 
-	private void drawRankings(GuiGraphicsExtractor graphics, int left, int top) {
+	/** Region and overall rank, taken from whichever list reports them. */
+	private String summarise() {
+		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
+		for (TierList list : TierList.values()) {
+			PlayerTiers tiers = all.get(list);
+			if (tiers != null && !tiers.region().isEmpty()) {
+				String text = "Region: " + tiers.region();
+				if (tiers.overall() > 0) {
+					text += "   Overall: #" + tiers.overall();
+				}
+				return text + "   (" + list.displayName() + ")";
+			}
+		}
+		return all.isEmpty() ? "No rankings found" : "";
+	}
+
+	/** One column per tier list, laid out across the remaining width. */
+	private void drawColumns(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
-		int x = left + PADDING + 104;
-		int y = top + PADDING;
-		int labelColor = 0xFFB9C4D0;
+		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
 
-		PlayerTiers tiers = SpogTiersClient.cache().get(target, activeList);
+		TierList[] lists = TierList.values();
+		int available = width - MARGIN * 2 - SKIN_COLUMN;
+		int columnWidth = available / lists.length;
+		int top = HEADER_HEIGHT + 8;
 
-		graphics.text(font, Component.literal(activeList.displayName()), x, y, 0xFFFFFFFF);
-		y += ROW_HEIGHT;
+		for (int i = 0; i < lists.length; i++) {
+			TierList list = lists[i];
+			int x = MARGIN + SKIN_COLUMN + i * columnWidth;
+			int y = top;
 
-		if (SpogTiersClient.cache().isPending(target)) {
-			graphics.text(font, Component.literal("Loading..."), x, y, labelColor);
-			return;
-		}
-		if (tiers == null) {
-			graphics.text(font, Component.literal("No data"), x, y, labelColor);
-			return;
-		}
+			boolean enabled = SpogTiersClient.config().isEnabled(list);
+			graphics.text(font, Component.literal(list.displayName()), x, y,
+					enabled ? 0xFFFFFFFF : MUTED_COLOR);
+			y += 4 + ROW_HEIGHT;
 
-		String region = tiers.region().isEmpty() ? "-" : tiers.region();
-		graphics.text(font, Component.literal("Region"), x, y, labelColor);
-		graphics.text(font, Component.literal(region), x + 110, y, 0xFF6FA8FF);
-		y += ROW_HEIGHT;
+			if (!enabled) {
+				graphics.text(font, Component.literal("Disabled"), x, y, MUTED_COLOR);
+				continue;
+			}
 
-		String overall = tiers.overall() > 0 ? "#" + tiers.overall() : "-";
-		graphics.text(font, Component.literal("Overall"), x, y, labelColor);
-		graphics.text(font, Component.literal(overall), x + 110, y, 0xFFFFA23F);
-		y += ROW_HEIGHT + 4;
+			PlayerTiers tiers = all.get(list);
+			if (tiers == null) {
+				graphics.text(font, Component.literal(
+						SpogTiersClient.cache().isPending(target) ? "..." : "No data"),
+						x, y, MUTED_COLOR);
+				continue;
+			}
 
-		List<Row> rows = collectRows(tiers);
-		if (rows.isEmpty()) {
-			graphics.text(font, Component.literal("Unranked"), x, y, 0xFF8A93A0);
-			return;
-		}
+			List<Row> rows = collectRows(tiers);
+			if (rows.isEmpty()) {
+				graphics.text(font, Component.literal("Unranked"), x, y, MUTED_COLOR);
+				continue;
+			}
 
-		int limit = (PANEL_HEIGHT - (y - top) - TAB_HEIGHT * 2 - PADDING * 2) / ROW_HEIGHT;
-		for (int i = 0; i < Math.min(rows.size(), limit); i++) {
-			Row row = rows.get(i);
-			graphics.text(font, Component.literal(row.label()), x, y, row.accent());
-			graphics.text(font, Component.literal(row.tier().label()), x + 110, y, row.tier().color());
-			y += ROW_HEIGHT;
-		}
+			int valueX = x + columnWidth - 52;
+			int limit = Math.max(1, (height - MARGIN - 28 - y) / ROW_HEIGHT);
+			for (int r = 0; r < Math.min(rows.size(), limit); r++) {
+				Row row = rows.get(r);
+				graphics.text(font, Component.literal(row.label()), x, y, row.accent());
+				graphics.text(font, Component.literal(row.tier().label()), valueX, y, row.tier().color());
+				y += ROW_HEIGHT;
+			}
 
-		int hidden = rows.size() - Math.min(rows.size(), limit);
-		if (hidden > 0) {
-			graphics.text(font, Component.literal("+" + hidden + " more"), x, y, 0xFF6C7683);
+			int hidden = rows.size() - Math.min(rows.size(), limit);
+			if (hidden > 0) {
+				graphics.text(font, Component.literal("+" + hidden + " more"), x, y, MUTED_COLOR);
+			}
 		}
 	}
 
-	/** Known gamemodes first (enum order), then anything the provider added. */
+	/** Known gamemodes in enum order, then anything the provider added. */
 	private List<Row> collectRows(PlayerTiers tiers) {
 		List<Row> rows = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
+
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
 			if (tier.isRanked()) {
 				rows.add(new Row(mode.displayName(), tier, mode.accent()));
+				seen.add(mode.displayName());
 			}
 		}
 		for (Map.Entry<String, Tier> entry : tiers.unknown().entrySet()) {
-			if (entry.getValue().isRanked()) {
-				rows.add(new Row(entry.getKey(), entry.getValue(), 0xFFB9C4D0));
+			if (entry.getValue().isRanked() && seen.add(entry.getKey())) {
+				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR));
 			}
 		}
 		return rows;

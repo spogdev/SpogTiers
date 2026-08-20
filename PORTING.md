@@ -160,9 +160,15 @@ against **intermediary** names. Our identity mappings have no intermediary
 entries, so referencing one fails with `cannot access class_304`.
 
 Until yarn/intermediary exist for 26.x, prefer vanilla hooks over Fabric API
-submodules. `OptionsMixin` is the worked example: it registers the keybind by
-appending to `Options.keyMappings` (a `final` field, hence `@Mutable @Shadow`)
-instead of using `KeyBindingHelper`.
+submodules. This bites more than once:
+
+- `fabric-key-binding-api-v1` -- `KeyBindingHelper` takes `class_304`.
+- `fabric-command-api-v2` -- `FabricClientCommandSource` extends `class_2172`.
+
+`ClientPacketListenerMixin` is the worked example: it registers `/tiers` by
+intercepting `ClientPacketListener#sendCommand` and cancelling the callback,
+which covers both multiplayer and singleplayer since `ChatScreen` routes every
+command through that method.
 
 ## GUI notes (26.x)
 
@@ -175,3 +181,7 @@ instead of using `KeyBindingHelper`.
   open over it must guard the call (see `ProfileScreen#blurAllowed`).
 - The player model is drawn with
   `InventoryScreen.extractEntityInInventoryFollowsMouse(...)`.
+- Skins can be rendered without an entity: `Minecraft#getSkinManager()` plus
+  `SkinManager#createLookup(GameProfile, boolean)` feeds vanilla's
+  `PlayerSkinWidget`, which handles wide/slim models and drag-rotation. This is
+  what lets the profile screen show players who are not on the server.

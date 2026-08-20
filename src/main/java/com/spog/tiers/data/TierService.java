@@ -61,7 +61,17 @@ public class TierService {
 	/** Forces a re-fetch for one player, bypassing the cache (Update button). */
 	public void refresh(UUID uuid) {
 		cache.invalidate(uuid);
-		queue.addFirst(uuid);
+		request(uuid);
+	}
+
+	/**
+	 * Queues a lookup for any player, on this server or not. Used by
+	 * {@code /tiers <player>}, where the target may be offline entirely.
+	 */
+	public void request(UUID uuid) {
+		if (cache.needsLookup(uuid) && !queue.contains(uuid)) {
+			queue.addFirst(uuid);
+		}
 	}
 
 	private void enqueueVisiblePlayers() {
