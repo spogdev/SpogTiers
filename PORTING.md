@@ -152,3 +152,26 @@ javap -p -c run/.mixin.out/class/net/minecraft/client/gui/hud/PlayerListHud.clas
 
 Seeing your `handler$...$spogtiers$...` method in the output is the only real
 confirmation.
+
+## Fabric API submodules on 26.x
+
+Fabric API submodules (e.g. `fabric-key-binding-api-v1`) are published compiled
+against **intermediary** names. Our identity mappings have no intermediary
+entries, so referencing one fails with `cannot access class_304`.
+
+Until yarn/intermediary exist for 26.x, prefer vanilla hooks over Fabric API
+submodules. `OptionsMixin` is the worked example: it registers the keybind by
+appending to `Options.keyMappings` (a `final` field, hence `@Mutable @Shadow`)
+instead of using `KeyBindingHelper`.
+
+## GUI notes (26.x)
+
+- `GuiGraphics` is now **`GuiGraphicsExtractor`**, and `Screen`/`Renderable`
+  render through `extractRenderState(...)` rather than `render(...)`.
+- Text is drawn with `text(...)` / `centeredText(...)`.
+- `blurBeforeThisStratum()` gives real frosted-glass blur, but vanilla permits
+  **exactly one blur per frame** and throws `Can only blur once per frame` on a
+  second call. The title screen blurs its own panorama, so any screen that can
+  open over it must guard the call (see `ProfileScreen#blurAllowed`).
+- The player model is drawn with
+  `InventoryScreen.extractEntityInInventoryFollowsMouse(...)`.

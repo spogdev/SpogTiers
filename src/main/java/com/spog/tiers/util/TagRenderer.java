@@ -12,8 +12,10 @@ import net.minecraft.network.chat.Style;
 import java.util.UUID;
 
 /**
- * Builds the coloured tier prefix that is spliced in front of a player's name.
- * Every method is null-safe and returns the original text unchanged when no
+ * Builds the coloured tier badge shown in front of a player's name, in the
+ * shape the tier mods use: {@code LT4 | Name}.
+ *
+ * <p>Every method is null-safe and returns the original text unchanged when no
  * tier is known, so callers can apply it unconditionally.
  */
 public final class TagRenderer {
@@ -26,16 +28,19 @@ public final class TagRenderer {
 		if (badge == null) {
 			return original;
 		}
-		return Component.empty().append(badge).append(Component.literal(" ")).append(original);
+		return Component.empty()
+				.append(badge)
+				.append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY))
+				.append(original);
 	}
 
-	/** The badge alone, e.g. a bracketed "HT2", or null when unranked/unknown. */
+	/** The badge alone, e.g. a coloured "LT4", or null when unranked/unknown. */
 	public static Component badgeFor(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		PlayerTiers tiers = SpogTiersClient.cache().get(uuid);
+		PlayerTiers tiers = SpogTiersClient.cache().get(uuid, config.displayList);
 		if (tiers == null) {
 			return null;
 		}
@@ -47,8 +52,6 @@ public final class TagRenderer {
 
 		MutableComponent label = Component.literal(tier.label())
 				.setStyle(Style.EMPTY.withColor(tier.color()));
-		return Component.literal("[").withStyle(ChatFormatting.DARK_GRAY)
-				.append(label)
-				.append(Component.literal("]").withStyle(ChatFormatting.DARK_GRAY));
+		return Component.empty().append(label);
 	}
 }

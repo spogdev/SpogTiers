@@ -5,5 +5,10 @@
 	"spogtiers.config.showTabList": "Show In Tab List",
 	"spogtiers.config.displayMode": "Gamemode",
 	"spogtiers.config.showBestTier": "Show Best Tier",
-	"spogtiers.config.cacheTtlSeconds": "Cache Lifetime (seconds)"
+	"spogtiers.config.cacheTtlSeconds": "Cache Lifetime (seconds)",
+	"key.spogtiers.open_profile": "Open Tier Profile",
+	"category.spogtiers": "SpogTiers",
+	"spogtiers.config.displayList": "Tier List",
+	"spogtiers.config.panelOpacity": "Panel Opacity",
+	"spogtiers.config.rotateSkin": "Rotate Skin Model"
 }

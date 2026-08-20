@@ -1,5 +1,6 @@
 package com.spog.tiers.data;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -15,15 +16,14 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Drives tier lookups. Player UUIDs are queued on the client thread, then
- * drained on a small worker pool at a bounded rate so the API is never flooded
- * when joining a busy server.
+ * Fetches tier data. Player UUIDs are queued on the client thread and drained
+ * on a small worker pool at a bounded rate, so joining a busy server does not
+ * fire hundreds of requests at once.
  */
 public class TierService {
 	private static final long FAILURE_BACKOFF_MILLIS = 60_000L;
@@ -39,23 +39,29 @@ public class TierService {
 	public TierService(SpogTiersConfig config, TierCache cache) {
 		this.config = config;
 		this.cache = cache;
-		this.workers = Executors.newFixedThreadPool(2, runnable -> {
+		this.workers = Executors.newFixedThreadPool(3, runnable -> {
 			Thread thread = new Thread(runnable, "SpogTiers Lookup");
 			thread.setDaemon(true);
 			return thread;
 		});
 		this.http = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(5))
+				.followRedirects(HttpClient.Redirect.NORMAL)
 				.build();
 	}
 
-	/** Called every client tick: enqueues visible players and drains the queue. */
 	public void tick() {
 		if (!config.enabled) {
 			return;
 		}
 		enqueueVisiblePlayers();
 		drainQueue();
+	}
+
+	/** Forces a re-fetch for one player, bypassing the cache (Update button). */
+	public void refresh(UUID uuid) {
+		cache.invalidate(uuid);
+		queue.addFirst(uuid);
 	}
 
 	private void enqueueVisiblePlayers() {
@@ -86,43 +92,68 @@ public class TierService {
 		}
 		lastDispatchMillis = now;
 		cache.markPending(uuid);
-		workers.submit(() -> fetch(uuid));
+		workers.submit(() -> fetchAll(uuid));
 	}
 
-	private void fetch(UUID uuid) {
-		try {
-			String url = config.apiBaseUrl + "/tiers/" + uuid.toString().replace("-", "");
-			HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-					.header("Accept", "application/json")
-					.header("User-Agent", "SpogTiers")
-					.timeout(Duration.ofSeconds(10))
-					.GET()
-					.build();
-
-			HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-			if (response.statusCode() != 200) {
-				cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
-				return;
+	/** Queries every enabled list; one failing must not sink the others. */
+	private void fetchAll(UUID uuid) {
+		boolean any = false;
+		for (TierList list : TierList.values()) {
+			if (!config.isEnabled(list)) {
+				continue;
 			}
-			cache.put(uuid, parse(uuid, response.body()));
-		} catch (Exception e) {
-			SpogTiers.LOGGER.debug("Tier lookup failed for {}", uuid, e);
+			try {
+				PlayerTiers result = fetchOne(list, uuid);
+				if (result != null) {
+					cache.put(uuid, list, result);
+					any = true;
+				}
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
+			}
+		}
+		if (any) {
+			cache.markComplete(uuid);
+		} else {
 			cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
 		}
 	}
 
+	private PlayerTiers fetchOne(TierList list, UUID uuid) throws Exception {
+		String id = list.usesDashedUuid() ? uuid.toString() : uuid.toString().replace("-", "");
+		HttpRequest request = HttpRequest.newBuilder(URI.create(list.endpoint() + id))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		// 404 is the normal "not on this list" answer, not an error.
+		if (response.statusCode() == 404) {
+			return new PlayerTiers(list, "", System.currentTimeMillis());
+		}
+		if (response.statusCode() != 200) {
+			throw new IllegalStateException(list.key() + " returned HTTP " + response.statusCode());
+		}
+
+		JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+		return list.isPvpHq() ? parsePvpHq(list, root) : parseStandard(list, root);
+	}
+
 	/**
-	 * Parses the API payload. Expected shape:
+	 * MCTiers, PvPTiers and SubTiers share this shape:
 	 * <pre>
-	 * { "name": "Notch", "rankings": { "vanilla": { "tier": 2, "pos": "HT", "retired": false } } }
+	 * { "name":"x", "region":"EU", "points":18, "overall":9622,
+	 *   "rankings": { "sword": { "tier":4, "pos":1, "retired":false } } }
 	 * </pre>
-	 * Unknown gamemodes and malformed entries are skipped rather than failing
-	 * the whole lookup.
+	 * {@code pos} is 0 for HT and 1 for LT.
 	 */
-	private PlayerTiers parse(UUID uuid, String body) {
-		JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-		String name = root.has("name") ? root.get("name").getAsString() : uuid.toString();
-		PlayerTiers result = new PlayerTiers(name, System.currentTimeMillis());
+	private PlayerTiers parseStandard(TierList list, JsonObject root) {
+		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
+		result.region(string(root, "region"));
+		result.overall(intOr(root, "overall", 0));
+		result.points(intOr(root, "points", 0));
 
 		JsonElement rankings = root.get("rankings");
 		if (rankings == null || !rankings.isJsonObject()) {
@@ -130,21 +161,98 @@ public class TierService {
 		}
 
 		for (var entry : rankings.getAsJsonObject().entrySet()) {
-			Gamemode mode = Gamemode.byKey(entry.getKey());
-			if (mode == null || !entry.getValue().isJsonObject()) {
+			if (!entry.getValue().isJsonObject()) {
 				continue;
 			}
 			JsonObject value = entry.getValue().getAsJsonObject();
 			if (!value.has("tier")) {
 				continue;
 			}
-			int tier = value.get("tier").getAsInt();
-			boolean high = !value.has("pos")
-					|| value.get("pos").getAsString().toLowerCase(Locale.ROOT).startsWith("h");
-			boolean retired = value.has("retired") && value.get("retired").getAsBoolean();
-			result.put(mode, new Tier(tier, high, retired));
+			Tier.Position position = intOr(value, "pos", 0) == 0
+					? Tier.Position.HIGH
+					: Tier.Position.LOW;
+			Tier tier = new Tier(
+					value.get("tier").getAsInt(),
+					position,
+					value.has("retired") && value.get("retired").getAsBoolean());
+
+			Gamemode mode = Gamemode.byKey(entry.getKey());
+			if (mode != null) {
+				result.put(mode, tier);
+			} else {
+				result.putUnknown(entry.getKey(), tier);
+			}
 		}
 		return result;
+	}
+
+	/**
+	 * PVPHQ is ELO-based and hands back rendered labels and colours:
+	 * <pre>
+	 * { "ranked": [ { "gametype":"sword", "tier":"MT3", "tierColor":"#BF6C3D",
+	 *                 "unranked":false } ] }
+	 * </pre>
+	 * We keep its colours so our panel matches the site exactly.
+	 */
+	private PlayerTiers parsePvpHq(TierList list, JsonObject root) {
+		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
+
+		JsonElement regions = root.get("regions");
+		if (regions != null && regions.isJsonArray() && !regions.getAsJsonArray().isEmpty()) {
+			result.region(regions.getAsJsonArray().get(0).getAsString());
+		}
+
+		JsonElement ranked = root.get("ranked");
+		if (ranked == null || !ranked.isJsonArray()) {
+			return result;
+		}
+
+		JsonArray entries = ranked.getAsJsonArray();
+		for (JsonElement element : entries) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject value = element.getAsJsonObject();
+			if (value.has("unranked") && value.get("unranked").getAsBoolean()) {
+				continue;
+			}
+			Tier tier = Tier.parseLabel(string(value, "tier"), parseHexColor(string(value, "tierColor")));
+			if (!tier.isRanked()) {
+				continue;
+			}
+
+			String key = string(value, "gametype");
+			Gamemode mode = Gamemode.byKey(key);
+			if (mode != null) {
+				result.put(mode, tier);
+			} else {
+				String label = string(value, "gametypeName");
+				result.putUnknown(label.isEmpty() ? key : label, tier);
+			}
+		}
+		return result;
+	}
+
+	/** Parses {@code "#RRGGBB"}; returns 0 when absent or malformed. */
+	private static int parseHexColor(String raw) {
+		if (raw == null || !raw.startsWith("#") || raw.length() != 7) {
+			return 0;
+		}
+		try {
+			return Integer.parseInt(raw.substring(1), 16);
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	private static String string(JsonObject object, String key) {
+		JsonElement element = object.get(key);
+		return element == null || element.isJsonNull() ? "" : element.getAsString();
+	}
+
+	private static int intOr(JsonObject object, String key, int fallback) {
+		JsonElement element = object.get(key);
+		return element == null || element.isJsonNull() ? fallback : element.getAsInt();
 	}
 
 	public void shutdown() {

@@ -4,7 +4,8 @@
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"PlayerTabOverlayMixin",
-		"EntityRendererMixin"
+		"EntityRendererMixin",
+		"OptionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

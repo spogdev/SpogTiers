@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.TierList;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -11,6 +12,8 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
+import java.util.Map;
 
 /** User-editable settings, persisted to {@code config/spogtiers.json}. */
 public class SpogTiersConfig {
@@ -25,20 +28,48 @@ public class SpogTiersConfig {
 	/** Show tags in the tab player list. */
 	public boolean showTabList = true;
 
-	/** Which gamemode's tier to display. */
+	/** Which tier list the badge and panel headline come from. */
+	public TierList displayList = TierList.PVPTIERS;
+
+	/** Which gamemode's tier the badge shows. */
 	public Gamemode displayMode = Gamemode.VANILLA;
 
 	/** Show the best tier across all gamemodes instead of {@link #displayMode}. */
-	public boolean showBestTier = false;
+	public boolean showBestTier = true;
 
-	/** Base URL of the tier API. */
-	public String apiBaseUrl = "https://api.example.invalid/v1";
+	/** Per-list toggles; a disabled list is never queried. */
+	public Map<TierList, Boolean> enabledLists = defaultLists();
 
 	/** How long a cached lookup stays fresh, in seconds. */
 	public int cacheTtlSeconds = 900;
 
-	/** Max lookups dispatched per second, to stay friendly to the API. */
+	/** Max lookups dispatched per second, to stay friendly to the APIs. */
 	public int requestsPerSecond = 5;
+
+	/** Panel background opacity, 0-255. */
+	public int panelOpacity = 190;
+
+	/** Slowly spin the skin model in the profile panel. */
+	public boolean rotateSkin = true;
+
+	private static Map<TierList, Boolean> defaultLists() {
+		Map<TierList, Boolean> map = new EnumMap<>(TierList.class);
+		for (TierList list : TierList.values()) {
+			map.put(list, true);
+		}
+		return map;
+	}
+
+	public boolean isEnabled(TierList list) {
+		return enabledLists == null || enabledLists.getOrDefault(list, true);
+	}
+
+	public void setEnabled(TierList list, boolean value) {
+		if (enabledLists == null) {
+			enabledLists = defaultLists();
+		}
+		enabledLists.put(list, value);
+	}
 
 	public static Path path() {
 		return FabricLoader.getInstance().getConfigDir().resolve(SpogTiers.MOD_ID + ".json");
@@ -50,6 +81,7 @@ public class SpogTiersConfig {
 			try (Reader reader = Files.newBufferedReader(path)) {
 				SpogTiersConfig loaded = GSON.fromJson(reader, SpogTiersConfig.class);
 				if (loaded != null) {
+					loaded.normalise();
 					return loaded;
 				}
 			} catch (Exception e) {
@@ -59,6 +91,25 @@ public class SpogTiersConfig {
 		SpogTiersConfig fresh = new SpogTiersConfig();
 		fresh.save();
 		return fresh;
+	}
+
+	/** Fills in anything an older config file predates. */
+	private void normalise() {
+		if (enabledLists == null) {
+			enabledLists = defaultLists();
+		} else {
+			for (TierList list : TierList.values()) {
+				enabledLists.putIfAbsent(list, true);
+			}
+		}
+		if (displayList == null) {
+			displayList = TierList.PVPTIERS;
+		}
+		if (displayMode == null) {
+			displayMode = Gamemode.VANILLA;
+		}
+		panelOpacity = Math.clamp(panelOpacity, 0, 255);
+		requestsPerSecond = Math.max(1, requestsPerSecond);
 	}
 
 	public void save() {

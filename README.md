@@ -45,6 +45,49 @@ python mappings/generate_identity_mappings.py --version 26.1.2
 ./gradlew runClient
 ```
 
+## Usage
+
+Press **R** while looking at a player to open their profile panel (rebindable in
+Controls). Tabs along the bottom switch between tier lists; **Update** forces a
+re-fetch for that player.
+
+## Tier lists
+
+Four sources, each queried independently so one being down never blocks the
+others. A 404 means "not on this list" and is treated as a normal answer, not an
+error.
+
+| List | Endpoint | UUID format |
+| --- | --- | --- |
+| PVPHQ Ranked | `pvphq.com/api/v1/players/{uuid}` | **dashed** |
+| PvPTiers | `pvptiers.com/api/profile/{uuid}` | undashed |
+| SubTiers | `subtiers.net/api/profile/{uuid}` | undashed |
+| MCTiers | `mctiers.com/api/profile/{uuid}` | undashed |
+
+None of these services publish API docs, so the endpoints above were determined
+by inspection and may change without warning.
+
+PvPTiers, SubTiers and MCTiers share one response shape, where `pos` encodes the
+prefix (`0` = HT, `1` = LT):
+
+```json
+{ "name":"Krisinat0r", "region":"EU", "points":18, "overall":9622,
+  "rankings": { "sword": { "tier":4, "pos":1, "retired":false } } }
+```
+
+PVPHQ is ELO-based and returns rendered labels and colours instead, including an
+**MT (mid) tier** the others do not have. Its colours are used verbatim so the
+panel matches the site:
+
+```json
+{ "ranked": [ { "gametype":"sword", "tier":"MT3", "tierColor":"#BF6C3D",
+               "unranked":false } ] }
+```
+
+A ranking whose gamemode is not modelled yet still shows up in the panel under
+its raw key, so a provider adding a mode degrades gracefully instead of hiding
+data.
+
 ## Configuration
 
 Written to `config/spogtiers.json` on first launch:
@@ -54,39 +97,23 @@ Written to `config/spogtiers.json` on first launch:
 | `enabled` | `true` | Master switch |
 | `showNametags` | `true` | Tag above player heads |
 | `showTabList` | `true` | Tag in the tab list |
-| `displayMode` | `VANILLA` | Which gamemode's tier to show |
-| `showBestTier` | `false` | Show best tier across all gamemodes instead |
-| `apiBaseUrl` | *placeholder* | Base URL of your tier API |
+| `displayList` | `PVPTIERS` | Which list the badge comes from |
+| `displayMode` | `VANILLA` | Which gamemode the badge shows |
+| `showBestTier` | `true` | Show best tier across modes instead |
+| `enabledLists` | all `true` | Per-list query toggles |
+| `panelOpacity` | `190` | Panel background alpha, 0-255 |
+| `rotateSkin` | `true` | Spin the skin model (else follow cursor) |
 | `cacheTtlSeconds` | `900` | How long a lookup stays fresh |
 | `requestsPerSecond` | `5` | Client-side rate limit |
-
-> **`apiBaseUrl` is a placeholder and must be set before the mod does anything
-> useful.** No public tier API is hardcoded.
-
-## Expected API shape
-
-`GET {apiBaseUrl}/tiers/{uuid-without-dashes}` returning:
-
-```json
-{
-  "name": "Notch",
-  "rankings": {
-    "vanilla": { "tier": 2, "pos": "HT", "retired": false },
-    "uhc":     { "tier": 4, "pos": "LT", "retired": true }
-  }
-}
-```
-
-Unknown gamemodes and malformed entries are skipped rather than failing the
-whole lookup. Adapt `TierService#parse` if your backend differs.
 
 ## Architecture
 
 ```
-SpogTiersClient      entrypoint; owns config, cache, service
+SpogTiersClient      entrypoint; owns config, cache, service, keybind
+client/gui/          ProfileScreen - the frosted panel
 config/              JSON-backed settings
-data/                Tier, Gamemode, PlayerTiers, TierCache, TierService
-util/TagRenderer     builds the coloured badge Text
+data/                Tier, Gamemode, TierList, PlayerTiers, TierCache, TierService
+util/TagRenderer     builds the coloured badge Component
 mixin/               the only version-sensitive code
 ```
 
