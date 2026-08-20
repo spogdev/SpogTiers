@@ -406,8 +406,12 @@ public class ProfileScreen extends Screen {
 
 		int textX = x + CARD_PADDING;
 		int widestValue = 0;
+		int widestPeak = 0;
 		for (Row row : card.rows()) {
 			widestValue = Math.max(widestValue, font.width(row.tier().label()));
+			if (row.showsPeak()) {
+				widestPeak = Math.max(widestPeak, font.width(row.peak().label()));
+			}
 		}
 		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
 
@@ -428,6 +432,18 @@ public class ProfileScreen extends Screen {
 				labelX += MODE_ICON + 3;
 			}
 			graphics.text(font, Component.literal(row.label()), labelX, textY, row.accent());
+
+			// Peak sits to the left of the current tier, struck through to read
+			// as "used to be".
+			if (row.showsPeak()) {
+				String peakLabel = row.peak().label();
+				int peakX = valueX - widestPeak - 5 + (widestPeak - font.width(peakLabel));
+				int peakColor = fade(row.peak().color());
+				graphics.text(font, Component.literal(peakLabel), peakX, textY, peakColor);
+				graphics.fill(peakX, textY + font.lineHeight / 2,
+						peakX + font.width(peakLabel), textY + font.lineHeight / 2 + 1, peakColor);
+			}
+
 			graphics.text(font, Component.literal(row.tier().label()), valueX, textY, row.tier().color());
 			textY += ROW_HEIGHT;
 		}
@@ -441,19 +457,31 @@ public class ProfileScreen extends Screen {
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
 			if (tier.isRanked()) {
-				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key()));
+				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key(),
+						tiers.detail(mode.displayName()).peak()));
 				seen.add(mode.displayName());
 			}
 		}
 		for (Map.Entry<String, Tier> entry : tiers.unknown().entrySet()) {
 			if (entry.getValue().isRanked() && seen.add(entry.getKey())) {
-				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null));
+				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null,
+						tiers.detail(entry.getKey()).peak()));
 			}
 		}
 		return rows;
 	}
 
-	private record Row(String label, Tier tier, int accent, String iconKey) {
+	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak) {
+		/** Only worth showing a peak that is actually better than the current tier. */
+		boolean showsPeak() {
+			if (peak == null || !peak.isRanked()) {
+				return false;
+			}
+			if (peak.tier() != tier.tier()) {
+				return peak.tier() < tier.tier();
+			}
+			return peak.position().ordinal() < tier.position().ordinal();
+		}
 	}
 
 	private record Hover(TierList list, Row row) {
@@ -475,7 +503,7 @@ public class ProfileScreen extends Screen {
 		TierDetail detail = tiers.detail(target.row().label());
 		List<Line> lines = new ArrayList<>();
 
-		lines.add(new Line(target.row().label() + "  " + target.row().tier().label(),
+		lines.add(new Line(target.row().label() + " " + target.row().tier().label(),
 				target.row().tier().color()));
 
 		boolean bar = false;
@@ -485,18 +513,13 @@ public class ProfileScreen extends Screen {
 			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
 				lines.add(new Line("Peak " + detail.peakRating(), MUTED_COLOR));
 			}
-			if (detail.hasNextTier()) {
-				lines.add(new Line("Next: " + detail.nextTier(), MUTED_COLOR));
-				bar = true;
-			}
+			// The bar shows how far through the current tier the rating sits;
+			// naming the next tier is redundant, players know the ladder.
+			bar = detail.tierCeiling() > detail.tierFloor();
 		} else if (detail.hasAttained()) {
 			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
 		} else {
 			lines.add(new Line("No detail available", MUTED_COLOR));
-		}
-
-		if (target.row().tier().retired()) {
-			lines.add(new Line("Retired", 0xFFD08A6A));
 		}
 
 		int textWidth = 0;
@@ -505,7 +528,7 @@ public class ProfileScreen extends Screen {
 		}
 		int boxWidth = textWidth + TOOLTIP_PADDING * 2;
 		int boxHeight = TOOLTIP_PADDING * 2 + lines.size() * (font.lineHeight + 2) - 2
-				+ (bar ? 8 : 0);
+				+ (bar ? 10 : 0);
 
 		// Keep the tooltip on screen rather than letting it run off an edge.
 		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
@@ -525,13 +548,28 @@ public class ProfileScreen extends Screen {
 			int barLeft = boxX + TOOLTIP_PADDING;
 			int barRight = boxX + boxWidth - TOOLTIP_PADDING;
 			int barTop = lineY;
-			graphics.fill(barLeft, barTop, barRight, barTop + 4, 0xFF1B2430);
-			int filled = Math.round((barRight - barLeft) * detail.progress());
+
+			// Track and outline first, so the full width reads as the total
+			// rather than the fill floating on the background.
+			int barBottom = barTop + 6;
+			graphics.fill(barLeft, barTop, barRight, barBottom, 0xFF10161E);
+			graphics.fill(barLeft, barTop, barRight, barTop + 1, CARD_BORDER);
+			graphics.fill(barLeft, barBottom - 1, barRight, barBottom, CARD_BORDER);
+			graphics.fill(barLeft, barTop, barLeft + 1, barBottom, CARD_BORDER);
+			graphics.fill(barRight - 1, barTop, barRight, barBottom, CARD_BORDER);
+
+			int track = barRight - barLeft - 2;
+			int filled = Math.round(track * detail.progress());
 			if (filled > 0) {
-				graphics.fill(barLeft, barTop, barLeft + filled, barTop + 4,
+				graphics.fill(barLeft + 1, barTop + 1, barLeft + 1 + filled, barBottom - 1,
 						target.row().tier().color());
 			}
 		}
+	}
+
+	/** Half-strength version of a colour, for the struck-through peak. */
+	private static int fade(int argb) {
+		return (0x80 << 24) | (argb & 0xFFFFFF);
 	}
 
 	private record Line(String text, int color) {

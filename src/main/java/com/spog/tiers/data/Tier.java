@@ -37,9 +37,15 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		return tier >= 1 && tier <= 5;
 	}
 
-	/** Short display label, e.g. "HT1" or "MT3". */
+	/**
+	 * Short display label, e.g. {@code HT1} or {@code MT3}. Retired ranks are
+	 * prefixed with an R, so a retired HT1 reads {@code RHT1}.
+	 */
 	public String label() {
-		return isRanked() ? position.prefix() + tier : "?";
+		if (!isRanked()) {
+			return "?";
+		}
+		return (retired ? "R" : "") + position.prefix() + tier;
 	}
 
 	/**
