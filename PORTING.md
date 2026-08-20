@@ -195,3 +195,18 @@ command through that method.
   `SkinManager#createLookup(GameProfile, boolean)` feeds vanilla's
   `PlayerSkinWidget`, which handles wide/slim models and drag-rotation. This is
   what lets the profile screen show players who are not on the server.
+
+  Two gotchas, both of which silently yield the **default** skin rather than an
+  error:
+
+  1. The profile must carry its `textures` property. `SkinManager` reads skins
+     via `MinecraftSessionService#getPackedTextures(profile)`, so a bare
+     `new GameProfile(uuid, name)` has nothing to unpack. Mojang's *profile*
+     API (`api.mojang.com/users/profiles/minecraft/<name>`) returns only a name
+     and id; the *session* server
+     (`sessionserver.mojang.com/session/minecraft/profile/<uuid>`) is what
+     carries the property.
+  2. The boolean is **secure-only**. The session server returns *unsigned*
+     texture properties, and `createLookup(profile, true)` filters those out
+     via `PlayerSkin#secure()`. Pass `false` or every looked-up player renders
+     as Steve/Alex.

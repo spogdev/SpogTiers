@@ -25,21 +25,27 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Full-screen profile view: the player skin on the left, and one column per
- * tier list they are actually ranked in, centred across the remaining space.
+ * Full-screen profile view: the player skin on the left, and one card per tier
+ * list they are actually ranked in, laid out in up to two rows and centred.
  *
  * <p>The skin is rendered from the player GameProfile rather than from an
  * entity, so it works for anyone -- including players not on the current
- * server, or when not connected to one at all.
+ * server, or when not connected to one at all. The profile must carry its
+ * {@code textures} property or the model falls back to the default skin.
  */
 public class ProfileScreen extends Screen {
 	private static final int MARGIN = 24;
-	private static final int ROW_HEIGHT = 18;
-	private static final int COLUMN_WIDTH = 150;
-	private static final int SKIN_WIDTH = 130;
+	private static final int ROW_HEIGHT = 14;
 	private static final int FACE_SIZE = 20;
+	private static final int SKIN_WIDTH = 70;
+	private static final int SKIN_HEIGHT = 130;
+	private static final int CARD_PADDING = 10;
+	private static final int CARD_GAP = 10;
+	private static final int MAX_CARD_ROWS = 2;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
+	private static final int CARD_FILL = 0x50161B22;
+	private static final int CARD_BORDER = 0x70323B47;
 
 	private final UUID target;
 	private final String playerName;
@@ -65,13 +71,16 @@ public class ProfileScreen extends Screen {
 
 		// createLookup fetches from Mojang in the background and serves a default
 		// skin until it arrives, so this is safe for arbitrary profiles.
-		skin = client.getSkinManager().createLookup(profile, true);
+		//
+		// The flag is "secure only": with true, skins whose textures property is
+		// unsigned are filtered out and replaced by the default skin. The
+		// session server hands us unsigned properties, so this must be false or
+		// every looked-up player renders as Steve/Alex.
+		skin = client.getSkinManager().createLookup(profile, false);
 
-		int skinTop = MARGIN + FACE_SIZE + 22;
-		int skinHeight = Math.max(80, height - skinTop - MARGIN - 28);
 		PlayerSkinWidget skinWidget = new PlayerSkinWidget(
-				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
-		skinWidget.setPosition(MARGIN, skinTop);
+				SKIN_WIDTH, SKIN_HEIGHT, client.getEntityModels(), skin);
+		skinWidget.setPosition(MARGIN, MARGIN + FACE_SIZE + 24);
 		addRenderableWidget(skinWidget);
 
 		updateButton = addRenderableWidget(Button.builder(
@@ -102,7 +111,7 @@ public class ProfileScreen extends Screen {
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
 		drawHeader(graphics);
-		drawColumns(graphics);
+		drawCards(graphics);
 
 		// Widgets (the skin model included) render after our fills, so they are
 		// not painted over.
@@ -160,13 +169,12 @@ public class ProfileScreen extends Screen {
 		return "";
 	}
 
-	/** Only lists with actual rankings, centred across the space beside the skin. */
-	private void drawColumns(GuiGraphicsExtractor graphics) {
+	/** One card per ranked list, wrapped over at most {@value #MAX_CARD_ROWS} rows. */
+	private void drawCards(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
-		int top = MARGIN + FACE_SIZE + 28;
 
-		List<Ranked> ranked = new ArrayList<>();
+		List<Card> cards = new ArrayList<>();
 		for (TierList list : TierList.values()) {
 			if (!SpogTiersClient.config().isEnabled(list)) {
 				continue;
@@ -177,67 +185,122 @@ public class ProfileScreen extends Screen {
 			}
 			List<Row> rows = collectRows(tiers);
 			if (!rows.isEmpty()) {
-				ranked.add(new Ranked(list, rows));
+				cards.add(new Card(list, rows));
 			}
 		}
 
 		int contentLeft = MARGIN + SKIN_WIDTH + MARGIN;
-		int contentWidth = Math.max(COLUMN_WIDTH, width - contentLeft - MARGIN);
+		int contentWidth = Math.max(160, width - contentLeft - MARGIN);
+		int contentTop = MARGIN + FACE_SIZE + 26;
+		int contentBottom = height - MARGIN - 28;
 
-		if (ranked.isEmpty()) {
+		if (cards.isEmpty()) {
 			String message = SpogTiersClient.cache().isPending(target)
 					? "Loading rankings..."
 					: playerName + " is unranked";
 			graphics.text(font, Component.literal(message),
 					contentLeft + (contentWidth - font.width(message)) / 2,
-					top + 20,
+					contentTop + 20,
 					MUTED_COLOR);
 			return;
 		}
 
-		// Size columns to their widest row so a lone column is not padded out to
-		// a fixed width, then centre the whole block. Removing unranked lists
-		// therefore closes the gap instead of leaving a hole where they sat.
-		int columnWidth = 0;
-		for (Ranked entry : ranked) {
-			for (Row row : entry.rows()) {
-				columnWidth = Math.max(columnWidth,
-						font.width(row.label()) + 24 + font.width(row.tier().label()));
-			}
-			columnWidth = Math.max(columnWidth, font.width(entry.list().displayName()));
+		int cardWidth = 0;
+		for (Card card : cards) {
+			cardWidth = Math.max(cardWidth, card.width(font));
 		}
-		columnWidth = Math.min(COLUMN_WIDTH, columnWidth + 20);
+		cardWidth += CARD_PADDING * 2;
 
-		int blockWidth = Math.min(contentWidth, ranked.size() * columnWidth);
-		columnWidth = blockWidth / ranked.size();
-		int startX = contentLeft + (contentWidth - blockWidth) / 2;
+		// Prefer a balanced grid over a full first row: 4 cards read better as
+		// 2x2 than 3+1, and 3 stay on one row.
+		int perRow = switch (cards.size()) {
+			case 1 -> 1;
+			case 2 -> 2;
+			case 3 -> 3;
+			default -> (cards.size() + 1) / 2;
+		};
+		int rowCount = (cards.size() + perRow - 1) / perRow;
 
-		for (int i = 0; i < ranked.size(); i++) {
-			Ranked entry = ranked.get(i);
-			int x = startX + i * columnWidth;
-			int y = top;
+		// Each row is only as tall as its own tallest card, so a short row does
+		// not inherit a tall one's height.
+		int[] rowHeights = new int[rowCount];
+		for (int index = 0; index < cards.size(); index++) {
+			rowHeights[index / perRow] =
+					Math.max(rowHeights[index / perRow], cards.get(index).height());
+		}
+		// A grid reads as a grid only if its cells line up, so give every card
+		// in a row the same height.
 
-			graphics.text(font, Component.literal(entry.list().displayName()), x, y, 0xFFFFFFFF);
-			y += ROW_HEIGHT + 4;
+		int gaps = (rowCount - 1) * CARD_GAP;
+		int blockHeight = gaps;
+		for (int rowHeight : rowHeights) {
+			blockHeight += rowHeight;
+		}
+		int blockWidth = perRow * cardWidth + (perRow - 1) * CARD_GAP;
 
-			int widestValue = 0;
-			for (Row row : entry.rows()) {
-				widestValue = Math.max(widestValue, font.width(row.tier().label()));
+		// Scale the block to fill the available area instead of dropping rows,
+		// so every ranking stays visible and the cards use the whole panel.
+		int availableHeight = contentBottom - contentTop;
+		float scale = Math.min(
+				(float) contentWidth / blockWidth,
+				(float) availableHeight / blockHeight);
+		scale = Math.clamp(scale, 0.5f, 2.0f);
+
+		int scaledWidth = Math.round(blockWidth * scale);
+		int scaledHeight = Math.round(blockHeight * scale);
+		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
+		int originY = contentTop + Math.max(0, (availableHeight - scaledHeight) / 2);
+
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(originX, originY);
+		graphics.pose().scale(scale, scale);
+
+		int y = 0;
+		for (int row = 0; row < rowCount; row++) {
+			int inThisRow = Math.min(perRow, cards.size() - row * perRow);
+			int rowWidth = inThisRow * cardWidth + (inThisRow - 1) * CARD_GAP;
+			int rowLeft = (blockWidth - rowWidth) / 2;
+
+			for (int column = 0; column < inThisRow; column++) {
+				Card card = cards.get(row * perRow + column);
+				int x = rowLeft + column * (cardWidth + CARD_GAP);
+				drawCard(graphics, card, x, y, cardWidth, rowHeights[row]);
 			}
-			int valueX = x + columnWidth - 12 - widestValue;
-			int limit = Math.max(1, (height - MARGIN - 28 - y) / ROW_HEIGHT);
-			List<Row> rows = entry.rows();
-			for (int r = 0; r < Math.min(rows.size(), limit); r++) {
-				Row row = rows.get(r);
-				graphics.text(font, Component.literal(row.label()), x, y, row.accent());
-				graphics.text(font, Component.literal(row.tier().label()), valueX, y, row.tier().color());
-				y += ROW_HEIGHT;
-			}
+			y += rowHeights[row] + CARD_GAP;
+		}
 
-			int hidden = rows.size() - Math.min(rows.size(), limit);
-			if (hidden > 0) {
-				graphics.text(font, Component.literal("+" + hidden + " more"), x, y, MUTED_COLOR);
-			}
+		graphics.pose().popMatrix();
+	}
+
+	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardWidth, int cardHeight) {
+		Font font = this.font;
+
+		graphics.fill(x, y, x + cardWidth, y + cardHeight, CARD_FILL);
+		graphics.fill(x, y, x + cardWidth, y + 1, CARD_BORDER);
+		graphics.fill(x, y + cardHeight - 1, x + cardWidth, y + cardHeight, CARD_BORDER);
+		graphics.fill(x, y, x + 1, y + cardHeight, CARD_BORDER);
+		graphics.fill(x + cardWidth - 1, y, x + cardWidth, y + cardHeight, CARD_BORDER);
+
+		int textX = x + CARD_PADDING;
+		int textY = y + CARD_PADDING;
+
+		String title = card.list().displayName();
+		graphics.text(font, Component.literal(title),
+				x + (cardWidth - font.width(title)) / 2, textY, 0xFFFFFFFF);
+		textY += font.lineHeight + 5;
+
+		graphics.fill(x + CARD_PADDING, textY - 3, x + cardWidth - CARD_PADDING, textY - 2, 0x28FFFFFF);
+
+		int widestValue = 0;
+		for (Row row : card.rows()) {
+			widestValue = Math.max(widestValue, font.width(row.tier().label()));
+		}
+		int valueX = x + cardWidth - CARD_PADDING - widestValue;
+
+		for (Row row : card.rows()) {
+			graphics.text(font, Component.literal(row.label()), textX, textY, row.accent());
+			graphics.text(font, Component.literal(row.tier().label()), valueX, textY, row.tier().color());
+			textY += ROW_HEIGHT;
 		}
 	}
 
@@ -264,7 +327,19 @@ public class ProfileScreen extends Screen {
 	private record Row(String label, Tier tier, int accent) {
 	}
 
-	private record Ranked(TierList list, List<Row> rows) {
+	private record Card(TierList list, List<Row> rows) {
+		/** Widest label + value pair, or the title if that is wider. */
+		int width(Font font) {
+			int widest = font.width(list.displayName());
+			for (Row row : rows) {
+				widest = Math.max(widest, font.width(row.label()) + 20 + font.width(row.tier().label()));
+			}
+			return widest;
+		}
+
+		int height() {
+			return CARD_PADDING * 2 + 14 + rows.size() * ROW_HEIGHT;
+		}
 	}
 
 	@Override

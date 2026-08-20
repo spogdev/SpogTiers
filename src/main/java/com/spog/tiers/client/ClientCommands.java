@@ -1,8 +1,11 @@
 package com.spog.tiers.client;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.client.gui.ProfileScreen;
 import net.minecraft.ChatFormatting;
@@ -30,6 +33,9 @@ public final class ClientCommands {
 	private static final String PREFIX = "tiers";
 	private static final String MOJANG_PROFILE =
 			"https://api.mojang.com/users/profiles/minecraft/";
+	/** Session server: unlike the profile API, this returns skin textures. */
+	private static final String MOJANG_SESSION =
+			"https://sessionserver.mojang.com/session/minecraft/profile/";
 
 	private static final HttpClient HTTP = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(5))
@@ -116,11 +122,67 @@ public final class ClientCommands {
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 			String id = root.get("id").getAsString();
 			String resolved = root.has("name") ? root.get("name").getAsString() : name;
-			return new GameProfile(parseUndashed(id), resolved);
+			return withTextures(new GameProfile(parseUndashed(id), resolved), id);
 		} catch (Exception e) {
 			SpogTiers.LOGGER.debug("Profile lookup failed for {}", name, e);
 			return null;
 		}
+	}
+
+	/**
+	 * Attaches the skin textures to a profile.
+	 *
+	 * <p>The profile API returns only a name and id. {@code SkinManager} reads
+	 * skins from the profile's {@code textures} property, so without this the
+	 * model falls back to the default Steve/Alex skin. The session server is
+	 * what carries that property.
+	 */
+	private static GameProfile withTextures(GameProfile profile, String undashedId) {
+		try {
+			HttpRequest request = HttpRequest.newBuilder(URI.create(MOJANG_SESSION + undashedId))
+					.header("Accept", "application/json")
+					.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+					.timeout(Duration.ofSeconds(10))
+					.GET()
+					.build();
+
+			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() != 200 || response.body().isBlank()) {
+				return profile;
+			}
+
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			JsonElement properties = root.get("properties");
+			if (properties == null || !properties.isJsonArray()) {
+				return profile;
+			}
+
+			JsonArray entries = properties.getAsJsonArray();
+			for (JsonElement element : entries) {
+				if (!element.isJsonObject()) {
+					continue;
+				}
+				JsonObject property = element.getAsJsonObject();
+				if (!"textures".equals(optString(property, "name"))) {
+					continue;
+				}
+				String value = optString(property, "value");
+				String signature = optString(property, "signature");
+				profile.properties().put("textures", signature.isEmpty()
+						? new Property("textures", value)
+						: new Property("textures", value, signature));
+				break;
+			}
+			return profile;
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Texture lookup failed for {}", profile.name(), e);
+			return profile;
+		}
+	}
+
+	private static String optString(JsonObject object, String key) {
+		JsonElement element = object.get(key);
+		return element == null || element.isJsonNull() ? "" : element.getAsString();
 	}
 
 	/** Mojang returns UUIDs without dashes; {@link UUID#fromString} needs them. */
