@@ -78,12 +78,12 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			return 0xFF9CA3AF;
 		}
 		int base = switch (tier) {
-			// MCTiers' own tier-1 foreground reads beige in-game against our
-			// darker panel, so this is pushed toward a truer gold.
+			// Shades of #f5a938: MCTiers' own tier-1 foreground reads beige
+			// in-game against our darker panel.
 			case 1 -> switch (position) {
-				case HIGH -> 0xFFFFC61A;
-				case MID -> 0xFFF0B012;
-				case LOW -> 0xFFDD9B08;
+				case HIGH -> 0xFFF5A938;
+				case MID -> 0xFFD89531;
+				case LOW -> 0xFFBA802B;
 			};
 			case 2 -> switch (position) {
 				case HIGH -> 0xFFC4D3E7;
@@ -109,14 +109,23 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		return retired ? desaturate(base) : base;
 	}
 
+	/**
+	 * Dims a retired tier without washing out its hue.
+	 *
+	 * <p>The old blend pulled two thirds of the way to grey, which turned the
+	 * tier-1 gold into beige. Darkening while keeping most of the saturation
+	 * still reads as "retired" but leaves the colour identifiable.
+	 */
 	private static int desaturate(int argb) {
 		int r = (argb >> 16) & 0xFF;
 		int g = (argb >> 8) & 0xFF;
 		int b = argb & 0xFF;
 		int grey = (r * 30 + g * 59 + b * 11) / 100;
-		return 0xFF000000
-				| (((r + grey * 2) / 3) << 16)
-				| (((g + grey * 2) / 3) << 8)
-				| ((b + grey * 2) / 3);
+
+		// 25% toward grey, then a slight darkening.
+		r = (int) (((r * 3 + grey) / 4) * 0.82f);
+		g = (int) (((g * 3 + grey) / 4) * 0.82f);
+		b = (int) (((b * 3 + grey) / 4) * 0.82f);
+		return 0xFF000000 | (r << 16) | (g << 8) | b;
 	}
 }

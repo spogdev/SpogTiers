@@ -149,7 +149,7 @@ public class ProfileScreen extends Screen {
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
 		if (!region.isEmpty()) {
-			drawTag(graphics, nameX + font.width(playerName) + 6, nameY - 3, region);
+			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
 		}
 	}
 
