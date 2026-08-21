@@ -45,6 +45,13 @@ public class TierService {
 	 * records it had gathered before then and still tracks changes since.
 	 */
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
+	private static final String PVPHQ_LEADERBOARD =
+			"https://pvphq.com/api/v1/leaderboard/ranked/";
+
+	/** PVPHQ's board runs in this tier order, best first. */
+	private static final List<String> PVPHQ_TIER_ORDER = List.of(
+			"HT1", "LT1", "MT1", "HT2", "MT2", "LT2", "HT3", "MT3", "LT3",
+			"HT4", "MT4", "LT4", "HT5", "MT5", "LT5");
 
 	/** CatPVP's starting Elo; anyone still on it has not been placed. */
 	private static final int CAT_UNRANKED_ELO = 1000;
@@ -68,6 +75,9 @@ public class TierService {
 	/** Past names per player, fetched on demand by the profile screen. */
 	private final Map<UUID, NameHistory> nameHistory = new ConcurrentHashMap<>();
 	private final Set<UUID> nameHistoryPending = ConcurrentHashMap.newKeySet();
+	/** Global leaderboard positions, keyed by player, list and gamemode. */
+	private final Map<String, Integer> worldRanks = new ConcurrentHashMap<>();
+	private final Set<String> worldRankPending = ConcurrentHashMap.newKeySet();
 
 	private long lastDispatchMillis;
 
@@ -688,6 +698,148 @@ public class TierService {
 	private static String catName(String body) {
 		Matcher matcher = CAT_NAME.matcher(body);
 		return matcher.find() ? matcher.group(1) : "";
+	}
+
+	/**
+	 * The player's global position on a PVPHQ gamemode leaderboard, or -1 when
+	 * it is not known yet.
+	 */
+	public int worldRank(UUID uuid, TierList list, Gamemode mode) {
+		Integer rank = worldRanks.get(rankKey(uuid, list, mode));
+		return rank == null ? -1 : rank;
+	}
+
+	/**
+	 * Looks up where a player sits on a gamemode's global leaderboard.
+	 *
+	 * <p>Only PVPHQ publishes this, and only on its leaderboard route -- the
+	 * player payload carries no rank. With 25,000 ranked players per mode,
+	 * paging through is out of the question, but the board is ordered by tier
+	 * and then rating, so the page holding a known (tier, rating) can be found
+	 * by bisection in about ten requests.
+	 *
+	 * <p>Fetched on demand and cached for the session, so hovering a row costs
+	 * this once.
+	 */
+	public void requestWorldRank(UUID uuid, TierList list, Gamemode mode, Tier tier, int rating) {
+		if (list == null || !list.isPvpHq() || mode == null || tier == null
+				|| !tier.isRanked() || rating <= 0) {
+			return;
+		}
+		String key = rankKey(uuid, list, mode);
+		if (worldRanks.containsKey(key) || !worldRankPending.add(key)) {
+			return;
+		}
+		workers.submit(() -> {
+			try {
+				int rank = findWorldRank(mode, uuid, tier, rating);
+				// Cache misses too, so a player off the board is not re-searched.
+				worldRanks.put(key, rank);
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("World rank failed for {} {}", uuid, mode.key(), e);
+				worldRanks.put(key, -1);
+			} finally {
+				worldRankPending.remove(key);
+			}
+		});
+	}
+
+	private static String rankKey(UUID uuid, TierList list, Gamemode mode) {
+		return uuid + "/" + list.key() + "/" + mode.key();
+	}
+
+	/** Bisects the leaderboard for the page holding this player, then scans it. */
+	private int findWorldRank(Gamemode mode, UUID uuid, Tier tier, int rating) throws Exception {
+		String gametype = pvpHqGametype(mode);
+		JsonObject first = leaderboardPage(gametype, 0);
+		if (first == null) {
+			return -1;
+		}
+		int pages = first.has("page") && first.getAsJsonObject("page").has("totalPages")
+				? first.getAsJsonObject("page").get("totalPages").getAsInt()
+				: 1;
+
+		long target = sortKey(tier.bareLabel(), rating);
+		int low = 0;
+		int high = Math.max(0, pages - 1);
+
+		while (low < high) {
+			int mid = (low + high) / 2;
+			JsonArray entries = entriesOf(leaderboardPage(gametype, mid));
+			if (entries == null || entries.isEmpty()) {
+				high = mid - 1;
+				continue;
+			}
+			JsonObject last = entries.get(entries.size() - 1).getAsJsonObject();
+			if (sortKey(string(last, "tier"), intOr(last, "rating", 0)) < target) {
+				low = mid + 1;
+			} else {
+				high = mid;
+			}
+		}
+
+		// Ties can straddle a boundary, so the neighbours are checked too.
+		String wanted = uuid.toString().replace("-", "");
+		for (int page : new int[] {low, low + 1, low - 1}) {
+			if (page < 0 || page >= pages) {
+				continue;
+			}
+			JsonArray entries = entriesOf(leaderboardPage(gametype, page));
+			if (entries == null) {
+				continue;
+			}
+			for (JsonElement element : entries) {
+				JsonObject entry = element.getAsJsonObject();
+				if (string(entry, "uuid").replace("-", "").equalsIgnoreCase(wanted)) {
+					return intOr(entry, "rank", -1);
+				}
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Orders a placement the way the board does: by tier first, then by rating
+	 * descending inside it. Packed into a long so pages can be compared.
+	 */
+	private static long sortKey(String tierLabel, int rating) {
+		int index = PVPHQ_TIER_ORDER.indexOf(tierLabel);
+		if (index < 0) {
+			index = PVPHQ_TIER_ORDER.size();
+		}
+		return ((long) index << 32) - rating;
+	}
+
+	private JsonObject leaderboardPage(String gametype, int page) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create(
+						PVPHQ_LEADERBOARD + gametype + "?page=" + page + "&size=100"))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() != 200) {
+			return null;
+		}
+		JsonElement parsed = JsonParser.parseString(response.body());
+		return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+	}
+
+	private static JsonArray entriesOf(JsonObject page) {
+		if (page == null || !page.has("entries") || !page.get("entries").isJsonArray()) {
+			return null;
+		}
+		return page.getAsJsonArray("entries");
+	}
+
+	/** Our mode key back to the id PVPHQ's leaderboard route expects. */
+	private static String pvpHqGametype(Gamemode mode) {
+		return switch (mode) {
+			case NETH_POT -> "netherite_pot";
+			case DIA_SMP -> "diamond_smp";
+			default -> mode.key();
+		};
 	}
 
 	public void shutdown() {

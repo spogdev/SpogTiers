@@ -742,6 +742,19 @@ public class ProfileScreen extends Screen {
 
 		boolean bar = false;
 		if (detail.hasRating()) {
+			// Only PVPHQ publishes a global position, and it costs a lookup, so
+			// it is requested lazily the first time a row is hovered.
+			Gamemode hovered = Gamemode.byKey(target.row().iconKey());
+			if (hovered != null) {
+				SpogTiersClient.service().requestWorldRank(
+						this.target, target.list(), hovered, tier, detail.rating());
+				int rank = SpogTiersClient.service()
+						.worldRank(this.target, target.list(), hovered);
+				if (rank > 0) {
+					lines.add(new Line("Rank #" + rank, 0xFF9DB2C8));
+				}
+			}
+
 			// TP is shown as progress through the current tier rather than the
 			// running total, which is what the site's own bar represents.
 			if (detail.hasTr() && detail.hasTierBounds()) {

@@ -103,14 +103,21 @@ public final class ClientCommands {
 		return true;
 	}
 
-	/** Opens the local player's own profile. */
+	/**
+	 * Opens the local player's own profile.
+	 *
+	 * <p>Deferred through {@code execute}: this runs inside sendCommand while
+	 * the chat screen is still up, and chat closes itself afterwards -- setting
+	 * the screen here would be undone a moment later.
+	 */
 	private static void openSelf() {
 		Minecraft client = Minecraft.getInstance();
 		if (client.player == null) {
 			feedback(Component.literal("Not in a world").withStyle(ChatFormatting.RED));
 			return;
 		}
-		client.setScreen(new ProfileScreen(client.player.getGameProfile()));
+		GameProfile profile = client.player.getGameProfile();
+		client.execute(() -> client.setScreen(new ProfileScreen(profile)));
 	}
 
 	private static void open(String name) {
