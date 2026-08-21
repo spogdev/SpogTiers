@@ -636,8 +636,17 @@ public class TierService {
 			throw new IllegalStateException(list.key() + " returned HTTP " + response.statusCode());
 		}
 
+		return parseCatPvp(list, response.body());
+	}
+
+	/**
+	 * Reads the rankings out of a CatPVP profile page.
+	 *
+	 * <p>Split from the request so it can be exercised against a saved page.
+	 */
+	PlayerTiers parseCatPvp(TierList list, String rawBody) {
 		// The payload is escaped for embedding, so unescape before matching.
-		String body = response.body().replace("\\\"", "\"");
+		String body = rawBody.replace("\\\"", "\"");
 		PlayerTiers result = new PlayerTiers(list, catName(body), System.currentTimeMillis());
 
 		Matcher matcher = CAT_RANKING.matcher(body);
@@ -645,7 +654,9 @@ public class TierService {
 			String key = matcher.group(1);
 			int rating = Integer.parseInt(matcher.group(2));
 			String rankName = matcher.group(3);
-			int color = parseHexColor(matcher.group(4));
+			// The capture is the six hex digits without the leading '#', so it
+			// is parsed directly rather than through parseHexColor.
+			int color = Integer.parseInt(matcher.group(4), 16);
 
 			// 1000 is the starting Elo: the player has never been placed in
 			// this mode, so CatPVP does not consider them ranked in it.
