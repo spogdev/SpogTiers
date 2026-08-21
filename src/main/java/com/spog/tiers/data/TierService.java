@@ -16,9 +16,14 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +38,11 @@ public class TierService {
 	private static final long FAILURE_BACKOFF_MILLIS = 60_000L;
 	private static final String SESSION_PROFILE =
 			"https://sessionserver.mojang.com/session/minecraft/profile/";
+	/**
+	 * Mojang removed its own name-history endpoint in 2022; laby.net kept the
+	 * records it had gathered before then and still tracks changes since.
+	 */
+	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
 
 	private final SpogTiersConfig config;
 	private final TierCache cache;
@@ -41,6 +51,9 @@ public class TierService {
 	private final HttpClient http;
 	/** UUID to name, for the lists that can only be searched by name. */
 	private final Map<UUID, String> names = new ConcurrentHashMap<>();
+	/** Past names per player, fetched on demand by the profile screen. */
+	private final Map<UUID, NameHistory> nameHistory = new ConcurrentHashMap<>();
+	private final Set<UUID> nameHistoryPending = ConcurrentHashMap.newKeySet();
 
 	private long lastDispatchMillis;
 
@@ -485,6 +498,95 @@ public class TierService {
 	private static int intOr(JsonObject object, String key, int fallback) {
 		JsonElement element = object.get(key);
 		return element == null || element.isJsonNull() ? fallback : element.getAsInt();
+	}
+
+	/** The name history for a player, or null until it has been fetched. */
+	public NameHistory nameHistory(UUID uuid) {
+		return nameHistory.get(uuid);
+	}
+
+	/**
+	 * Fetches a player's past names, once per player per session.
+	 *
+	 * <p>Only the profile screen wants these, so unlike tiers they are pulled on
+	 * demand rather than for everyone in the tab list. The result is cached even
+	 * when empty, so a player with no history is not re-requested every time the
+	 * screen opens.
+	 */
+	public void requestNameHistory(UUID uuid) {
+		if (uuid == null || nameHistory.containsKey(uuid) || !nameHistoryPending.add(uuid)) {
+			return;
+		}
+		workers.submit(() -> {
+			try {
+				nameHistory.put(uuid, fetchNameHistory(uuid));
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("Name history failed for {}", uuid, e);
+				// Cache the failure too, so the screen settles on "no history"
+				// instead of retrying on every frame.
+				nameHistory.put(uuid, NameHistory.EMPTY);
+			} finally {
+				nameHistoryPending.remove(uuid);
+			}
+		});
+	}
+
+	/**
+	 * laby.net returns the names oldest first:
+	 * <pre>
+	 * [ { "name":"old",     "changed_at": null },
+	 *   { "name":"current", "changed_at": "2022-08-02T17:16:22+00:00" } ]
+	 * </pre>
+	 * The first entry is the original name and is undated, because Mojang never
+	 * recorded when accounts were created. We reverse it to newest first, which
+	 * is the order the panel reads in.
+	 */
+	private NameHistory fetchNameHistory(UUID uuid) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create(
+						NAME_HISTORY + uuid.toString().replace("-", "") + "/names"))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() != 200 || response.body().isBlank()) {
+			return NameHistory.EMPTY;
+		}
+
+		JsonElement parsed = JsonParser.parseString(response.body());
+		if (!parsed.isJsonArray()) {
+			return NameHistory.EMPTY;
+		}
+
+		List<NameHistory.Entry> entries = new ArrayList<>();
+		for (JsonElement element : parsed.getAsJsonArray()) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject object = element.getAsJsonObject();
+			String name = string(object, "name");
+			if (name.isEmpty()) {
+				continue;
+			}
+			entries.add(new NameHistory.Entry(name, epochSeconds(string(object, "changed_at"))));
+		}
+
+		Collections.reverse(entries);
+		return new NameHistory(List.copyOf(entries));
+	}
+
+	/** ISO-8601 to epoch seconds; 0 when absent or unparseable. */
+	private static long epochSeconds(String raw) {
+		if (raw == null || raw.isEmpty()) {
+			return 0L;
+		}
+		try {
+			return OffsetDateTime.parse(raw).toEpochSecond();
+		} catch (Exception e) {
+			return 0L;
+		}
 	}
 
 	public void shutdown() {

@@ -5,6 +5,7 @@ import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.NameHistory;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierDetail;
@@ -47,6 +48,9 @@ public class ProfileScreen extends Screen {
 	private static final int PROFILE_WIDTH = 172;
 	private static final int SKIN_WIDTH = 110;
 	private static final int SKIN_HEIGHT = 170;
+	/** Rows of past names shown under the model before scrolling is needed. */
+	private static final int HISTORY_ROWS = 5;
+	private static final int HISTORY_ROW_HEIGHT = 11;
 	private static final int CARD_PADDING = 10;
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
@@ -77,6 +81,12 @@ public class ProfileScreen extends Screen {
 	private int tagBottom;
 	private String tagRegion = "";
 	private PanelButton closeButton;
+	/** Vertical band the name history occupies, set during layout. */
+	private int historyTop;
+	private int historyBottom;
+	private int historyScroll;
+	/** Rows that did not fit, so the wheel knows how far it may travel. */
+	private int historyMaxScroll;
 
 	public ProfileScreen(GameProfile profile) {
 		super(Component.literal(profile.name()));
@@ -92,6 +102,7 @@ public class ProfileScreen extends Screen {
 		// Queued here rather than before the screen opens: the screen shows a
 		// loading state and fills in when the data lands, so it appears at once.
 		SpogTiersClient.service().request(target);
+		SpogTiersClient.service().requestNameHistory(target);
 
 		// createLookup fetches from Mojang in the background and serves a default
 		// skin until it arrives, so this is safe for arbitrary profiles.
@@ -106,10 +117,20 @@ public class ProfileScreen extends Screen {
 		int cardTop = MARGIN;
 		int cardBottom = height - MARGIN;
 
-		// Fit the model to whatever is left between the header and the button,
+		// The name history sits between the model and the close button, so it is
+		// carved out first and the model gets whatever remains. On a very short
+		// window the model has a minimum height and would grow back into this
+		// band, so the history yields rather than being drawn over.
+		int historyHeight = font.lineHeight + 4 + HISTORY_ROWS * HISTORY_ROW_HEIGHT;
+		historyBottom = cardBottom - CARD_PADDING - 20 - 10;
+		historyTop = Math.max(
+				cardTop + CARD_PADDING + FACE_SIZE + 12 + 80 + 8,
+				historyBottom - historyHeight);
+
+		// Fit the model to whatever is left between the header and the history,
 		// so it never spills out of the profile card.
 		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + 12;
-		int skinBottom = cardBottom - CARD_PADDING - 20 - 10;
+		int skinBottom = historyTop - 8;
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
@@ -138,6 +159,7 @@ public class ProfileScreen extends Screen {
 
 		hover = null;
 		drawHeader(graphics);
+		drawNameHistory(graphics);
 		drawCards(graphics, mouseX, mouseY);
 
 		// Widgets (the skin model included) render after our fills, so they are
@@ -180,6 +202,125 @@ public class ProfileScreen extends Screen {
 		if (!region.isEmpty()) {
 			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
 		}
+	}
+
+	/**
+	 * Past names under the model, newest first, each with how long ago it was
+	 * taken.
+	 *
+	 * <p>Only names before the current one are listed -- the current one is
+	 * already at the top of the card. Accounts rename a lot (some have dozens),
+	 * so the list is clipped to its band and scrolls.
+	 */
+	private void drawNameHistory(GuiGraphicsExtractor graphics) {
+		Font font = this.font;
+		int x = MARGIN + CARD_PADDING;
+		int right = MARGIN + PROFILE_WIDTH - CARD_PADDING;
+		int y = historyTop;
+
+		graphics.text(font, Component.literal("Name history"), x, y, LABEL_COLOR);
+		y += font.lineHeight + 4;
+
+		NameHistory history = SpogTiersClient.service().nameHistory(target);
+		if (history == null) {
+			graphics.text(font, Component.literal("Loading..."), x, y, MUTED_COLOR);
+			historyMaxScroll = 0;
+			return;
+		}
+
+		List<NameHistory.Entry> previous = history.previous();
+		if (previous.isEmpty()) {
+			graphics.text(font, Component.literal("No previous names"), x, y, MUTED_COLOR);
+			historyMaxScroll = 0;
+			return;
+		}
+
+		int visible = Math.max(1, (historyBottom - y) / HISTORY_ROW_HEIGHT);
+		historyMaxScroll = Math.max(0, previous.size() - visible);
+		historyScroll = Math.clamp(historyScroll, 0, historyMaxScroll);
+
+		// Clipped so a long history cannot spill over the close button.
+		graphics.enableScissor(x, y, right, historyBottom);
+		for (int i = 0; i < visible && i + historyScroll < previous.size(); i++) {
+			NameHistory.Entry entry = previous.get(i + historyScroll);
+			int rowY = y + i * HISTORY_ROW_HEIGHT;
+
+			String ago = entry.isDated() ? timeAgo(entry.changedAt()) : "";
+			int agoWidth = ago.isEmpty() ? 0 : font.width(ago);
+
+			graphics.text(font, Component.literal(
+							trim(entry.name(), right - x - agoWidth - 6)),
+					x, rowY, 0xFFD5DCE5);
+			if (!ago.isEmpty()) {
+				graphics.text(font, Component.literal(ago), right - agoWidth, rowY, MUTED_COLOR);
+			}
+		}
+		graphics.disableScissor();
+
+		if (historyMaxScroll > 0) {
+			int trackHeight = visible * HISTORY_ROW_HEIGHT;
+			int thumbHeight = Math.max(8, trackHeight * visible / previous.size());
+			int thumbY = y + (trackHeight - thumbHeight) * historyScroll / historyMaxScroll;
+			graphics.fill(right + 2, y, right + 4, y + trackHeight, 0x40202A38);
+			graphics.fill(right + 2, thumbY, right + 4, thumbY + thumbHeight, 0x90727F8F);
+		}
+	}
+
+	/**
+	 * Scrolls the name history when the cursor is over it.
+	 *
+	 * <p>Scoped to the band, and only when there is something to scroll, so the
+	 * wheel keeps its usual meaning everywhere else on the screen.
+	 */
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + PROFILE_WIDTH
+				&& mouseY >= historyTop && mouseY <= historyBottom;
+		if (overHistory && historyMaxScroll > 0) {
+			historyScroll = Math.clamp(
+					historyScroll - (int) Math.signum(deltaY), 0, historyMaxScroll);
+			return true;
+		}
+		return super.mouseScrolled(mouseX, mouseY, deltaX, deltaY);
+	}
+
+	/** Truncates to fit, so a long name cannot run into its date. */
+	private String trim(String text, int max) {
+		String out = text;
+		while (font.width(out) > max && out.length() > 1) {
+			out = out.substring(0, out.length() - 1);
+		}
+		return out;
+	}
+
+	/**
+	 * A compact "how long ago", e.g. {@code 3y} or {@code 5mo}.
+	 *
+	 * <p>Kept to one unit and a couple of characters: the column is narrow, and
+	 * the point is the rough age rather than an exact figure.
+	 */
+	private static String timeAgo(long epochSeconds) {
+		long seconds = Instant.now().getEpochSecond() - epochSeconds;
+		if (seconds < 60) {
+			return "just now";
+		}
+		long minutes = seconds / 60;
+		if (minutes < 60) {
+			return minutes + "m ago";
+		}
+		long hours = minutes / 60;
+		if (hours < 24) {
+			return hours + "h ago";
+		}
+		long days = hours / 24;
+		if (days < 31) {
+			return days + "d ago";
+		}
+		long months = days / 30;
+		if (months < 12) {
+			return months + "mo ago";
+		}
+		return (days / 365) + "y ago";
 	}
 
 	/**
