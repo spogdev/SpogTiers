@@ -690,10 +690,10 @@ public class ProfileScreen extends Screen {
 			case DATE_OBTAINED -> rows.sort(Comparator
 					.comparingLong((Row row) -> row.attained() > 0 ? 0 : 1)
 					.thenComparing(Comparator.comparingLong(Row::attained).reversed()));
-			// Best tier first: lower number wins, HT before MT before LT.
-			case RANKING -> rows.sort(Comparator
-					.comparingInt((Row row) -> row.tier().tier())
-					.thenComparingInt(row -> row.tier().position().ordinal()));
+			// Best first. ladderOrdinal covers both the numbered lists and
+			// CatPVP's named ranks, which do not fit tier/position cleanly.
+			case RANKING -> rows.sort(
+					Comparator.comparingInt(row -> row.tier().ladderOrdinal()));
 			default -> {
 			}
 		}

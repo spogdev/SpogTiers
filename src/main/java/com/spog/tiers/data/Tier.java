@@ -344,6 +344,47 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	}
 
 	/**
+	 * A total order over named ranks, lower being better.
+	 *
+	 * <p>{@link #tier()} and {@link #position()} exist so a named rank can be
+	 * compared against the numbered lists, but they are a lossy fit: the metals
+	 * outnumber the five tiers, so Gold and Iron share tier 4 and Stone, Wood
+	 * and Coal share tier 5. Sorting CatPVP by that alone leaves those ranks
+	 * interleaved. This keeps the metal and its numeral apart, so the ladder
+	 * comes out in the order the site shows it.
+	 */
+	public int ladderOrdinal() {
+		if (!isNamed()) {
+			// Numbered lists: tier then HT/MT/LT, matching their own ordering.
+			return tier * 10 + position.ordinal();
+		}
+		String[] parts = namedRank.trim().split("\\s+");
+		int metal = metalRank(parts[0]);
+		// CatPVP counts upward inside a metal (III beats I), so the numeral is
+		// inverted to keep "lower is better".
+		int within = parts.length < 2 ? 0 : 5 - roman(parts[1]);
+		return metal * 10 + within;
+	}
+
+	/** Where a metal sits on the ladder, best first. */
+	private static int metalRank(String metal) {
+		return switch (metal.toUpperCase(Locale.ROOT)) {
+			case "CHAMPION" -> 0;
+			case "NETHERITE" -> 1;
+			case "DIAMOND" -> 2;
+			case "EMERALD" -> 3;
+			case "GOLD" -> 4;
+			case "IRON" -> 5;
+			case "STONE" -> 6;
+			case "WOOD" -> 7;
+			case "COAL" -> 8;
+			// An unseen rank sorts below everything known rather than claiming
+			// a place in the middle of the ladder.
+			default -> 9;
+		};
+	}
+
+	/**
 	 * Dims a retired tier without washing out its hue.
 	 *
 	 * <p>The old blend pulled two thirds of the way to grey, which turned the
