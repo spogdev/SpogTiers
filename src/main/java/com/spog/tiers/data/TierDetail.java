@@ -52,6 +52,29 @@ public record TierDetail(
 		return Math.clamp((rating - tierFloor) / span, 0.0f, 1.0f);
 	}
 
+	/**
+	 * Rating earned inside the current tier, rather than the running total.
+	 *
+	 * <p>Clamped to the tier's span: a player at the top of the ladder can sit
+	 * above their own ceiling, which would otherwise read as "195 of 64".
+	 */
+	public int pointsIntoTier() {
+		if (tierCeiling <= tierFloor) {
+			return 0;
+		}
+		return Math.clamp(rating - tierFloor, 0, tierCeiling - tierFloor);
+	}
+
+	/** How wide the current tier is, in rating points. */
+	public int tierSpan() {
+		return Math.max(0, tierCeiling - tierFloor);
+	}
+
+	/** True when the tier's bounds are known, so progress can be shown. */
+	public boolean hasTierBounds() {
+		return tierCeiling > tierFloor;
+	}
+
 	public boolean hasNextTier() {
 		return nextTier != null && !nextTier.isEmpty();
 	}

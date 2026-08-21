@@ -267,10 +267,10 @@ public class ConfigScreen extends Screen {
 			int rowBottom = y + ROW_HEIGHT - 8;
 			if (mouseY >= rowTop && mouseY <= rowBottom && mouseX >= x
 					&& mouseX <= right - CARD_PADDING) {
-				graphics.fill(x - 4, rowTop, right - CARD_PADDING, rowBottom, 0x2016202B);
+				graphics.fill(x - 4, rowTop, right - CARD_PADDING, rowBottom, 0x8022303F);
 			}
 
-			graphics.blit(RenderPipelines.GUI_TEXTURED, logoOf(list), x, y - 2, 0.0f, 0.0f,
+			graphics.blit(RenderPipelines.GUI_TEXTURED, logoOf(list), x, y - 4, 0.0f, 0.0f,
 					LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
 			graphics.text(font, Component.literal(list.displayName()),
 					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);

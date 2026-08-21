@@ -733,8 +733,16 @@ public class ProfileScreen extends Screen {
 
 		boolean bar = false;
 		if (detail.hasRating()) {
-			lines.add(new Line(detail.hasTr() ? "TP " + detail.rating() : "Elo " + detail.rating(),
-					0xFFE4EAF2));
+			// TP is shown as progress through the current tier rather than the
+			// running total, which is what the site's own bar represents.
+			if (detail.hasTr() && detail.hasTierBounds()) {
+				lines.add(new Line("TP " + detail.pointsIntoTier() + "/" + detail.tierSpan(),
+						0xFFE4EAF2));
+			} else {
+				lines.add(new Line(
+						detail.hasTr() ? "TP " + detail.rating() : "Elo " + detail.rating(),
+						0xFFE4EAF2));
+			}
 			// The bar shows how far through the current tier the rating sits;
 			// naming the next tier is redundant, players know the ladder.
 			bar = detail.tierCeiling() > detail.tierFloor();
