@@ -385,7 +385,9 @@ public class ConfigScreen extends Screen {
 			if (mode == null && source != null) {
 				mode = source.gamemodes().stream().findFirst().orElse(null);
 			}
-			if (source != null && mode != null) {
+			// A list only ships artwork for the modes it ranks, so an unranked
+			// pairing (PVPHQ has no Vanilla) would blit a missing texture.
+			if (source != null && mode != null && source.gamemodes().contains(mode)) {
 				graphics.blit(RenderPipelines.GUI_TEXTURED, modeIcon(source, mode),
 						cursor, textY - 1, 0.0f, 0.0f, 10, 10, 64, 64, 64, 64);
 				cursor += 13;
@@ -485,7 +487,17 @@ public class ConfigScreen extends Screen {
 		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.logoPath());
 	}
 
+	/**
+	 * A list's artwork for a gamemode, or null when it does not rank it.
+	 *
+	 * <p>Each site only ships icons for its own modes, so asking PVPHQ for
+	 * Vanilla resolves to a texture that does not exist and renders as the
+	 * missing-texture chequer.
+	 */
 	private static Identifier modeIcon(TierList list, Gamemode mode) {
+		if (list == null || mode == null || !list.gamemodes().contains(mode)) {
+			return null;
+		}
 		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.modeIconPath(mode.key()));
 	}
 
