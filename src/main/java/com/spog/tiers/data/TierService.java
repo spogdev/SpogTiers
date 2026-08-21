@@ -46,6 +46,9 @@ public class TierService {
 	 */
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
 
+	/** CatPVP's starting Elo; anyone still on it has not been placed. */
+	private static final int CAT_UNRANKED_ELO = 1000;
+
 	/** One gamemode's ranking inside CatPVP's embedded profile payload. */
 	private static final Pattern CAT_RANKING = Pattern.compile(
 			"\"([a-z_]+)\":\\{\"mu\":[-\\d.]+,\"sigma\":[-\\d.]+,"
@@ -643,6 +646,12 @@ public class TierService {
 			int rating = Integer.parseInt(matcher.group(2));
 			String rankName = matcher.group(3);
 			int color = parseHexColor(matcher.group(4));
+
+			// 1000 is the starting Elo: the player has never been placed in
+			// this mode, so CatPVP does not consider them ranked in it.
+			if (rating <= CAT_UNRANKED_ELO) {
+				continue;
+			}
 
 			Tier tier = Tier.named(rankName, color);
 			if (!tier.isRanked()) {

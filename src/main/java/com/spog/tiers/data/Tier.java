@@ -14,6 +14,11 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		String namedRank) {
 	public static final Tier UNRANKED = new Tier(0, Position.HIGH, false, 0, null);
 
+	/** Roughly the card fill over the dimmed backdrop, for contrast checks. */
+	private static final int PANEL_BACKGROUND = 0xFF12171E;
+	/** Minimum contrast a rank colour must reach to be used as text. */
+	private static final float MIN_CONTRAST = 4.5f;
+
 	public enum Position {
 		HIGH("HT"),
 		MID("MT"),
@@ -193,10 +198,10 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	 * only) sits between its neighbouring HT and LT shades.
 	 */
 	public int color() {
-		// A provider-supplied colour always wins, so CatPVP's ranks read exactly
-		// as they do on its own site.
+		// A provider-supplied colour always wins, so CatPVP's ranks keep their
+		// own hues rather than borrowing the HT/LT palette.
 		if (isNamed()) {
-			return colorOverride != 0 ? 0xFF000000 | colorOverride : 0xFFD5DCE5;
+			return colorOverride != 0 ? legible(colorOverride) : 0xFFD5DCE5;
 		}
 		if (!isRanked()) {
 			return 0xFF9CA3AF;
@@ -231,6 +236,111 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			};
 		};
 		return retired ? desaturate(base) : base;
+	}
+
+	/**
+	 * Lightens a provider colour just enough to read on the dark panel.
+	 *
+	 * <p>CatPVP draws its ranks as badges on a light chip, so some of its hues
+	 * are very dark -- Netherite is {@code #443A3B}, which sits at about 1.6:1
+	 * against our background and is effectively invisible as plain text. The
+	 * hue and saturation are kept and only the lightness is raised, and only
+	 * until the colour is readable, so anything already bright (Diamond,
+	 * Emerald) is passed through untouched.
+	 */
+	private static int legible(int rgb) {
+		float[] hsl = toHsl((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+		int out = 0xFF000000 | rgb;
+
+		// Raise lightness in small steps rather than jumping to a fixed value,
+		// which would flatten distinct ranks into the same shade.
+		for (int step = 0; step < 100 && contrast(out) < MIN_CONTRAST; step++) {
+			hsl[2] = Math.min(1.0f, hsl[2] + 0.006f);
+			out = 0xFF000000 | toRgb(hsl[0], hsl[1], hsl[2]);
+		}
+		return out;
+	}
+
+	/** WCAG contrast of an ARGB colour against the panel background. */
+	private static float contrast(int argb) {
+		float a = relativeLuminance(argb);
+		float b = relativeLuminance(PANEL_BACKGROUND);
+		float high = Math.max(a, b);
+		float low = Math.min(a, b);
+		return (high + 0.05f) / (low + 0.05f);
+	}
+
+	private static float relativeLuminance(int argb) {
+		return 0.2126f * channelLuminance((argb >> 16) & 0xFF)
+				+ 0.7152f * channelLuminance((argb >> 8) & 0xFF)
+				+ 0.0722f * channelLuminance(argb & 0xFF);
+	}
+
+	private static float channelLuminance(int value) {
+		float c = value / 255.0f;
+		return c <= 0.03928f ? c / 12.92f : (float) Math.pow((c + 0.055f) / 1.055f, 2.4);
+	}
+
+	private static float[] toHsl(int r, int g, int b) {
+		float rf = r / 255.0f;
+		float gf = g / 255.0f;
+		float bf = b / 255.0f;
+		float max = Math.max(rf, Math.max(gf, bf));
+		float min = Math.min(rf, Math.min(gf, bf));
+		float lightness = (max + min) / 2.0f;
+		float hue = 0.0f;
+		float saturation = 0.0f;
+
+		if (max != min) {
+			float delta = max - min;
+			saturation = lightness > 0.5f
+					? delta / (2.0f - max - min)
+					: delta / (max + min);
+			if (max == rf) {
+				hue = (gf - bf) / delta + (gf < bf ? 6.0f : 0.0f);
+			} else if (max == gf) {
+				hue = (bf - rf) / delta + 2.0f;
+			} else {
+				hue = (rf - gf) / delta + 4.0f;
+			}
+			hue /= 6.0f;
+		}
+		return new float[] {hue, saturation, lightness};
+	}
+
+	private static int toRgb(float hue, float saturation, float lightness) {
+		if (saturation == 0.0f) {
+			int grey = Math.round(lightness * 255.0f);
+			return (grey << 16) | (grey << 8) | grey;
+		}
+		float q = lightness < 0.5f
+				? lightness * (1.0f + saturation)
+				: lightness + saturation - lightness * saturation;
+		float p = 2.0f * lightness - q;
+		int r = Math.round(hueToChannel(p, q, hue + 1.0f / 3.0f) * 255.0f);
+		int g = Math.round(hueToChannel(p, q, hue) * 255.0f);
+		int b = Math.round(hueToChannel(p, q, hue - 1.0f / 3.0f) * 255.0f);
+		return (r << 16) | (g << 8) | b;
+	}
+
+	private static float hueToChannel(float p, float q, float t) {
+		float value = t;
+		if (value < 0.0f) {
+			value += 1.0f;
+		}
+		if (value > 1.0f) {
+			value -= 1.0f;
+		}
+		if (value < 1.0f / 6.0f) {
+			return p + (q - p) * 6.0f * value;
+		}
+		if (value < 0.5f) {
+			return q;
+		}
+		if (value < 2.0f / 3.0f) {
+			return p + (q - p) * (2.0f / 3.0f - value) * 6.0f;
+		}
+		return p;
 	}
 
 	/**
