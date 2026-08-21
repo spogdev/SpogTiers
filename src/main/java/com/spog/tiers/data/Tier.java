@@ -142,8 +142,7 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			case "DIAMOND" -> 2;
 			case "EMERALD" -> 3;
 			case "GOLD" -> 4;
-			case "IRON" -> 4;
-			case "STONE", "WOOD", "COAL" -> 5;
+			case "IRON", "COPPER" -> 5;
 			default -> 3;
 		};
 	}
@@ -366,7 +365,13 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		return metal * 10 + within;
 	}
 
-	/** Where a metal sits on the ladder, best first. */
+	/**
+	 * Where a metal sits on the ladder, best first.
+	 *
+	 * <p>CatPVP runs Copper, Iron, Gold, Emerald, Diamond, Netherite, Champion,
+	 * so Emerald sits above Gold and Diamond above Emerald -- not the ordering
+	 * the material names suggest.
+	 */
 	private static int metalRank(String metal) {
 		return switch (metal.toUpperCase(Locale.ROOT)) {
 			case "CHAMPION" -> 0;
@@ -375,12 +380,10 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 			case "EMERALD" -> 3;
 			case "GOLD" -> 4;
 			case "IRON" -> 5;
-			case "STONE" -> 6;
-			case "WOOD" -> 7;
-			case "COAL" -> 8;
+			case "COPPER" -> 6;
 			// An unseen rank sorts below everything known rather than claiming
 			// a place in the middle of the ladder.
-			default -> 9;
+			default -> 7;
 		};
 	}
 

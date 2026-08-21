@@ -10,6 +10,7 @@ import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierDetail;
 import com.spog.tiers.data.TierList;
+import com.spog.tiers.data.TierService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -199,8 +200,24 @@ public class ProfileScreen extends Screen {
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
 		tagRegion = region;
+		int cursor = nameX + font.width(playerName) + 5;
 		if (!region.isEmpty()) {
-			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
+			drawTag(graphics, cursor, nameY - 3, region);
+			cursor = tagRight + 4;
+		}
+
+		// Overall standing, when the player is near the top of a list that
+		// publishes one.
+		for (TierList list : TierList.values()) {
+			if (!list.isPvpHq() || !SpogTiersClient.config().isEnabled(list)) {
+				continue;
+			}
+			SpogTiersClient.service().requestTopRanks(list, null);
+			int rank = SpogTiersClient.service().topRank(target, list, null);
+			if (rank > 0) {
+				drawRankTag(graphics, cursor, nameY - 3, rank);
+			}
+			break;
 		}
 	}
 
@@ -324,7 +341,55 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * A boxed region label, coloured with MCTiers' region palette (its
+	 * A rank badge, drawn in the region tag's style.
+	 *
+	 * <p>Grey for the rest of the top 500, then bronze, silver and gold for
+	 * third, second and first.
+	 *
+	 * @return the width drawn, or 0 when the rank does not earn a badge
+	 */
+	private int drawRankTag(GuiGraphicsExtractor graphics, int x, int y, int rank) {
+		if (rank < 1 || rank > TierService.TOP_RANK_LIMIT) {
+			return 0;
+		}
+		Font font = this.font;
+		String text = "#" + rank;
+		int boxWidth = font.width(text) + 8;
+		int boxHeight = font.lineHeight + 5;
+
+		int foreground = rankForeground(rank);
+		int background = rankBackground(rank);
+		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
+
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
+		graphics.fill(x, y, x + boxWidth, y + 1, border);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
+		graphics.fill(x, y, x + 1, y + boxHeight, border);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+
+		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+		return boxWidth;
+	}
+
+	private static int rankForeground(int rank) {
+		return switch (rank) {
+			case 1 -> 0xFFF2C74B;
+			case 2 -> 0xFFCBD5E1;
+			case 3 -> 0xFFCE8C4A;
+			default -> 0xFFB9C4D0;
+		};
+	}
+
+	private static int rankBackground(int rank) {
+		return switch (rank) {
+			case 1 -> 0xE0413412;
+			case 2 -> 0xE02E3440;
+			case 3 -> 0xE03A2614;
+			default -> 0xE0232B36;
+		};
+	}
+
+	/** A boxed region label, coloured with MCTiers' region palette (its
 	 * {@code --<region>} / {@code --<region>-foreground} CSS variables).
 	 */
 	private void drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
@@ -613,6 +678,18 @@ public class ProfileScreen extends Screen {
 				labelX += MODE_ICON + 3;
 			}
 			graphics.text(font, Component.literal(row.label()), labelX, textY, row.accent());
+
+			// Standing in this gamemode, to the right of its name.
+			Gamemode rowMode = row.iconKey() == null ? null : Gamemode.byKey(row.iconKey());
+			if (rowMode != null && card.list().isPvpHq()) {
+				SpogTiersClient.service().requestTopRanks(card.list(), rowMode);
+				int modeRank = SpogTiersClient.service()
+						.topRank(target, card.list(), rowMode);
+				if (modeRank > 0) {
+					drawRankTag(graphics, labelX + font.width(row.label()) + 4,
+							textY - 3, modeRank);
+				}
+			}
 
 			// Peak sits to the left of the current tier, struck through to read
 			// as "used to be".

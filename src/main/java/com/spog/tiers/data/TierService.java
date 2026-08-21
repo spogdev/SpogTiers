@@ -47,6 +47,8 @@ public class TierService {
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
 	private static final String PVPHQ_LEADERBOARD =
 			"https://pvphq.com/api/v1/leaderboard/ranked/";
+	/** How deep a placement still earns a rank badge. */
+	public static final int TOP_RANK_LIMIT = 500;
 
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
@@ -78,6 +80,10 @@ public class TierService {
 	/** Global leaderboard positions, keyed by player, list and gamemode. */
 	private final Map<String, Integer> worldRanks = new ConcurrentHashMap<>();
 	private final Set<String> worldRankPending = ConcurrentHashMap.newKeySet();
+	/** Top-500 placements, keyed by player and board. */
+	private final Map<String, Integer> topRanks = new ConcurrentHashMap<>();
+	private final Set<String> loadedBoards = ConcurrentHashMap.newKeySet();
+	private final Set<String> boardsPending = ConcurrentHashMap.newKeySet();
 
 	private long lastDispatchMillis;
 
@@ -840,6 +846,82 @@ public class TierService {
 			case DIA_SMP -> "diamond_smp";
 			default -> mode.key();
 		};
+	}
+
+	/**
+	 * The player's place in a list's top {@value #TOP_RANK_LIMIT}, or -1.
+	 *
+	 * <p>{@code mode} null asks for the list's overall board rather than one
+	 * gamemode's.
+	 */
+	public int topRank(UUID uuid, TierList list, Gamemode mode) {
+		Integer rank = topRanks.get(topKey(uuid, list, mode));
+		return rank == null ? -1 : rank;
+	}
+
+	/**
+	 * Loads a leaderboard's leading pages and records where the players on them
+	 * sit, so a profile can show a rank badge without a lookup per player.
+	 *
+	 * <p>Only the top {@value #TOP_RANK_LIMIT} are wanted, which is five pages
+	 * rather than the several hundred a full scan would take. Each board is
+	 * fetched once per session.
+	 */
+	public void requestTopRanks(TierList list, Gamemode mode) {
+		if (list == null || !list.isPvpHq()) {
+			return;
+		}
+		String board = boardKey(list, mode);
+		if (loadedBoards.contains(board) || !boardsPending.add(board)) {
+			return;
+		}
+		workers.submit(() -> {
+			try {
+				loadTopRanks(list, mode);
+				loadedBoards.add(board);
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("Top ranks failed for {}", board, e);
+			} finally {
+				boardsPending.remove(board);
+			}
+		});
+	}
+
+	private void loadTopRanks(TierList list, Gamemode mode) throws Exception {
+		String gametype = mode == null ? "overall" : pvpHqGametype(mode);
+		int perPage = 100;
+		int pages = (TOP_RANK_LIMIT + perPage - 1) / perPage;
+
+		for (int page = 0; page < pages; page++) {
+			JsonArray entries = entriesOf(leaderboardPage(gametype, page));
+			if (entries == null || entries.isEmpty()) {
+				return;
+			}
+			for (JsonElement element : entries) {
+				JsonObject entry = element.getAsJsonObject();
+				int rank = intOr(entry, "rank", -1);
+				if (rank < 1 || rank > TOP_RANK_LIMIT) {
+					continue;
+				}
+				String raw = string(entry, "uuid");
+				if (raw.isEmpty()) {
+					continue;
+				}
+				try {
+					topRanks.put(topKey(UUID.fromString(raw), list, mode), rank);
+				} catch (IllegalArgumentException ignored) {
+					// A malformed id on the board is not worth failing over.
+				}
+			}
+		}
+	}
+
+	private static String boardKey(TierList list, Gamemode mode) {
+		return list.key() + "/" + (mode == null ? "overall" : mode.key());
+	}
+
+	private static String topKey(UUID uuid, TierList list, Gamemode mode) {
+		return uuid + "/" + boardKey(list, mode);
 	}
 
 	public void shutdown() {
