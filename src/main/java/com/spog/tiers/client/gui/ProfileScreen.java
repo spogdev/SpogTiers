@@ -209,15 +209,15 @@ public class ProfileScreen extends Screen {
 		// Overall standing, when the player is near the top of a list that
 		// publishes one.
 		for (TierList list : TierList.values()) {
-			if (!list.isPvpHq() || !SpogTiersClient.config().isEnabled(list)) {
+			if (!list.publishesRanks() || !SpogTiersClient.config().isEnabled(list)) {
 				continue;
 			}
 			SpogTiersClient.service().requestTopRanks(list, null);
 			int rank = SpogTiersClient.service().topRank(target, list, null);
 			if (rank > 0) {
 				drawRankTag(graphics, cursor, nameY - 3, rank);
+				break;
 			}
-			break;
 		}
 	}
 
@@ -681,7 +681,7 @@ public class ProfileScreen extends Screen {
 
 			// Standing in this gamemode, to the right of its name.
 			Gamemode rowMode = row.iconKey() == null ? null : Gamemode.byKey(row.iconKey());
-			if (rowMode != null && card.list().isPvpHq()) {
+			if (rowMode != null && card.list().publishesModeRanks()) {
 				SpogTiersClient.service().requestTopRanks(card.list(), rowMode);
 				int modeRank = SpogTiersClient.service()
 						.topRank(target, card.list(), rowMode);

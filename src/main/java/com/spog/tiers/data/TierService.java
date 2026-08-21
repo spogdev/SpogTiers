@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -47,6 +48,11 @@ public class TierService {
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
 	private static final String PVPHQ_LEADERBOARD =
 			"https://pvphq.com/api/v1/leaderboard/ranked/";
+	private static final String CATPVP_RANKED = "https://catpvp.net/ranked";
+
+	/** One row of CatPVP's server-rendered board. */
+	private static final Pattern CAT_POSITION = Pattern.compile(
+			"\\{\"position\":(\\d+),\"name\":\"([^\"]+)\"");
 	/** How deep a placement still earns a rank badge. */
 	public static final int TOP_RANK_LIMIT = 500;
 
@@ -82,6 +88,8 @@ public class TierService {
 	private final Set<String> worldRankPending = ConcurrentHashMap.newKeySet();
 	/** Top-500 placements, keyed by player and board. */
 	private final Map<String, Integer> topRanks = new ConcurrentHashMap<>();
+	/** The same for CatPVP, whose board is keyed by name. */
+	private final Map<String, Integer> catRanks = new ConcurrentHashMap<>();
 	private final Set<String> loadedBoards = ConcurrentHashMap.newKeySet();
 	private final Set<String> boardsPending = ConcurrentHashMap.newKeySet();
 
@@ -855,6 +863,21 @@ public class TierService {
 	 * gamemode's.
 	 */
 	public int topRank(UUID uuid, TierList list, Gamemode mode) {
+		if (list != null && list.isCatPvp()) {
+			// CatPVP's board carries names, not uuids. The profile fetch is by
+			// uuid and so does not populate the name cache, but the tiers it
+			// returns carry the name the site knows them by.
+			String name = names.get(uuid);
+			if (name == null) {
+				PlayerTiers tiers = cache.get(uuid, list);
+				name = tiers == null || tiers.name().isEmpty() ? null : tiers.name();
+			}
+			if (name == null) {
+				return -1;
+			}
+			Integer byName = catRanks.get(catKey(name, list, mode));
+			return byName == null ? -1 : byName;
+		}
 		Integer rank = topRanks.get(topKey(uuid, list, mode));
 		return rank == null ? -1 : rank;
 	}
@@ -868,7 +891,7 @@ public class TierService {
 	 * fetched once per session.
 	 */
 	public void requestTopRanks(TierList list, Gamemode mode) {
-		if (list == null || !list.isPvpHq()) {
+		if (list == null || !(list.isPvpHq() || list.isCatPvp())) {
 			return;
 		}
 		String board = boardKey(list, mode);
@@ -877,7 +900,11 @@ public class TierService {
 		}
 		workers.submit(() -> {
 			try {
-				loadTopRanks(list, mode);
+				if (list.isCatPvp()) {
+					loadCatPvpRanks(list, mode);
+				} else {
+					loadTopRanks(list, mode);
+				}
 				loadedBoards.add(board);
 			} catch (Exception e) {
 				SpogTiers.LOGGER.debug("Top ranks failed for {}", board, e);
@@ -922,6 +949,51 @@ public class TierService {
 
 	private static String topKey(UUID uuid, TierList list, Gamemode mode) {
 		return uuid + "/" + boardKey(list, mode);
+	}
+
+	/**
+	 * CatPVP's boards, read from the ranked page.
+	 *
+	 * <p>Its JSON leaderboard route currently answers every kit with an empty
+	 * list -- the same backend that leaves its documented API host
+	 * unreachable -- but the page itself is server-rendered and still carries
+	 * the standings, so they are taken from there.
+	 *
+	 * <p>The rows carry names rather than uuids, so placements are keyed by
+	 * lowercased name and resolved against the name we already look up for this
+	 * list.
+	 */
+	private void loadCatPvpRanks(TierList list, Gamemode mode) throws Exception {
+		// Always the global board: the kit parameter is ignored server-side, so
+		// asking for one would return these same standings under a wrong label.
+		String url = CATPVP_RANKED;
+
+		HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+				.header("Accept", "text/html")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() != 200) {
+			return;
+		}
+
+		String body = response.body().replace("\\\"", "\"");
+		Matcher matcher = CAT_POSITION.matcher(body);
+		while (matcher.find()) {
+			int position = Integer.parseInt(matcher.group(1));
+			String name = matcher.group(2);
+			if (position < 1 || position > TOP_RANK_LIMIT || name.isEmpty()) {
+				continue;
+			}
+			catRanks.put(catKey(name, list, mode), position);
+		}
+	}
+
+	private static String catKey(String name, TierList list, Gamemode mode) {
+		return name.toLowerCase(Locale.ROOT) + "/" + boardKey(list, mode);
 	}
 
 	public void shutdown() {

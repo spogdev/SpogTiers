@@ -62,6 +62,22 @@ public enum TierList {
 		return this == CATPVP;
 	}
 
+	/** True when the list publishes an overall standing we can badge. */
+	public boolean publishesRanks() {
+		return this == PVPHQ || this == CATPVP;
+	}
+
+	/**
+	 * True when the list publishes standings per gamemode.
+	 *
+	 * <p>CatPVP does not: its board ignores the {@code kit} parameter and
+	 * answers every kit with the global standings, so a per-gamemode badge
+	 * there would report the wrong number.
+	 */
+	public boolean publishesModeRanks() {
+		return this == PVPHQ;
+	}
+
 	/**
 	 * True when the endpoint takes a player name rather than a UUID, and so
 	 * needs the name resolved before a lookup can be made.
