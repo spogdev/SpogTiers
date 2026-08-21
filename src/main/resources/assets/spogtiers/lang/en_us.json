@@ -10,5 +10,6 @@
 	"category.spogtiers": "SpogTiers",
 	"spogtiers.config.displayList": "Tier List",
 	"spogtiers.config.panelOpacity": "Panel Opacity",
-	"spogtiers.config.rotateSkin": "Rotate Skin Model"
+	"spogtiers.config.rotateSkin": "Rotate Skin Model",
+	"key.spogtiers.quick_tiers": "Quick Tiers"
 }

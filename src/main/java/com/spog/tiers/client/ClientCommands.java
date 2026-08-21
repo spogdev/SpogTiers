@@ -94,12 +94,23 @@ public final class ClientCommands {
 
 		String[] parts = trimmed.split("\\s+");
 		if (parts.length < 2) {
-			feedback(Component.literal("Usage: /tiers <player>").withStyle(ChatFormatting.RED));
+			// Bare /tiers shows your own tiers, which is the common case.
+			openSelf();
 			return true;
 		}
 
 		open(parts[1]);
 		return true;
+	}
+
+	/** Opens the local player's own profile. */
+	private static void openSelf() {
+		Minecraft client = Minecraft.getInstance();
+		if (client.player == null) {
+			feedback(Component.literal("Not in a world").withStyle(ChatFormatting.RED));
+			return;
+		}
+		client.setScreen(new ProfileScreen(client.player.getGameProfile()));
 	}
 
 	private static void open(String name) {
@@ -232,12 +243,15 @@ public final class ClientCommands {
 				"$1-$2-$3-$4-$5"));
 	}
 
-	private static void feedback(Component message) {
+	/**
+	 * Status goes to the action bar rather than chat: these are transient
+	 * notices about a screen that is about to open, not conversation worth
+	 * keeping in the log.
+	 */
+	static void feedback(Component message) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.gui != null) {
-			client.gui.getChat().addClientSystemMessage(Component.literal("[SpogTiers] ")
-					.withStyle(ChatFormatting.AQUA)
-					.append(message));
+			client.gui.setOverlayMessage(message, false);
 		}
 	}
 }

@@ -7,7 +7,9 @@
 		"EntityRendererMixin",
 		"ClientPacketListenerMixin",
 		"ClientCommandsMixin",
-		"ChatComponentMixin"
+		"ChatComponentMixin",
+		"OptionsMixin",
+		"OptionsAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1
