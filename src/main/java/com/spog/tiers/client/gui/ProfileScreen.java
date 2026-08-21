@@ -200,31 +200,13 @@ public class ProfileScreen extends Screen {
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
 		tagRegion = region;
-		int cursor = nameX + font.width(playerName) + 5;
 		if (!region.isEmpty()) {
-			drawTag(graphics, cursor, nameY - 3, region);
-			cursor = tagRight + 4;
+			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
 		}
 
 		// Overall standing, when the player is near the top of a list that
 		// publishes one.
-		// The best standing the player holds on any list they are ranked on,
-		// so the badge shows their strongest claim rather than whichever list
-		// happens to sort first.
-		int best = -1;
-		for (TierList list : TierList.values()) {
-			if (!list.publishesRanks() || !SpogTiersClient.config().isEnabled(list)) {
-				continue;
-			}
-			SpogTiersClient.service().requestTopRanks(list, null);
-			int rank = SpogTiersClient.service().topRank(target, list, null);
-			if (rank > 0 && (best < 0 || rank < best)) {
-				best = rank;
-			}
-		}
-		if (best > 0) {
-			drawRankTag(graphics, cursor, nameY - 3, best);
-		}
+
 	}
 
 	/**
@@ -633,9 +615,16 @@ public class ProfileScreen extends Screen {
 
 		int textY = y + CARD_PADDING;
 
-		// Logo and title are centred together as one unit.
+		// The player's standing on this list, which belongs beside the list it
+		// came from rather than beside their name.
+		SpogTiersClient.service().requestTopRanks(card.list(), null);
+		int listRank = SpogTiersClient.service().topRank(target, card.list(), null);
+		boolean showRank = listRank > 0 && listRank <= TierService.TOP_RANK_LIMIT;
+
+		// Logo, title and badge are centred together as one unit.
 		String title = card.list().displayName();
-		int headerWidth = LOGO_SIZE + 4 + font.width(title);
+		int badgeWidth = showRank ? font.width("#" + listRank) + 8 + 4 : 0;
+		int headerWidth = LOGO_SIZE + 4 + font.width(title) + badgeWidth;
 		int headerX = x + (CARD_WIDTH - headerWidth) / 2;
 
 		Identifier logo = Identifier.fromNamespaceAndPath(
@@ -645,6 +634,10 @@ public class ProfileScreen extends Screen {
 				0.0f, 0.0f, LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
 		graphics.text(font, Component.literal(title),
 				headerX + LOGO_SIZE + 4, textY, 0xFFFFFFFF);
+		if (showRank) {
+			drawRankTag(graphics, headerX + LOGO_SIZE + 4 + font.width(title) + 4,
+					textY - 3, listRank);
+		}
 
 		textY += font.lineHeight + 4;
 		graphics.fill(x + CARD_PADDING, textY, x + CARD_WIDTH - CARD_PADDING, textY + 1, 0x28FFFFFF);
