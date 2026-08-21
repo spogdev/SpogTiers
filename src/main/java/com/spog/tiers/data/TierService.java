@@ -863,6 +863,12 @@ public class TierService {
 	 * gamemode's.
 	 */
 	public int topRank(UUID uuid, TierList list, Gamemode mode) {
+		// Most lists hand their overall standing back with the profile, so it
+		// is already in the cache and needs no leaderboard at all.
+		if (list != null && mode == null && list.rankInProfile()) {
+			PlayerTiers tiers = cache.get(uuid, list);
+			return tiers == null || tiers.overall() <= 0 ? -1 : tiers.overall();
+		}
 		if (list != null && list.isCatPvp()) {
 			// CatPVP's board carries names, not uuids. The profile fetch is by
 			// uuid and so does not populate the name cache, but the tiers it
@@ -891,7 +897,11 @@ public class TierService {
 	 * fetched once per session.
 	 */
 	public void requestTopRanks(TierList list, Gamemode mode) {
-		if (list == null || !(list.isPvpHq() || list.isCatPvp())) {
+		// Lists that carry the standing in the profile need no board fetched.
+		if (list == null || list.rankInProfile()) {
+			return;
+		}
+		if (!(list.isPvpHq() || list.isCatPvp())) {
 			return;
 		}
 		String board = boardKey(list, mode);

@@ -208,16 +208,22 @@ public class ProfileScreen extends Screen {
 
 		// Overall standing, when the player is near the top of a list that
 		// publishes one.
+		// The best standing the player holds on any list they are ranked on,
+		// so the badge shows their strongest claim rather than whichever list
+		// happens to sort first.
+		int best = -1;
 		for (TierList list : TierList.values()) {
 			if (!list.publishesRanks() || !SpogTiersClient.config().isEnabled(list)) {
 				continue;
 			}
 			SpogTiersClient.service().requestTopRanks(list, null);
 			int rank = SpogTiersClient.service().topRank(target, list, null);
-			if (rank > 0) {
-				drawRankTag(graphics, cursor, nameY - 3, rank);
-				break;
+			if (rank > 0 && (best < 0 || rank < best)) {
+				best = rank;
 			}
+		}
+		if (best > 0) {
+			drawRankTag(graphics, cursor, nameY - 3, best);
 		}
 	}
 

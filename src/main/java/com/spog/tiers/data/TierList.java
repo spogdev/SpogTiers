@@ -62,9 +62,21 @@ public enum TierList {
 		return this == CATPVP;
 	}
 
-	/** True when the list publishes an overall standing we can badge. */
+	/**
+	 * True when the list publishes an overall standing we can badge.
+	 *
+	 * <p>Every list does, though by different means: MCTiers, PvPTiers and
+	 * SubTiers put it in the profile as {@code overall} and MCPvP as
+	 * {@code rank}, so those cost nothing extra, while PVPHQ and CatPVP need
+	 * their leaderboards read.
+	 */
 	public boolean publishesRanks() {
-		return this == PVPHQ || this == CATPVP;
+		return true;
+	}
+
+	/** True when the standing comes back with the profile, needing no lookup. */
+	public boolean rankInProfile() {
+		return this != PVPHQ && this != CATPVP;
 	}
 
 	/**
