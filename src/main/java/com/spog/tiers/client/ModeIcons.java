@@ -32,6 +32,9 @@ public final class ModeIcons {
 	 * index arithmetic lands on the right glyph.
 	 */
 	private static final Map<TierList, List<String>> MODES = Map.of(
+			TierList.CATPVP, List.of(
+					"axe", "beast", "bow", "bridge", "cart", "creeper", "dia_smp",
+					"mace", "neth_pot", "pot", "smp", "spear_mace", "uhc", "vanilla"),
 			TierList.MCPVP, List.of(
 					"axe", "mace", "neth_pot", "pot", "smp", "sword", "uhc", "vanilla"),
 			TierList.MCTIERS, List.of(
@@ -48,8 +51,8 @@ public final class ModeIcons {
 
 	/** Lists in the order the generator saw them: sorted by directory name. */
 	private static final List<TierList> ORDER = List.of(
-			TierList.MCPVP, TierList.MCTIERS, TierList.PVPHQ, TierList.PVPTIERS,
-			TierList.SUBTIERS);
+			TierList.CATPVP, TierList.MCPVP, TierList.MCTIERS, TierList.PVPHQ,
+			TierList.PVPTIERS, TierList.SUBTIERS);
 
 	private ModeIcons() {
 	}

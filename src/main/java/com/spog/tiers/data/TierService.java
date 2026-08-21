@@ -28,6 +28,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Fetches tier data. Player UUIDs are queued on the client thread and drained
@@ -43,6 +45,15 @@ public class TierService {
 	 * records it had gathered before then and still tracks changes since.
 	 */
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
+
+	/** One gamemode's ranking inside CatPVP's embedded profile payload. */
+	private static final Pattern CAT_RANKING = Pattern.compile(
+			"\"([a-z_]+)\":\\{\"mu\":[-\\d.]+,\"sigma\":[-\\d.]+,"
+					+ "\"rating\":(\\d+),\"rank\":\"([^\"]+)\","
+					+ "\"rankColor\":\"#([0-9A-Fa-f]{6})\"");
+
+	private static final Pattern CAT_NAME = Pattern.compile(
+			"<title>([^<|]+?)\\s*\\|\\s*CatPvP</title>");
 
 	private final SpogTiersConfig config;
 	private final TierCache cache;
@@ -153,6 +164,9 @@ public class TierService {
 	private PlayerTiers fetchOne(TierList list, UUID uuid) throws Exception {
 		if (list.usesNameLookup()) {
 			return fetchByName(list, uuid);
+		}
+		if (list.isCatPvp()) {
+			return fetchCatPvp(list, uuid);
 		}
 		String id = list.usesDashedUuid() ? uuid.toString() : uuid.toString().replace("-", "");
 		HttpRequest request = HttpRequest.newBuilder(URI.create(list.endpoint() + id))
@@ -587,6 +601,73 @@ public class TierService {
 		} catch (Exception e) {
 			return 0L;
 		}
+	}
+
+	/**
+	 * CatPVP renders its profiles server-side rather than serving JSON: its
+	 * public API host is behind a port that is not reliably reachable, but the
+	 * page embeds the same payload, so the rankings are read out of that.
+	 *
+	 * <p>The embedded block is HTML-escaped JSON of the form
+	 * <pre>
+	 * "spearmace":{"mu":..,"sigma":..,"rating":3463,
+	 *              "rank":"Netherite I","rankColor":"#443A3B"}
+	 * </pre>
+	 * Only the fields we need are pulled out, by scanning rather than parsing
+	 * the whole document -- the payload sits inside a script tag and is not
+	 * valid JSON on its own.
+	 */
+	private PlayerTiers fetchCatPvp(TierList list, UUID uuid) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create(list.endpoint() + uuid))
+				.header("Accept", "text/html")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() == 404) {
+			return new PlayerTiers(list, "", System.currentTimeMillis());
+		}
+		if (response.statusCode() != 200) {
+			throw new IllegalStateException(list.key() + " returned HTTP " + response.statusCode());
+		}
+
+		// The payload is escaped for embedding, so unescape before matching.
+		String body = response.body().replace("\\\"", "\"");
+		PlayerTiers result = new PlayerTiers(list, catName(body), System.currentTimeMillis());
+
+		Matcher matcher = CAT_RANKING.matcher(body);
+		while (matcher.find()) {
+			String key = matcher.group(1);
+			int rating = Integer.parseInt(matcher.group(2));
+			String rankName = matcher.group(3);
+			int color = parseHexColor(matcher.group(4));
+
+			Tier tier = Tier.named(rankName, color);
+			if (!tier.isRanked()) {
+				continue;
+			}
+
+			Gamemode mode = Gamemode.byKey(key);
+			String label = mode != null ? mode.displayName() : key;
+			if (mode != null) {
+				result.put(mode, tier);
+			} else {
+				result.putUnknown(key, tier);
+			}
+
+			// Elo goes in the tooltip. There is no tier floor or ceiling to
+			// draw a progress bar from, so those stay zero.
+			result.detail(label, new TierDetail(0L, rating, 0, 0, 0, "", 0, null));
+		}
+		return result;
+	}
+
+	/** The player's name from the page title, or empty when absent. */
+	private static String catName(String body) {
+		Matcher matcher = CAT_NAME.matcher(body);
+		return matcher.find() ? matcher.group(1) : "";
 	}
 
 	public void shutdown() {

@@ -15,7 +15,8 @@ public enum TierList {
 	PVPTIERS("pvptiers", "PvPTiers", "https://pvptiers.com/api/profile/", false),
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/profile/", false),
 	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/profile/", false),
-	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false);
+	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false),
+	CATPVP("catpvp", "CatPVP", "https://catpvp.net/player/", true);
 
 	private final String key;
 	private final String displayName;
@@ -56,6 +57,11 @@ public enum TierList {
 		return this == MCPVP;
 	}
 
+	/** CatPVP ranks by Elo with named ranks, and needs its own parser. */
+	public boolean isCatPvp() {
+		return this == CATPVP;
+	}
+
 	/**
 	 * True when the endpoint takes a player name rather than a UUID, and so
 	 * needs the name resolved before a lookup can be made.
@@ -90,6 +96,9 @@ public enum TierList {
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_smp",
 					"manhunt", "minecart", "og_vanilla", "speed", "trident");
 			case MCPVP -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
+					"uhc", "vanilla");
+			case CATPVP -> modes("axe", "beast", "bow", "bridge", "cart", "creeper",
+					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
 					"uhc", "vanilla");
 		};
 	}

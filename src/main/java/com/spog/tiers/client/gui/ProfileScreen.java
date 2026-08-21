@@ -492,7 +492,7 @@ public class ProfileScreen extends Screen {
 
 		// Fixed geometry: cards are the same size whether two lists load or
 		// four. The grid is sized to fill the profile card's height so the
-		// longest list (SubTiers can hit 13 modes) has room instead of
+		// longest list (CatPVP ranks 14 modes) has room instead of
 		// spilling past the card edge.
 		int rowsNeeded = CARD_ROWS;
 		for (Card card : cards) {
@@ -724,7 +724,9 @@ public class ProfileScreen extends Screen {
 		List<Line> lines = new ArrayList<>();
 
 		Tier tier = target.row().tier();
-		lines.add(new Line(target.row().label() + " " + tier.bareLabel(), tier.color()));
+		// Named ranks are abbreviated on the card (N1), so the tooltip is where
+		// the full name is spelled out.
+		lines.add(new Line(target.row().label() + " " + tier.fullName(), tier.color()));
 		if (tier.retired()) {
 			lines.add(new Line("(Retired)", MUTED_COLOR));
 		}
@@ -746,7 +748,7 @@ public class ProfileScreen extends Screen {
 		// speak for itself.
 		if (target.row().showsPeak()) {
 			Tier peak = target.row().peak();
-			lines.add(new Line("Peak tier " + peak.bareLabel(), peak.color()));
+			lines.add(new Line("Peak tier " + peak.fullName(), peak.color()));
 			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
 				lines.add(new Line("Peak rating " + detail.peakRating(), MUTED_COLOR));
 			}

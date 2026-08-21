@@ -33,7 +33,9 @@ public enum Gamemode {
 	MINECART("minecart", "Minecart", 0xFFB98A5A),
 	OG_VANILLA("og_vanilla", "OG Vanilla", 0xFF95D5B2),
 	SPEED("speed", "Speed", 0xFF48CAE4),
-	TRIDENT("trident", "Trident", 0xFF00B4D8);
+	TRIDENT("trident", "Trident", 0xFF00B4D8),
+	BEAST("beast", "Beast", 0xFFE0685A),
+	BRIDGE("bridge", "Bridge", 0xFF7FB7E8);
 
 	private final String key;
 	private final String displayName;
@@ -79,6 +81,8 @@ public enum Gamemode {
 			case "crystalpvp" -> CRYSTAL;
 			case "htcart", "hightiercart" -> CART;
 			case "diamondcrystal" -> DIA_CRYSTAL;
+			case "potion" -> POT;
+			case "spear" -> SPEAR_MACE;
 			default -> null;
 		};
 	}
