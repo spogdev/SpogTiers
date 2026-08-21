@@ -601,7 +601,10 @@ public class ProfileScreen extends Screen {
 			}
 
 			int labelX = textX;
-			if (row.iconKey() != null) {
+			// Only blit artwork the list actually ships: a provider can rank a
+			// mode we have no icon for, and a missing texture draws the magenta
+			// chequer across the row.
+			if (row.iconKey() != null && hasIcon(card.list(), row.iconKey())) {
 				Identifier icon = Identifier.fromNamespaceAndPath(
 						SpogTiers.MOD_ID, card.list().modeIconPath(row.iconKey()));
 				graphics.blit(RenderPipelines.GUI_TEXTURED, icon,
@@ -630,6 +633,12 @@ public class ProfileScreen extends Screen {
 					valueX - labelOffset, textY, row.tier().color());
 			textY += ROW_HEIGHT;
 		}
+	}
+
+	/** True when the list declares this mode, and so ships artwork for it. */
+	private static boolean hasIcon(TierList list, String modeKey) {
+		Gamemode mode = Gamemode.byKey(modeKey);
+		return mode != null && list.gamemodes().contains(mode);
 	}
 
 	/**

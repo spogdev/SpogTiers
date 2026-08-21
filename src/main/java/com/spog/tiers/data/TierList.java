@@ -90,7 +90,7 @@ public enum TierList {
 			case MCTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
 					"uhc", "vanilla");
 			case PVPHQ -> modes("axe", "cart", "crystal", "dia_smp", "mace", "neth_pot",
-					"pot", "smp", "spear_mace", "sword", "uhc");
+					"pot", "smp", "spear_mace", "sword", "uhc", "vanilla");
 			case PVPTIERS -> modes("axe", "crystal", "mace", "neth_pot", "pot", "smp",
 					"sword", "uhc");
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_smp",

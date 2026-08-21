@@ -41,7 +41,7 @@ public final class ModeIcons {
 					"axe", "mace", "neth_pot", "pot", "smp", "sword", "uhc", "vanilla"),
 			TierList.PVPHQ, List.of(
 					"axe", "cart", "crystal", "dia_smp", "mace", "neth_pot", "pot",
-					"smp", "spear_mace", "sword", "uhc"),
+					"smp", "spear_mace", "sword", "uhc", "vanilla"),
 			TierList.PVPTIERS, List.of(
 					"axe", "crystal", "mace", "neth_pot", "pot", "smp", "sword", "uhc"),
 			TierList.SUBTIERS, List.of(

@@ -76,7 +76,7 @@ public enum Gamemode {
 		}
 		// Aliases that do not simply differ by separator.
 		return switch (needle) {
-			case "nethop", "netherite", "nethpot", "npot" -> NETH_POT;
+			case "nethop", "netherite", "netheritepot", "nethpot", "npot" -> NETH_POT;
 			case "diamondsmp", "diasmp" -> DIA_SMP;
 			case "crystalpvp" -> CRYSTAL;
 			case "htcart", "hightiercart" -> CART;

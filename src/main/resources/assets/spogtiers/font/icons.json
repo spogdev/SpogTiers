@@ -371,7 +371,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/axe.png",
+			"file": "spogtiers:gui/modes/pvphq/vanilla.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -380,7 +380,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/crystal.png",
+			"file": "spogtiers:gui/modes/pvptiers/axe.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -389,7 +389,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/mace.png",
+			"file": "spogtiers:gui/modes/pvptiers/crystal.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -398,7 +398,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/neth_pot.png",
+			"file": "spogtiers:gui/modes/pvptiers/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -407,7 +407,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/pot.png",
+			"file": "spogtiers:gui/modes/pvptiers/neth_pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -416,7 +416,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/smp.png",
+			"file": "spogtiers:gui/modes/pvptiers/pot.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -425,7 +425,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/sword.png",
+			"file": "spogtiers:gui/modes/pvptiers/smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -434,7 +434,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/pvptiers/uhc.png",
+			"file": "spogtiers:gui/modes/pvptiers/sword.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -443,7 +443,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/bed.png",
+			"file": "spogtiers:gui/modes/pvptiers/uhc.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -452,7 +452,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/bow.png",
+			"file": "spogtiers:gui/modes/subtiers/bed.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -461,7 +461,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/creeper.png",
+			"file": "spogtiers:gui/modes/subtiers/bow.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -470,7 +470,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/debuff.png",
+			"file": "spogtiers:gui/modes/subtiers/creeper.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -479,7 +479,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/dia_crystal.png",
+			"file": "spogtiers:gui/modes/subtiers/debuff.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -488,7 +488,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/dia_smp.png",
+			"file": "spogtiers:gui/modes/subtiers/dia_crystal.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -497,7 +497,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/elytra.png",
+			"file": "spogtiers:gui/modes/subtiers/dia_smp.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -506,7 +506,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/mace.png",
+			"file": "spogtiers:gui/modes/subtiers/elytra.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -515,7 +515,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
+			"file": "spogtiers:gui/modes/subtiers/mace.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -524,7 +524,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/minecart.png",
+			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -533,7 +533,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
+			"file": "spogtiers:gui/modes/subtiers/minecart.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -542,7 +542,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/speed.png",
+			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -551,11 +551,20 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/trident.png",
+			"file": "spogtiers:gui/modes/subtiers/speed.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
 				""
+			]
+		},
+		{
+			"type": "bitmap",
+			"file": "spogtiers:gui/modes/subtiers/trident.png",
+			"ascent": 7,
+			"height": 8,
+			"chars": [
+				""
 			]
 		}
 	]
