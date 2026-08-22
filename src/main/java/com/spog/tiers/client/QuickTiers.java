@@ -62,7 +62,12 @@ public final class QuickTiers {
 		if (!pressed || client.player == null || client.level == null) {
 			return;
 		}
-		// Not while a screen is open: the press belongs to that screen.
+		// Pressing again with the viewer open closes it, so the key toggles.
+		if (client.screen instanceof ProfileScreen) {
+			client.setScreen(null);
+			return;
+		}
+		// Any other screen owns the press.
 		if (client.screen != null) {
 			return;
 		}
