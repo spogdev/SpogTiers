@@ -78,6 +78,9 @@ public class TierService {
 	private final Deque<UUID> queue = new ArrayDeque<>();
 	private final ExecutorService workers;
 	private final HttpClient http;
+	/** How long each list took to answer its last lookup, in milliseconds. */
+	private final Map<TierList, Integer> responseMillis = new ConcurrentHashMap<>();
+
 	/** UUID to name, for the lists that can only be searched by name. */
 	private final Map<UUID, String> names = new ConcurrentHashMap<>();
 	/** Past names per player, fetched on demand by the profile screen. */
@@ -171,13 +174,18 @@ public class TierService {
 			if (!config.isEnabled(list)) {
 				continue;
 			}
+			long startedAt = System.nanoTime();
 			try {
 				PlayerTiers result = fetchOne(list, uuid);
+				// Timed around the whole fetch, so it reflects what the user
+				// actually waited for rather than the socket alone.
+				responseMillis.put(list, (int) ((System.nanoTime() - startedAt) / 1_000_000L));
 				if (result != null) {
 					cache.put(uuid, list, result);
 					any = true;
 				}
 			} catch (Exception e) {
+				responseMillis.remove(list);
 				SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
 			}
 		}
@@ -1016,6 +1024,12 @@ public class TierService {
 
 	private static String catKey(String name, TierList list, Gamemode mode) {
 		return name.toLowerCase(Locale.ROOT) + "/" + boardKey(list, mode);
+	}
+
+	/** The last round trip for a list, or -1 when it has not answered yet. */
+	public int responseMillis(TierList list) {
+		Integer millis = responseMillis.get(list);
+		return millis == null ? -1 : millis;
 	}
 
 	public void shutdown() {
