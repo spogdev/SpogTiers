@@ -652,9 +652,11 @@ public class ProfileScreen extends Screen {
 		for (Row row : card.rows()) {
 			// Measure the bare label: the R on a retired tier hangs into the
 			// gap on the left, so the tier codes stay aligned down the column.
-			widestValue = Math.max(widestValue, textRenderer.getWidth(row.tier().bareLabel()));
-			if (row.placing()) {
-				widestValue = Math.max(widestValue, textRenderer.getWidth(row.run()));
+			// Only real tier codes set the column width. A placement run is
+			// wider than any of them, and letting it in dragged the whole
+			// column left to line up with the run instead.
+			if (!row.placing()) {
+				widestValue = Math.max(widestValue, textRenderer.getWidth(row.tier().bareLabel()));
 			}
 			if (row.showsPeak()) {
 				widestPeak = Math.max(widestPeak, textRenderer.getWidth(row.peak().label()));
@@ -683,17 +685,7 @@ public class ProfileScreen extends Screen {
 			}
 			graphics.drawTextWithShadow(textRenderer, Text.literal(row.label()), labelX, textY, row.accent());
 
-			// Standing in this gamemode, to the right of its name.
-			Gamemode rowMode = row.iconKey() == null ? null : Gamemode.byKey(row.iconKey());
-			if (rowMode != null && card.list().publishesModeRanks()) {
-				SpogTiersClient.service().requestTopRanks(card.list(), rowMode);
-				int modeRank = SpogTiersClient.service()
-						.topRank(target, card.list(), rowMode);
-				if (modeRank > 0) {
-					drawRankTag(graphics, labelX + textRenderer.getWidth(row.label()) + 4,
-							textY - 3, modeRank);
-				}
-			}
+
 
 			// Peak sits to the left of the current tier, struck through to read
 			// as "used to be".
@@ -891,16 +883,20 @@ public class ProfileScreen extends Screen {
 
 			// TR is progress toward the next tier, always out of 100. The old
 			// line divided the rating band instead, which is a different
-			// number entirely.
-			if (detail.hasTierPoints()) {
+			// number entirely. A player still placing has neither: the run is
+			// the whole story, and their rating is provisional.
+			if (detail.isPlacing()) {
+				bar = false;
+			} else if (detail.hasTierPoints()) {
 				lines.add(new Line("TR " + detail.tierPoints() + "/"
 						+ TierDetail.TIER_POINT_TARGET, 0xFFE4EAF2));
+				bar = detail.tierCeiling() > detail.tierFloor();
 			} else {
 				lines.add(new Line("Elo " + detail.rating(), 0xFFE4EAF2));
+				// The bar shows how far through the current tier the rating
+				// sits; naming the next tier is redundant.
+				bar = detail.tierCeiling() > detail.tierFloor();
 			}
-			// The bar shows how far through the current tier the rating sits;
-			// naming the next tier is redundant, players know the ladder.
-			bar = detail.tierCeiling() > detail.tierFloor();
 		} else if (detail.hasAttained()) {
 			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
 		} else {
@@ -911,10 +907,11 @@ public class ProfileScreen extends Screen {
 		// speak for itself.
 		if (target.row().showsPeak()) {
 			Tier peak = target.row().peak();
-			lines.add(new Line("Peak tier " + peak.fullName(), peak.color()));
+			String label = "Peak tier " + peak.fullName();
 			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
-				lines.add(new Line("Peak rating " + detail.peakRating(), MUTED_COLOR));
+				label += " (" + detail.peakRating() + ")";
 			}
+			lines.add(new Line(label, peak.color()));
 		}
 
 		int textWidth = 0;
