@@ -903,7 +903,7 @@ public class ProfileScreen extends Screen {
 			} else if (detail.hasTierPoints()) {
 				lines.add(new Line("TR " + detail.tierPoints() + "/"
 						+ TierDetail.TIER_POINT_TARGET, 0xFFE4EAF2));
-				bar = detail.tierCeiling() > detail.tierFloor();
+				bar = false;
 			} else {
 				lines.add(new Line("Elo " + detail.rating(), 0xFFE4EAF2));
 				// The bar shows how far through the current tier the rating

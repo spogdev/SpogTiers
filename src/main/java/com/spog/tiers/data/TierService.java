@@ -525,7 +525,8 @@ public class TierService {
 					placementTarget,
 					intOr(value, "testGames", 0),
 					intOr(value, "testTarget", 0),
-					intOr(value, "tierProgress", 0)));
+					intOr(value, "tierProgress", 0),
+					value.has("hasTr") && value.get("hasTr").getAsBoolean()));
 		}
 		return result;
 	}

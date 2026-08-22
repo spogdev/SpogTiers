@@ -21,19 +21,20 @@ public record TierDetail(
 		int placementTarget,
 		int testGames,
 		int testTarget,
-		int tierPoints) {
+		int tierPoints,
+		boolean reportsTierPoints) {
 
 	/** Tier points always run to this, whatever the tier. */
 	public static final int TIER_POINT_TARGET = 100;
 
 	public static final TierDetail EMPTY =
-			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0);
+			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false);
 
 	/** The shape the other providers use, which report no placement games. */
 	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
 			int tierCeiling, String nextTier, int peakPoints, Tier peak) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
-				peakPoints, peak, 0, 0, 0, 0, 0);
+				peakPoints, peak, 0, 0, 0, 0, 0, false);
 	}
 
 	/**
@@ -44,7 +45,10 @@ public record TierDetail(
 	 * their tier's rating band and still hold few tier points.
 	 */
 	public boolean hasTierPoints() {
-		return tierPoints > 0;
+		// PVPHQ's own flag, not the value: a player who has just entered a
+		// tier legitimately sits at 0 TR, and testing the number would have
+		// shown them a raw Elo instead.
+		return reportsTierPoints;
 	}
 
 	/**
