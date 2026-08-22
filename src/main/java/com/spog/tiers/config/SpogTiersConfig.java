@@ -49,6 +49,14 @@ public class SpogTiersConfig {
 	/** How the rows inside each tier list card are ordered. */
 	public SortOrder sortOrder = SortOrder.DEFAULT;
 
+	/**
+	 * Show gamemodes a player is still placing into.
+	 *
+	 * <p>Only PVPHQ reports these. They carry no tier yet, so hiding them
+	 * leaves a card showing just the ranks actually held.
+	 */
+	public boolean showPlacements = true;
+
 	/** Show the region code before the name. */
 	public boolean showRegionOnNametag = false;
 
