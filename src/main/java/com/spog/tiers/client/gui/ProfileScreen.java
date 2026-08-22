@@ -731,6 +731,12 @@ public class ProfileScreen extends Screen {
 		}
 	}
 
+	/** Whether placement rows are wanted at all. */
+	private static boolean showPlacements() {
+		SpogTiersConfig config = SpogTiersClient.config();
+		return config == null || config.showPlacements;
+	}
+
 	/** True when the list declares this mode, and so ships artwork for it. */
 	private static boolean hasIcon(TierList list, String modeKey) {
 		Gamemode mode = Gamemode.byKey(modeKey);
@@ -748,12 +754,13 @@ public class ProfileScreen extends Screen {
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
 			// A player mid-placement holds no tier yet, but the run itself is
-			// worth a row.
-			if (tier.isRanked() || tiers.detail(mode.displayName()).isPlacing()) {
+			// worth a row -- unless the user has turned those off.
+			if (tier.isRanked()
+					|| (showPlacements() && tiers.detail(mode.displayName()).isPlacing())) {
 				TierDetail detail = tiers.detail(mode.displayName());
 				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key(),
 						detail.peak(), detail.attainedSeconds(),
-						detail.runLabel(), detail.isPlacing()));
+						detail.runLabel(), detail.isPlacing(), detail.placementGames()));
 				seen.add(mode.displayName());
 			}
 		}
@@ -762,7 +769,7 @@ public class ProfileScreen extends Screen {
 				TierDetail detail = tiers.detail(entry.getKey());
 				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null,
 						detail.peak(), detail.attainedSeconds(),
-						detail.runLabel(), detail.isPlacing()));
+						detail.runLabel(), detail.isPlacing(), detail.placementGames()));
 			}
 		}
 
@@ -781,26 +788,32 @@ public class ProfileScreen extends Screen {
 		SpogTiersConfig config = SpogTiersClient.config();
 		SpogTiersConfig.SortOrder order =
 				config == null ? SpogTiersConfig.SortOrder.DEFAULT : config.sortOrder;
-		if (order == null || order == SpogTiersConfig.SortOrder.DEFAULT) {
-			return;
-		}
 
-		switch (order) {
-			// Most recently earned first.
-			case DATE_OBTAINED -> rows.sort(Comparator
-					.comparingLong((Row row) -> row.attained() > 0 ? 0 : 1)
-					.thenComparing(Comparator.comparingLong(Row::attained).reversed()));
-			// Best first. ladderOrdinal covers both the numbered lists and
-			// CatPVP's named ranks, which do not fit tier/position cleanly.
-			case RANKING -> rows.sort(
-					Comparator.comparingInt(row -> row.tier().ladderOrdinal()));
-			// The same, but a row is judged on its peak where it has one, so a
-			// decayed rank still sorts by how high the player once reached.
-			case RANKING_PEAK -> rows.sort(
-					Comparator.comparingInt(ProfileScreen::peakOrdinal));
-			default -> {
+		if (order != null && order != SpogTiersConfig.SortOrder.DEFAULT) {
+			switch (order) {
+				// Most recently earned first.
+				case DATE_OBTAINED -> rows.sort(Comparator
+						.comparingLong((Row row) -> row.attained() > 0 ? 0 : 1)
+						.thenComparing(Comparator.comparingLong(Row::attained).reversed()));
+				// Best first. ladderOrdinal covers both the numbered lists and
+				// CatPVP's named ranks, which do not fit tier/position cleanly.
+				case RANKING -> rows.sort(
+						Comparator.comparingInt(row -> row.tier().ladderOrdinal()));
+				// The same, but a row is judged on its peak where it has one, so
+				// a decayed rank still sorts by how high the player once reached.
+				case RANKING_PEAK -> rows.sort(
+						Comparator.comparingInt(ProfileScreen::peakOrdinal));
+				default -> {
+				}
 			}
 		}
+
+		// Placements sink below the ranks the player actually holds, whatever
+		// the chosen order, and run from least to most complete. A stable sort
+		// keeps the order above from being disturbed.
+		rows.sort(Comparator
+				.comparingInt((Row row) -> row.placing() ? 1 : 0)
+				.thenComparingInt(row -> row.placing() ? row.placementGames() : 0));
 	}
 
 	/**
@@ -816,7 +829,7 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak,
-			long attained, String run, boolean placing) {
+			long attained, String run, boolean placing, int placementGames) {
 		/** Only worth showing a peak that is actually better than the current tier. */
 		boolean showsPeak() {
 			if (peak == null || !peak.isRanked()) {

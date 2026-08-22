@@ -228,7 +228,7 @@ public class ConfigScreen extends Screen {
 
 		graphics.drawTextWithShadow(textRenderer, Text.literal("General"), x, y, 0xFFFFFFFF);
 		y += textRenderer.fontHeight + 4;
-		graphics.drawTextWithShadow(textRenderer, Text.literal("How the rows inside each tierlist card are ordered."),
+		graphics.drawTextWithShadow(textRenderer, Text.literal("How the rows inside each tierlist card are shown."),
 				x, y, MUTED_COLOR);
 		y += textRenderer.fontHeight + 10;
 
@@ -242,7 +242,17 @@ public class ConfigScreen extends Screen {
 		sortOrder.setBounds(x + 118, y - 4, 130);
 		sortOrder.draw(graphics, textRenderer, config.sortOrder, mouseX, mouseY);
 
-		y += ROW_HEIGHT;
+		y += ROW_HEIGHT + 8;
+
+		y = drawSwitch(graphics, "Placements", config.showPlacements, x, y,
+				() -> {
+					config.showPlacements = !config.showPlacements;
+					config.save();
+				});
+		graphics.drawTextWithShadow(textRenderer, Text.literal("PVPHQ gamemodes still being placed into."),
+				x, y + 2, MUTED_COLOR);
+		y += textRenderer.fontHeight + 2;
+
 		return y + CARD_PADDING - top;
 	}
 
