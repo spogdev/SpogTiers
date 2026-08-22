@@ -903,7 +903,13 @@ public class ProfileScreen extends Screen {
 			} else if (detail.hasTierPoints()) {
 				lines.add(new Line("TR " + detail.tierPoints() + "/"
 						+ TierDetail.TIER_POINT_TARGET, 0xFFE4EAF2));
-				bar = detail.tierCeiling() > detail.tierFloor();
+				// What is actually left to climb, which is the figure the site
+				// leads with.
+				int remaining = TierDetail.TIER_POINT_TARGET - detail.tierPoints();
+				if (remaining > 0 && detail.hasNextTier()) {
+					lines.add(new Line(remaining + " TR to " + detail.nextTier(), MUTED_COLOR));
+				}
+				bar = false;
 			} else {
 				lines.add(new Line("Elo " + detail.rating(), 0xFFE4EAF2));
 				// The bar shows how far through the current tier the rating
