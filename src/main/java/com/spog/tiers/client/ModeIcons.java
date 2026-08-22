@@ -15,8 +15,8 @@ import java.util.Map;
  *
  * <p>Nametags, chat and the tab list are {@link Text}s, which can only
  * carry text -- there is no way to blit a texture into one. So every icon is
- * also published as a glyph in {@code assets/spogtiers/font/icons.json},
- * mapped onto the private-use area, and drawn by switching the style's font.
+ * also published as a glyph in {@code assets/spogtiers/textRenderer/icons.json},
+ * mapped onto the private-use area, and drawn by switching the style's textRenderer.
  *
  * <p>The codepoints are assigned in sorted order by the generator, so the same
  * ordering is reproduced here rather than hard-coding 40 constants.
@@ -28,7 +28,7 @@ public final class ModeIcons {
 	private static final int FIRST_CODEPOINT = 0xE000;
 
 	/**
-	 * Modes per list, in the same sorted order the font generator walked, so
+	 * Modes per list, in the same sorted order the textRenderer generator walked, so
 	 * index arithmetic lands on the right glyph.
 	 */
 	private static final Map<TierList, List<String>> MODES = Map.of(
@@ -46,7 +46,7 @@ public final class ModeIcons {
 					"axe", "crystal", "mace", "neth_pot", "pot", "smp", "sword", "uhc"),
 			TierList.SUBTIERS, List.of(
 					"bed", "bow", "creeper", "debuff", "dia_crystal", "dia_smp",
-					"elytra", "mace", "manhunt", "minecart", "og_vanilla", "speed",
+					"elytra", "manhunt", "minecart", "og_vanilla", "speed",
 					"trident"));
 
 	/** Lists in the order the generator saw them: sorted by directory name. */

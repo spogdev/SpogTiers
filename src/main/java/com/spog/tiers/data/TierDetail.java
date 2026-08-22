@@ -16,10 +16,48 @@ public record TierDetail(
 		int tierCeiling,
 		String nextTier,
 		int peakPoints,
-		Tier peak) {
+		Tier peak,
+		int placementGames,
+		int placementTarget,
+		int testGames,
+		int testTarget) {
 
 	public static final TierDetail EMPTY =
-			new TierDetail(0L, 0, 0, 0, 0, "", 0, null);
+			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0);
+
+	/** The shape the other providers use, which report no placement games. */
+	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
+			int tierCeiling, String nextTier, int peakPoints, Tier peak) {
+		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
+				peakPoints, peak, 0, 0, 0, 0);
+	}
+
+	/**
+	 * True while the player is still placing into a rank they do not hold yet.
+	 *
+	 * <p>PVPHQ withholds a tier until the placement run is finished, so this is
+	 * what a row shows in place of one.
+	 */
+	public boolean isPlacing() {
+		return placementTarget > 0 && placementGames < placementTarget;
+	}
+
+	/**
+	 * True while a ranked player is playing the short run that decides whether
+	 * they move up. Unlike placement they already have a tier, so this is shown
+	 * alongside it rather than instead of it.
+	 */
+	public boolean isTesting() {
+		return testTarget > 0 && testGames < testTarget;
+	}
+
+	/** Progress through a placement or test run, e.g. {@code 3/10}. */
+	public String runLabel() {
+		if (isPlacing()) {
+			return placementGames + "/" + placementTarget;
+		}
+		return isTesting() ? testGames + "/" + testTarget : "";
+	}
 
 	/**
 	 * True when the list reports tier points rather than a raw rating. PVPHQ

@@ -99,7 +99,8 @@ public class SpogTiersConfig {
 	public enum SortOrder {
 		DEFAULT("Default"),
 		DATE_OBTAINED("Date obtained"),
-		RANKING("Ranking");
+		RANKING("Ranking"),
+		RANKING_PEAK("Ranking (Peak inclusive)");
 
 		private final String title;
 

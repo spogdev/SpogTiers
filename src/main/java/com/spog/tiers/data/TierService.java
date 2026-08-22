@@ -486,11 +486,17 @@ public class TierService {
 				continue;
 			}
 			JsonObject value = element.getAsJsonObject();
-			if (value.has("unranked") && value.get("unranked").getAsBoolean()) {
+			int placementGames = intOr(value, "placementGames", 0);
+			int placementTarget = intOr(value, "placementTarget", 0);
+			boolean placing = placementTarget > 0 && placementGames < placementTarget;
+
+			// An unranked row is normally noise, but one mid-placement is worth
+			// showing: the run itself is displayed where the tier would go.
+			if (value.has("unranked") && value.get("unranked").getAsBoolean() && !placing) {
 				continue;
 			}
 			Tier tier = Tier.parseLabel(string(value, "tier"), parseHexColor(string(value, "tierColor")));
-			if (!tier.isRanked()) {
+			if (!tier.isRanked() && !placing) {
 				continue;
 			}
 
@@ -514,7 +520,11 @@ public class TierService {
 					intOr(value, "tierCeiling", 0),
 					string(value, "nextTier"),
 					intOr(value, "peakTr", 0),
-					Tier.parseLabel(string(value, "peakTier"), 0)));
+					Tier.parseLabel(string(value, "peakTier"), 0),
+					placementGames,
+					placementTarget,
+					intOr(value, "testGames", 0),
+					intOr(value, "testTarget", 0)));
 		}
 		return result;
 	}
