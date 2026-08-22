@@ -515,7 +515,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/mace.png",
+			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -524,7 +524,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/manhunt.png",
+			"file": "spogtiers:gui/modes/subtiers/minecart.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -533,7 +533,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/minecart.png",
+			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -542,7 +542,7 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/og_vanilla.png",
+			"file": "spogtiers:gui/modes/subtiers/speed.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
@@ -551,20 +551,11 @@
 		},
 		{
 			"type": "bitmap",
-			"file": "spogtiers:gui/modes/subtiers/speed.png",
-			"ascent": 7,
-			"height": 8,
-			"chars": [
-				""
-			]
-		},
-		{
-			"type": "bitmap",
 			"file": "spogtiers:gui/modes/subtiers/trident.png",
 			"ascent": 7,
 			"height": 8,
 			"chars": [
-				""
+				""
 			]
 		}
 	]

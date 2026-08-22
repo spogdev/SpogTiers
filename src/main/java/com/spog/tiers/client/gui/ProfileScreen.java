@@ -62,6 +62,8 @@ public class ProfileScreen extends Screen {
 	private static final int TOOLTIP_PADDING = 6;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
+	/** Placement runs read as pending rather than as a rank. */
+	private static final int PLACEMENT_COLOR = 0xFF7FA8C9;
 	private static final int CARD_FILL = 0x50161B22;
 	private static final int CARD_BORDER = 0x70323B47;
 
@@ -651,6 +653,9 @@ public class ProfileScreen extends Screen {
 			// Measure the bare label: the R on a retired tier hangs into the
 			// gap on the left, so the tier codes stay aligned down the column.
 			widestValue = Math.max(widestValue, font.width(row.tier().bareLabel()));
+			if (row.placing()) {
+				widestValue = Math.max(widestValue, font.width(row.run()));
+			}
 			if (row.showsPeak()) {
 				widestPeak = Math.max(widestPeak, font.width(row.peak().label()));
 			}
@@ -701,6 +706,17 @@ public class ProfileScreen extends Screen {
 						peakX + font.width(peakLabel), textY + font.lineHeight / 2 + 1, peakColor);
 			}
 
+			// While placing there is no tier to show, so the run goes in its
+			// place -- that is the useful fact about the row.
+			if (row.placing()) {
+				String run = row.run();
+				graphics.text(font, Component.literal(run),
+						valueX + font.width(row.tier().bareLabel()) - font.width(run),
+						textY, PLACEMENT_COLOR);
+				textY += ROW_HEIGHT;
+				continue;
+			}
+
 			// Draw from the bare label's slot so the R extends leftward and the
 			// tier codes themselves stay in one column.
 			String label = row.tier().label();
@@ -727,10 +743,13 @@ public class ProfileScreen extends Screen {
 
 		for (Gamemode mode : Gamemode.values()) {
 			Tier tier = tiers.get(mode);
-			if (tier.isRanked()) {
+			// A player mid-placement holds no tier yet, but the run itself is
+			// worth a row.
+			if (tier.isRanked() || tiers.detail(mode.displayName()).isPlacing()) {
 				TierDetail detail = tiers.detail(mode.displayName());
 				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key(),
-						detail.peak(), detail.attainedSeconds()));
+						detail.peak(), detail.attainedSeconds(),
+						detail.runLabel(), detail.isPlacing()));
 				seen.add(mode.displayName());
 			}
 		}
@@ -738,7 +757,8 @@ public class ProfileScreen extends Screen {
 			if (entry.getValue().isRanked() && seen.add(entry.getKey())) {
 				TierDetail detail = tiers.detail(entry.getKey());
 				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null,
-						detail.peak(), detail.attainedSeconds()));
+						detail.peak(), detail.attainedSeconds(),
+						detail.runLabel(), detail.isPlacing()));
 			}
 		}
 
@@ -770,13 +790,29 @@ public class ProfileScreen extends Screen {
 			// CatPVP's named ranks, which do not fit tier/position cleanly.
 			case RANKING -> rows.sort(
 					Comparator.comparingInt(row -> row.tier().ladderOrdinal()));
+			// The same, but a row is judged on its peak where it has one, so a
+			// decayed rank still sorts by how high the player once reached.
+			case RANKING_PEAK -> rows.sort(
+					Comparator.comparingInt(ProfileScreen::peakOrdinal));
 			default -> {
 			}
 		}
 	}
 
+	/**
+	 * The ordinal a row sorts on when peaks count: the better of the current
+	 * tier and the peak, so a row never sorts worse than the rank it holds.
+	 */
+	private static int peakOrdinal(Row row) {
+		int current = row.tier().ladderOrdinal();
+		if (row.peak() == null || !row.peak().isRanked()) {
+			return current;
+		}
+		return Math.min(current, row.peak().ladderOrdinal());
+	}
+
 	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak,
-			long attained) {
+			long attained, String run, boolean placing) {
 		/** Only worth showing a peak that is actually better than the current tier. */
 		boolean showsPeak() {
 			if (peak == null || !peak.isRanked()) {
@@ -811,7 +847,16 @@ public class ProfileScreen extends Screen {
 		Tier tier = target.row().tier();
 		// Named ranks are abbreviated on the card (N1), so the tooltip is where
 		// the full name is spelled out.
-		lines.add(new Line(target.row().label() + " " + tier.fullName(), tier.color()));
+		if (detail.isPlacing()) {
+			lines.add(new Line(target.row().label() + " placement", PLACEMENT_COLOR));
+			lines.add(new Line(detail.runLabel() + " games played", 0xFFE4EAF2));
+			lines.add(new Line("Unranked until the run is finished", MUTED_COLOR));
+		} else {
+			lines.add(new Line(target.row().label() + " " + tier.fullName(), tier.color()));
+		}
+		if (detail.isTesting()) {
+			lines.add(new Line("Test run " + detail.runLabel(), PLACEMENT_COLOR));
+		}
 		if (tier.retired()) {
 			lines.add(new Line("(Retired)", MUTED_COLOR));
 		}

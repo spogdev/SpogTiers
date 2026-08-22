@@ -46,7 +46,7 @@ public final class ModeIcons {
 					"axe", "crystal", "mace", "neth_pot", "pot", "smp", "sword", "uhc"),
 			TierList.SUBTIERS, List.of(
 					"bed", "bow", "creeper", "debuff", "dia_crystal", "dia_smp",
-					"elytra", "mace", "manhunt", "minecart", "og_vanilla", "speed",
+					"elytra", "manhunt", "minecart", "og_vanilla", "speed",
 					"trident"));
 
 	/** Lists in the order the generator saw them: sorted by directory name. */
