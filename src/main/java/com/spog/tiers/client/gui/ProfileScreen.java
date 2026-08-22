@@ -885,7 +885,7 @@ public class ProfileScreen extends Screen {
 		}
 		if (detail.isTesting()) {
 			String next = detail.hasNextTier() ? detail.nextTier() : "next tier";
-			lines.add(new Line("Attempting " + next + ": " + detail.runLabel(),
+			lines.add(new Line("Attempting " + next + " (" + detail.runLabel() + ")",
 					PLACEMENT_COLOR));
 		}
 		if (tier.retired()) {
