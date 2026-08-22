@@ -102,6 +102,12 @@ public record TierDetail(
 	 * how a player sitting at the top of a tier reads on the site.
 	 */
 	public float progress() {
+		// TR is what the tooltip states, so the bar is drawn from the same
+		// number. The rating band it used to divide is a different quantity
+		// and drifts from TR by tens of points.
+		if (reportsTierPoints) {
+			return Math.clamp(tierPoints / (float) TIER_POINT_TARGET, 0.0f, 1.0f);
+		}
 		if (!hasRating() || tierCeiling <= tierFloor) {
 			return 0.0f;
 		}
