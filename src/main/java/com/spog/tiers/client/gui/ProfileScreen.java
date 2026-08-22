@@ -3,6 +3,7 @@ package com.spog.tiers.client.gui;
 import com.mojang.authlib.GameProfile;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
@@ -1083,6 +1084,22 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Card(TierList list, List<Row> rows) {
+	}
+
+	/**
+	 * Closes on a second press of the Quick Tiers key.
+	 *
+	 * <p>Vanilla only feeds key presses to KeyMapping while no screen is open,
+	 * so the binding's own tick handler can never see this one -- the screen
+	 * has to match the key itself.
+	 */
+	@Override
+	public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+		if (QuickTiers.binding().matches(event)) {
+			onClose();
+			return true;
+		}
+		return super.keyPressed(event);
 	}
 
 	@Override
