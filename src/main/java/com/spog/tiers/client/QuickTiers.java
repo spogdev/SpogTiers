@@ -7,6 +7,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
@@ -29,12 +30,21 @@ public final class QuickTiers {
 	 */
 	private static final double MIN_AIM = 0.94;
 
+	/**
+	 * Our own heading in the Controls list.
+	 *
+	 * <p>Under vanilla's Miscellaneous the binding is easy to miss among the
+	 * game's own entries; its label comes from {@code key.category.spogtiers.main}.
+	 */
+	private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(
+			Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, "main"));
+
 	private static final KeyMapping BINDING = new KeyMapping(
 			"key.spogtiers.quick_tiers",
 			InputConstants.Type.KEYSYM,
 			// Unbound by default: the user picks a key in Controls.
 			InputConstants.UNKNOWN.getValue(),
-			KeyMapping.Category.MISC);
+			CATEGORY);
 
 	private QuickTiers() {
 	}
