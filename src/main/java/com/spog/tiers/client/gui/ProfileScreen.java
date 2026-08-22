@@ -935,7 +935,12 @@ public class ProfileScreen extends Screen {
 		if (target.row().showsPeak()) {
 			Tier peak = target.row().peak();
 			String label = "Peak tier " + peak.fullName();
-			if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
+			// Peak TR, which is what the site reports beside a peak tier. It is
+			// a lifetime total rather than progress within a tier, so unlike
+			// current TR it is not out of 100 and carries no denominator.
+			if (detail.hasTr()) {
+				label += " (" + detail.peakPoints() + " TR)";
+			} else if (detail.peakRating() > 0 && detail.peakRating() != detail.rating()) {
 				label += " (" + detail.peakRating() + ")";
 			}
 			lines.add(new Line(label, peak.color()));
