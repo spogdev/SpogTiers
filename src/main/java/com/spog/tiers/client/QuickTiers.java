@@ -62,12 +62,9 @@ public final class QuickTiers {
 		if (!pressed || client.player == null || client.world == null) {
 			return;
 		}
-		// Pressing again with the viewer open closes it, so the key toggles.
-		if (client.currentScreen instanceof ProfileScreen) {
-			client.setScreen(null);
-			return;
-		}
-		// Any other screen owns the press.
+		// A screen owns the press. The viewer closes itself on this key -- see
+		// ProfileScreen.keyPressed -- because vanilla stops feeding presses to
+		// key bindings entirely while any screen is open.
 		if (client.currentScreen != null) {
 			return;
 		}
