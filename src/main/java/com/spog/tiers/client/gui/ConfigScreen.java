@@ -7,6 +7,7 @@ import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.cursor.StandardCursors;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gl.RenderPipelines;
@@ -161,6 +162,11 @@ public class ConfigScreen extends Screen {
 
 		super.render(graphics, mouseX, mouseY, partialTick);
 
+		// Our controls are drawn rather than being widgets, so vanilla's own
+		// hover cursor never applies to them. Requested after the widgets so a
+		// control under the pointer wins over the panel behind it.
+		requestPointerCursor(graphics, mouseX, mouseY);
+
 		// Open dropdowns paint last so they overlap the rows beneath them.
 		if (active == Tab.NAMETAG) {
 			SpogTiersConfig config = config();
@@ -171,6 +177,41 @@ public class ConfigScreen extends Screen {
 		} else if (active == Tab.GENERAL) {
 			sortOrder.drawOverlay(graphics, textRenderer, config().sortOrder, mouseX, mouseY);
 		}
+	}
+
+	/**
+	 * Shows the pointing hand over anything clickable.
+	 *
+	 * <p>Zones cover the tabs, switches and rows; the dropdowns are asked
+	 * separately since their open list is not a zone.
+	 */
+	private void requestPointerCursor(DrawContext graphics, int mouseX, int mouseY) {
+		boolean over = false;
+		for (Dropdown<?> dropdown : dropdowns()) {
+			if (dropdown != null && dropdown.isHovered(textRenderer, mouseX, mouseY)) {
+				over = true;
+				break;
+			}
+		}
+		if (!over) {
+			for (Zone zone : zones) {
+				if (zone.contains(mouseX, mouseY)) {
+					over = true;
+					break;
+				}
+			}
+		}
+		if (over) {
+			graphics.setCursor(StandardCursors.POINTING_HAND);
+		}
+	}
+
+	/** Every dropdown on the active tab. */
+	private List<Dropdown<?>> dropdowns() {
+		if (active == Tab.NAMETAG) {
+			return List.of(leftList, leftMode, rightList, rightMode);
+		}
+		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
 
 	private void drawScrollbar(DrawContext graphics, int x, int top, int viewHeight, int total) {
