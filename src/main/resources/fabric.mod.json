@@ -3,9 +3,9 @@
 	"id": "spogtiers",
 	"version": "${version}",
 	"name": "SpogTiers",
-	"description": "Displays PvP tier tags next to player names.",
+	"description": "A tiertagger mod with cleaner menus and all mainstream tierlists including PVPHQ, MCPvP, CatPVP, MCTiers, PvPTiers, Subtiers",
 	"authors": [
-		"Stan"
+		"Spog"
 	],
 	"contact": {},
 	"license": "MIT",
@@ -14,6 +14,9 @@
 	"entrypoints": {
 		"client": [
 			"com.spog.tiers.SpogTiersClient"
+		],
+		"modmenu": [
+			"com.spog.tiers.client.SpogTiersModMenu"
 		]
 	},
 	"mixins": [

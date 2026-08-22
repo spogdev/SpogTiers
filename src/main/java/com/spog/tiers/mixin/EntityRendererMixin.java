@@ -14,13 +14,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Rewrites the display name carried on the render state so the in-world
  * nametag shows the tier badge. 1.21.5+ builds nametags from the render state
- * rather than the entity, so this is the single place both the label and any
- * downstream consumers pick it up from.
+ * rather than the entity, so this is the one place both the label and any
+ * downstream consumers read it from.
  */
 @Mixin(EntityRenderer.class)
 public class EntityRendererMixin {
 	@Inject(method = "updateRenderState", at = @At("TAIL"))
-	private void spogtiers$tagNameplate(Entity entity, EntityRenderState state, float tickDelta, CallbackInfo ci) {
+	private void spogtiers$tagNameplate(Entity entity, EntityRenderState state, float tickDelta,
+			CallbackInfo ci) {
 		if (SpogTiersClient.config() == null || !SpogTiersClient.config().showNametags) {
 			return;
 		}
