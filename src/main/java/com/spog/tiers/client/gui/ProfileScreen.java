@@ -86,6 +86,7 @@ public class ProfileScreen extends Screen {
 	private int tagBottom;
 	private String tagRegion = "";
 	private PanelButton closeButton;
+	private IconButton refreshButton;
 	/** Vertical band the name history occupies, set during layout. */
 	private int historyTop;
 	private int historyBottom;
@@ -145,14 +146,28 @@ public class ProfileScreen extends Screen {
 				skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2));
 		addDrawableChild(skinWidget);
 
+		// Close takes the row, less a square on the right for refresh.
+		int buttonTop = cardBottom - CARD_PADDING - 20;
+		int rowWidth = PROFILE_WIDTH - CARD_PADDING * 2;
+		int refreshSize = 20;
+
 		closeButton = new PanelButton(
 				cardLeft + CARD_PADDING,
-				cardBottom - CARD_PADDING - 20,
-				PROFILE_WIDTH - CARD_PADDING * 2,
+				buttonTop,
+				rowWidth - refreshSize - 4,
 				20,
 				Text.literal("Close"),
 				button -> close());
 		addDrawableChild(closeButton);
+
+		refreshButton = new IconButton(
+				cardLeft + CARD_PADDING + rowWidth - refreshSize,
+				buttonTop,
+				refreshSize,
+				20,
+				Text.literal("Refresh"),
+				button -> refresh());
+		addDrawableChild(refreshButton);
 	}
 
 	@Override
@@ -747,6 +762,17 @@ public class ProfileScreen extends Screen {
 	private static boolean showPlacements() {
 		SpogTiersConfig config = SpogTiersClient.config();
 		return config == null || config.showPlacements;
+	}
+
+	/**
+	 * Throws away everything cached for this player and asks again.
+	 *
+	 * <p>The name history and the leaderboard standings are session caches
+	 * rather than per-player ones, so they are left alone; the tiers are what
+	 * a refresh is for.
+	 */
+	private void refresh() {
+		SpogTiersClient.service().refresh(target);
 	}
 
 	/** True when the list declares this mode, and so ships artwork for it. */
