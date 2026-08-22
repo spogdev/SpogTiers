@@ -77,6 +77,8 @@ public class ProfileScreen extends Screen {
 	private Supplier<PlayerSkin> skin;
 	/** Row under the cursor this frame, resolved during card layout. */
 	private Hover hover;
+	/** List whose header is under the cursor, for the response-time tooltip. */
+	private TierList headerHover;
 	/** Region tag bounds, so hovering it can name the region in full. */
 	private int tagLeft;
 	private int tagTop;
@@ -161,6 +163,7 @@ public class ProfileScreen extends Screen {
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 
 		hover = null;
+		headerHover = null;
 		drawHeader(graphics);
 		drawNameHistory(graphics);
 		drawCards(graphics, mouseX, mouseY);
@@ -173,6 +176,8 @@ public class ProfileScreen extends Screen {
 		// or scaled with the grid.
 		if (hover != null) {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
+		} else if (headerHover != null) {
+			drawResponseTooltip(graphics, headerHover, mouseX, mouseY);
 		} else if (!tagRegion.isEmpty()
 				&& mouseX >= tagLeft && mouseX <= tagRight
 				&& mouseY >= tagTop && mouseY <= tagBottom) {
@@ -636,6 +641,13 @@ public class ProfileScreen extends Screen {
 				0.0f, 0.0f, LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
 		graphics.text(font, Component.literal(title),
 				headerX + LOGO_SIZE + 4, textY, 0xFFFFFFFF);
+		// Logo and name together are the hover target, which is the whole
+		// header block rather than either piece alone.
+		if (localX >= headerX && localX <= headerX + LOGO_SIZE + 4 + font.width(title)
+				&& localY >= textY - 3 && localY <= textY + font.lineHeight + 2) {
+			headerHover = card.list();
+		}
+
 		if (showRank) {
 			drawRankTag(graphics, headerX + LOGO_SIZE + 4 + font.width(title) + 4,
 					textY - 3, listRank);
@@ -809,11 +821,12 @@ public class ProfileScreen extends Screen {
 		}
 
 		// Placements sink below the ranks the player actually holds, whatever
-		// the chosen order, and run from least to most complete. A stable sort
-		// keeps the order above from being disturbed.
+		// the chosen order, with the most complete first so the run closest to
+		// finishing sits nearest the ranked rows. A stable sort keeps the order
+		// above from being disturbed.
 		rows.sort(Comparator
 				.comparingInt((Row row) -> row.placing() ? 1 : 0)
-				.thenComparingInt(row -> row.placing() ? row.placementGames() : 0));
+				.thenComparingInt(row -> row.placing() ? -row.placementGames() : 0));
 	}
 
 	/**
@@ -978,6 +991,28 @@ public class ProfileScreen extends Screen {
 	}
 
 	/** Names the region in full, in the tag's own colour. */
+	/** How long that list took to answer, and nothing else. */
+	private void drawResponseTooltip(GuiGraphicsExtractor graphics, TierList list,
+			int mouseX, int mouseY) {
+		int millis = SpogTiersClient.service().responseMillis(list);
+		if (millis < 0) {
+			return;
+		}
+
+		Font font = this.font;
+		String text = millis + "ms";
+		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
+		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
+
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.text(font, Component.literal(text),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+	}
+
 	private void drawRegionTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		Font font = this.font;
 		String name = regionName(tagRegion);
