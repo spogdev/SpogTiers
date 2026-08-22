@@ -706,13 +706,16 @@ public class ProfileScreen extends Screen {
 						peakX + font.width(peakLabel), textY + font.lineHeight / 2 + 1, peakColor);
 			}
 
+			// The value column ends here, so anything drawn in it is aligned to
+			// this edge rather than to the tier column's own left edge.
+			int valueRight = x + CARD_WIDTH - CARD_PADDING;
+
 			// While placing there is no tier to show, so the run goes in its
 			// place -- that is the useful fact about the row.
 			if (row.placing()) {
 				String run = row.run();
 				graphics.text(font, Component.literal(run),
-						valueX + font.width(row.tier().bareLabel()) - font.width(run),
-						textY, PLACEMENT_COLOR);
+						valueRight - font.width(run), textY, PLACEMENT_COLOR);
 				textY += ROW_HEIGHT;
 				continue;
 			}
@@ -723,6 +726,15 @@ public class ProfileScreen extends Screen {
 			int labelOffset = font.width(label) - font.width(row.tier().bareLabel());
 			graphics.text(font, Component.literal(label),
 					valueX - labelOffset, textY, row.tier().color());
+
+			// A test run sits in brackets to the left of the tier it is trying
+			// to leave, so the tier column itself stays aligned.
+			if (!row.run().isEmpty() && !row.placing()) {
+				String progress = "(" + row.run() + ")";
+				graphics.text(font, Component.literal(progress),
+						valueX - labelOffset - 4 - font.width(progress),
+						textY, PLACEMENT_COLOR);
+			}
 			textY += ROW_HEIGHT;
 		}
 	}
@@ -850,12 +862,13 @@ public class ProfileScreen extends Screen {
 		if (detail.isPlacing()) {
 			lines.add(new Line(target.row().label() + " placement", PLACEMENT_COLOR));
 			lines.add(new Line(detail.runLabel() + " games played", 0xFFE4EAF2));
-			lines.add(new Line("Unranked until the run is finished", MUTED_COLOR));
 		} else {
 			lines.add(new Line(target.row().label() + " " + tier.fullName(), tier.color()));
 		}
 		if (detail.isTesting()) {
-			lines.add(new Line("Test run " + detail.runLabel(), PLACEMENT_COLOR));
+			String next = detail.hasNextTier() ? detail.nextTier() : "next tier";
+			lines.add(new Line("Attempting " + next + ": " + detail.runLabel(),
+					PLACEMENT_COLOR));
 		}
 		if (tier.retired()) {
 			lines.add(new Line("(Retired)", MUTED_COLOR));
@@ -876,15 +889,14 @@ public class ProfileScreen extends Screen {
 				}
 			}
 
-			// TP is shown as progress through the current tier rather than the
-			// running total, which is what the site's own bar represents.
-			if (detail.hasTr() && detail.hasTierBounds()) {
-				lines.add(new Line("TP " + detail.pointsIntoTier() + "/" + detail.tierSpan(),
-						0xFFE4EAF2));
+			// TR is progress toward the next tier, always out of 100. The old
+			// line divided the rating band instead, which is a different
+			// number entirely.
+			if (detail.hasTierPoints()) {
+				lines.add(new Line("TR " + detail.tierPoints() + "/"
+						+ TierDetail.TIER_POINT_TARGET, 0xFFE4EAF2));
 			} else {
-				lines.add(new Line(
-						detail.hasTr() ? "TP " + detail.rating() : "Elo " + detail.rating(),
-						0xFFE4EAF2));
+				lines.add(new Line("Elo " + detail.rating(), 0xFFE4EAF2));
 			}
 			// The bar shows how far through the current tier the rating sits;
 			// naming the next tier is redundant, players know the ladder.
