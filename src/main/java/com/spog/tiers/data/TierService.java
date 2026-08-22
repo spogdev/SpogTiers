@@ -524,7 +524,8 @@ public class TierService {
 					placementGames,
 					placementTarget,
 					intOr(value, "testGames", 0),
-					intOr(value, "testTarget", 0)));
+					intOr(value, "testTarget", 0),
+					intOr(value, "tierProgress", 0)));
 		}
 		return result;
 	}
