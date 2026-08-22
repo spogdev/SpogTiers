@@ -152,6 +152,25 @@ public class Dropdown<T> {
 		}
 	}
 
+	/**
+	 * True when the cursor is over the control or, while open, over its list.
+	 *
+	 * <p>Used to pick the hover cursor, so it must match what {@link #click}
+	 * would actually accept.
+	 */
+	public boolean isHovered(Font font, int mouseX, int mouseY) {
+		int boxHeight = height(font);
+		if (contains(mouseX, mouseY, x, y, width, boxHeight)) {
+			return true;
+		}
+		if (!open || entries.isEmpty()) {
+			return false;
+		}
+		int visible = Math.min(MAX_VISIBLE, entries.size());
+		int listTop = listTop(font, visible * ROW_HEIGHT + 4);
+		return contains(mouseX, mouseY, x, listTop, width, visible * ROW_HEIGHT + 4);
+	}
+
 	/** @return true when the click was consumed */
 	public boolean click(Font font, double mouseX, double mouseY) {
 		int boxHeight = height(font);
