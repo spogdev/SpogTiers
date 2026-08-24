@@ -364,7 +364,14 @@ public class ConfigScreen extends Screen {
 					config.showRegionOnNametag = !config.showRegionOnNametag;
 					config.save();
 				});
-		y += 10;
+		y = drawSwitch(graphics, "Skip CatPVP", config.ignoreCatPvpInTags, x, y,
+				() -> {
+					config.ignoreCatPvpInTags = !config.ignoreCatPvpInTags;
+					config.save();
+				});
+		graphics.text(font, Component.literal("Leave CatPVP out of tags."),
+				x, y + 2, MUTED_COLOR);
+		y += font.lineHeight + 10;
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 8;

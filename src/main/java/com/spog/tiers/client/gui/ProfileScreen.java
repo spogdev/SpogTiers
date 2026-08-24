@@ -108,7 +108,7 @@ public class ProfileScreen extends Screen {
 
 		// Queued here rather than before the screen opens: the screen shows a
 		// loading state and fills in when the data lands, so it appears at once.
-		SpogTiersClient.service().request(target);
+		SpogTiersClient.service().requestNow(target);
 		SpogTiersClient.service().requestNameHistory(target);
 
 		// createLookup fetches from Mojang in the background and serves a default

@@ -355,35 +355,46 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	public int ladderOrdinal() {
 		if (!isNamed()) {
 			// Numbered lists: tier then HT/MT/LT, matching their own ordering.
-			return tier * 10 + position.ordinal();
+			return (tier * 10 + position.ordinal()) * 2;
 		}
 		String[] parts = namedRank.trim().split("\\s+");
-		int metal = metalRank(parts[0]);
 		// CatPVP counts upward inside a metal (III beats I), so the numeral is
 		// inverted to keep "lower is better".
 		int within = parts.length < 2 ? 0 : 5 - roman(parts[1]);
-		return metal * 10 + within;
+		// Doubled so a named rank never lands exactly on an HT/MT/LT slot: a
+		// tie there would order by whichever row happened to come first.
+		return namedBase(parts[0]) * 2 + within * 2 + 1;
 	}
 
 	/**
-	 * Where a metal sits on the ladder, best first.
+	 * Where a metal starts on the shared ladder, best first.
 	 *
 	 * <p>CatPVP runs Copper, Iron, Gold, Emerald, Diamond, Netherite, Champion,
 	 * so Emerald sits above Gold and Diamond above Emerald -- not the ordering
 	 * the material names suggest.
+	 *
+	 * <p>The bases are picked against the HT/LT scale, where tier n spans
+	 * {@code n * 10} to {@code n * 10 + 2}, because CatPVP's ranks read a good
+	 * deal stronger than they play: mapped evenly, a Diamond III outranked an
+	 * HT3. Diamond now straddles HT4 -- its top grade still beats HT4, the
+	 * lower two fall below it -- and the metals beneath follow from there.
 	 */
-	private static int metalRank(String metal) {
+	private static int namedBase(String metal) {
 		return switch (metal.toUpperCase(Locale.ROOT)) {
-			case "CHAMPION" -> 0;
-			case "NETHERITE" -> 1;
-			case "DIAMOND" -> 2;
-			case "EMERALD" -> 3;
-			case "GOLD" -> 4;
-			case "IRON" -> 5;
-			case "COPPER" -> 6;
+			// Champion and Netherite stay above the HT1/HT2 band.
+			case "CHAMPION" -> 8;
+			case "NETHERITE" -> 20;
+			// Named ranks carry a +1 tiebreak below (see ladderOrdinal), so
+			// Diamond III lands just above HT4 while II and I fall just below
+			// it -- HT4 outranks Diamond down to Diamond II, as intended.
+			case "DIAMOND" -> 37;
+			case "EMERALD" -> 46;
+			case "GOLD" -> 56;
+			case "IRON" -> 66;
+			case "COPPER" -> 76;
 			// An unseen rank sorts below everything known rather than claiming
 			// a place in the middle of the ladder.
-			default -> 7;
+			default -> 86;
 		};
 	}
 

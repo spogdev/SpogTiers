@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -77,6 +78,11 @@ public class TierService {
 	private final TierCache cache;
 	private final Deque<UUID> queue = new ArrayDeque<>();
 	private final ExecutorService workers;
+	/**
+	 * Separate from {@link #workers}: an on-demand lookup must never wait on
+	 * background scanning, and each list runs on its own thread here.
+	 */
+	private final ExecutorService priority;
 	private final HttpClient http;
 	/** How long each list took to answer its last lookup, in milliseconds. */
 	private final Map<TierList, Integer> responseMillis = new ConcurrentHashMap<>();
@@ -106,6 +112,11 @@ public class TierService {
 			thread.setDaemon(true);
 			return thread;
 		});
+		this.priority = Executors.newFixedThreadPool(8, runnable -> {
+			Thread thread = new Thread(runnable, "SpogTiers Priority");
+			thread.setDaemon(true);
+			return thread;
+		});
 		this.http = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(5))
 				.followRedirects(HttpClient.Redirect.NORMAL)
@@ -123,7 +134,7 @@ public class TierService {
 	/** Forces a re-fetch for one player, bypassing the cache (Update button). */
 	public void refresh(UUID uuid) {
 		cache.invalidate(uuid);
-		request(uuid);
+		requestNow(uuid);
 	}
 
 	/**
@@ -133,6 +144,72 @@ public class TierService {
 	public void request(UUID uuid) {
 		if (cache.needsLookup(uuid) && !queue.contains(uuid)) {
 			queue.addFirst(uuid);
+		}
+	}
+
+	/**
+	 * Looks a player up now, ahead of everything else.
+	 *
+	 * <p>The background queue exists to keep tab-list scanning polite, but a
+	 * player whose profile is being opened is not background work: waiting for
+	 * the dispatch gap and then behind whatever the workers are already
+	 * chewing through cost seconds. This bypasses both, and runs each list
+	 * concurrently rather than one after another.
+	 */
+	public void requestNow(UUID uuid) {
+		if (uuid == null || !cache.needsLookup(uuid)) {
+			return;
+		}
+		queue.remove(uuid);
+		cache.markPending(uuid);
+		priority.submit(() -> fetchAllConcurrently(uuid));
+	}
+
+	/**
+	 * Queries every enabled list at once and waits for them together, so the
+	 * wait is the slowest list rather than the sum of all of them.
+	 */
+	private void fetchAllConcurrently(UUID uuid) {
+		List<TierList> lists = new ArrayList<>();
+		for (TierList list : TierList.values()) {
+			if (config.isEnabled(list)) {
+				lists.add(list);
+			}
+		}
+
+		List<CompletableFuture<Boolean>> pending = new ArrayList<>(lists.size());
+		for (TierList list : lists) {
+			pending.add(CompletableFuture.supplyAsync(() -> {
+				long startedAt = System.nanoTime();
+				try {
+					PlayerTiers result = fetchOne(list, uuid);
+					responseMillis.put(list,
+							(int) ((System.nanoTime() - startedAt) / 1_000_000L));
+					if (result != null) {
+						cache.put(uuid, list, result);
+						return true;
+					}
+				} catch (Exception e) {
+					responseMillis.remove(list);
+					SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
+				}
+				return false;
+			}, priority));
+		}
+
+		boolean any = false;
+		for (CompletableFuture<Boolean> future : pending) {
+			try {
+				any |= future.join();
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("lookup failed for {}", uuid, e);
+			}
+		}
+
+		if (any) {
+			cache.markComplete(uuid);
+		} else {
+			cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
 		}
 	}
 
@@ -1034,5 +1111,6 @@ public class TierService {
 
 	public void shutdown() {
 		workers.shutdownNow();
+		priority.shutdownNow();
 	}
 }

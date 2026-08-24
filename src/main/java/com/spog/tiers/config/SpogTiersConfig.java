@@ -57,6 +57,15 @@ public class SpogTiersConfig {
 	 */
 	public boolean showPlacements = true;
 
+	/**
+	 * Leave CatPVP out of nametag, chat and tab tags.
+	 *
+	 * <p>Its ranks are not directly comparable with the HT/LT lists, so a Best
+	 * tag can end up quoting CatPVP where another list is the fairer read. Off
+	 * by default: the profile screen always shows every list either way.
+	 */
+	public boolean ignoreCatPvpInTags = false;
+
 	/** Show the region code before the name. */
 	public boolean showRegionOnNametag = false;
 

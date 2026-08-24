@@ -79,6 +79,12 @@ public final class TagRenderer {
 		PlayerTiers tiers;
 		Tier tier;
 
+		// Explicitly picking CatPVP still works; this only keeps it out of the
+		// automatic choices.
+		if (source != null && source.isCatPvp() && config.ignoreCatPvpInTags) {
+			return null;
+		}
+
 		if (source == null) {
 			Best best = bestAcrossLists(uuid, slot.gamemode);
 			if (best == null) {
@@ -130,6 +136,9 @@ public final class TagRenderer {
 			TierList list = entry.getKey();
 			PlayerTiers tiers = entry.getValue();
 			if (tiers == null || !config.isEnabled(list)) {
+				continue;
+			}
+			if (list.isCatPvp() && config.ignoreCatPvpInTags) {
 				continue;
 			}
 			// A list that does not rank the chosen mode has no say here.
