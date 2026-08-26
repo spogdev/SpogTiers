@@ -65,7 +65,7 @@ public final class QuickTiers {
 		// A screen owns the press. The viewer closes itself on this key -- see
 		// ProfileScreen.keyPressed -- because vanilla stops feeding presses to
 		// key bindings entirely while any screen is open.
-		if (client.screen != null) {
+		if (client.gui.screen() != null) {
 			return;
 		}
 
@@ -75,7 +75,7 @@ public final class QuickTiers {
 					.withStyle(ChatFormatting.GRAY));
 			return;
 		}
-		client.setScreen(new ProfileScreen(target.getGameProfile()));
+		client.gui.setScreen(new ProfileScreen(target.getGameProfile()));
 	}
 
 	/**

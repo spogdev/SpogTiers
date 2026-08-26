@@ -57,6 +57,19 @@ These are the breaking changes that matter for this mod:
   `entry.getProfile().id()`, not `getId()`. Older versions use the getter,
   so this is a guaranteed edit when porting backward.
 - **26.x** — the big one. See the dedicated section below.
+- **26.2** — screens moved off `Minecraft` onto `Gui`, and the HUD split out
+  of `Gui` into a new `Hud`. A 26.1.2 build does **not** run here: it fails to
+  resolve `Minecraft.screen`, `Minecraft.setScreen` and
+  `Gui.setOverlayMessage`. The replacements are:
+
+  | 26.1.2 | 26.2 |
+  | --- | --- |
+  | `client.screen` | `client.gui.screen()` |
+  | `client.setScreen(s)` | `client.gui.setScreen(s)` |
+  | `client.gui.setOverlayMessage(..)` | `client.gui.hud.setOverlayMessage(..)` |
+
+  Every mixin target survived unchanged, and the identity mapping jar must be
+  regenerated (`--version 26.2`, 10,952 classes).
 
 ## The 1.21.11 -> 26.x wall
 

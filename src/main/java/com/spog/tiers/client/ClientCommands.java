@@ -117,7 +117,7 @@ public final class ClientCommands {
 			return;
 		}
 		GameProfile profile = client.player.getGameProfile();
-		client.execute(() -> client.setScreen(new ProfileScreen(profile)));
+		client.execute(() -> client.gui.setScreen(new ProfileScreen(profile)));
 	}
 
 	private static void open(String name) {
@@ -127,7 +127,7 @@ public final class ClientCommands {
 		// textures, so the model renders immediately with no extra request.
 		GameProfile known = findOnline(client, name);
 		if (known != null) {
-			client.execute(() -> client.setScreen(new ProfileScreen(known)));
+			client.execute(() -> client.gui.setScreen(new ProfileScreen(known)));
 			return;
 		}
 
@@ -140,7 +140,7 @@ public final class ClientCommands {
 								.withStyle(ChatFormatting.RED));
 						return;
 					}
-					client.setScreen(new ProfileScreen(profile));
+					client.gui.setScreen(new ProfileScreen(profile));
 				}, client);
 	}
 
@@ -258,7 +258,7 @@ public final class ClientCommands {
 	static void feedback(Component message) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.gui != null) {
-			client.gui.setOverlayMessage(message, false);
+			client.gui.hud.setOverlayMessage(message, false);
 		}
 	}
 }

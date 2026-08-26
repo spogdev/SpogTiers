@@ -639,7 +639,7 @@ public class ConfigScreen extends Screen {
 
 	@Override
 	public void onClose() {
-		minecraft.setScreen(parent);
+		minecraft.gui.setScreen(parent);
 	}
 
 	private record Zone(int left, int top, int right, int bottom, Runnable action) {
