@@ -62,6 +62,8 @@ public class ProfileScreen extends Screen {
 	private static final int LOGO_SIZE = 14;
 	private static final int MODE_ICON = 12;
 	private static final int TOOLTIP_PADDING = 6;
+	/** Breathing room around the exported picture. */
+	private static final int EXPORT_PADDING = 6;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	/** Placement runs read as pending rather than as a rank. */
@@ -89,6 +91,25 @@ public class ProfileScreen extends Screen {
 	private String tagRegion = "";
 	private PanelButton closeButton;
 	private IconButton refreshButton;
+	private IconButton copyButton;
+	/**
+	 * Set for the single frame being captured. While it is set the screen
+	 * draws only the profile itself: no dimmed backdrop, no buttons, no
+	 * tooltips, so none of it lands in the picture.
+	 */
+	private boolean exporting;
+	/** Where the exported picture starts and how far it runs, in GUI space. */
+	private int exportLeft;
+	private int exportTop;
+	private int exportRight;
+	private int exportBottom;
+	/** Where the card grid ends, measured as it is laid out. */
+	private int cardsRight;
+	private int cardsBottom;
+	/** Set between arming an export and the frame that gets captured. */
+	private boolean captureQueued;
+	/** True once the stripped-down frame has been drawn and submitted. */
+	private boolean cleanFrameDrawn;
 	/** Vertical band the name history occupies, set during layout. */
 	private int historyTop;
 	private int historyBottom;
@@ -148,24 +169,35 @@ public class ProfileScreen extends Screen {
 				skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2));
 		addRenderableWidget(skinWidget);
 
-		// Close takes the row, less a square on the right for refresh.
+		// Close takes the row, less two squares on the right: copy, then
+		// refresh.
 		int buttonTop = cardBottom - CARD_PADDING - 20;
 		int rowWidth = PROFILE_WIDTH - CARD_PADDING * 2;
-		int refreshSize = 20;
+		int iconSize = 20;
 
 		closeButton = new PanelButton(
 				cardLeft + CARD_PADDING,
 				buttonTop,
-				rowWidth - refreshSize - 4,
+				rowWidth - iconSize * 2 - 8,
 				20,
 				Component.literal("Close"),
 				button -> onClose());
 		addRenderableWidget(closeButton);
 
-		refreshButton = new IconButton(
-				cardLeft + CARD_PADDING + rowWidth - refreshSize,
+		copyButton = new IconButton(
+				cardLeft + CARD_PADDING + rowWidth - iconSize * 2 - 4,
 				buttonTop,
-				refreshSize,
+				iconSize,
+				20,
+				Component.literal("Copy as image"),
+				IconButton.Glyph.COPY,
+				button -> beginExport());
+		addRenderableWidget(copyButton);
+
+		refreshButton = new IconButton(
+				cardLeft + CARD_PADDING + rowWidth - iconSize,
+				buttonTop,
+				iconSize,
 				20,
 				Component.literal("Refresh"),
 				button -> refresh());
@@ -177,13 +209,38 @@ public class ProfileScreen extends Screen {
 		// NB: the blurred background is drawn for us by the framework, which
 		// calls extractBackground immediately before this method. Blurring again
 		// here throws "Can only blur once per frame".
-		graphics.fill(0, 0, width, height, 0xC00B0E13);
+		// The clean frame has been submitted by the time the next one starts,
+		// so the readback is requested here rather than mid-extract.
+		if (exporting && cleanFrameDrawn && captureQueued) {
+			finishExport();
+		}
+
+		// A solid fill while exporting: the usual translucent wash would let
+		// the world show through into the picture.
+		graphics.fill(0, 0, width, height, exporting ? 0xFF0B0E13 : 0xC00B0E13);
 
 		hover = null;
 		headerHover = null;
 		drawHeader(graphics);
 		drawNameHistory(graphics);
-		drawCards(graphics, mouseX, mouseY);
+		// Hovers are suppressed during a capture so no row highlights itself
+		// in the picture.
+		drawCards(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
+
+		if (exporting) {
+			// The skin model is a widget, so it has to render for the picture
+			// to contain it -- but the buttons must not.
+			closeButton.visible = false;
+			copyButton.visible = false;
+			refreshButton.visible = false;
+			super.extractRenderState(graphics, -1, -1, partialTick);
+			closeButton.visible = true;
+			copyButton.visible = true;
+			refreshButton.visible = true;
+			// Mark it drawn; the readback happens as the next frame begins.
+			cleanFrameDrawn = true;
+			return;
+		}
 
 		// Widgets (the skin model included) render after our fills, so they are
 		// not painted over.
@@ -555,8 +612,18 @@ public class ProfileScreen extends Screen {
 				(float) contentWidth / blockWidth,
 				(float) availableHeight / blockHeight));
 
-		int originX = contentLeft + (contentWidth - Math.round(blockWidth * scale)) / 2;
+		// Centred in the leftover width, the block drifted away from the profile
+		// panel on a wide window. Pull it back so the two sit a card gap apart,
+		// and only centre what is left over beyond that.
+		int scaledWidth = Math.round(blockWidth * scale);
+		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
+		originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
 		int originY = contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
+
+		// Remembered so an export can crop to the cards rather than to the
+		// whole window.
+		cardsRight = originX + scaledWidth;
+		cardsBottom = originY + Math.round(blockHeight * scale);
 
 		graphics.pose().pushMatrix();
 		graphics.pose().translate(originX, originY);
@@ -666,17 +733,24 @@ public class ProfileScreen extends Screen {
 			}
 			graphics.text(font, Component.literal(row.label()), labelX, textY, row.accent());
 
-
+			// Everything left of the tier column stacks leftward from here, so
+			// a row carrying both a peak and a promotion run lays them out end
+			// to end instead of drawing one over the other.
+			int extrasRight = valueX - 5;
 
 			// Peak sits to the left of the current tier, struck through to read
 			// as "used to be".
 			if (row.showsPeak()) {
 				String peakLabel = row.peak().label();
-				int peakX = valueX - widestPeak - 5 + (widestPeak - font.width(peakLabel));
+				int peakX = extrasRight - widestPeak + (widestPeak - font.width(peakLabel));
 				int peakColor = fade(row.peak().color());
 				graphics.text(font, Component.literal(peakLabel), peakX, textY, peakColor);
 				graphics.fill(peakX, textY + font.lineHeight / 2,
 						peakX + font.width(peakLabel), textY + font.lineHeight / 2 + 1, peakColor);
+				// Reserve the whole peak column, not just this label, so runs
+				// stay in one line down the card rather than jittering with
+				// each row's peak width.
+				extrasRight -= widestPeak + 5;
 			}
 
 			// The value column ends here, so anything drawn in it is aligned to
@@ -701,12 +775,16 @@ public class ProfileScreen extends Screen {
 					valueX - labelOffset, textY, row.tier().color());
 
 			// A test run sits in brackets to the left of the tier it is trying
-			// to leave, so the tier column itself stays aligned.
+			// to leave -- and to the left of the peak as well when the row has
+			// one, since both want the same space.
 			if (!row.run().isEmpty() && !row.placing()) {
 				String progress = "(" + row.run() + ")";
+				// Without a peak the run keeps hugging the tier column, which
+				// is where it has always sat; the retired R is allowed to
+				// overhang into the same gap.
+				int runRight = row.showsPeak() ? extrasRight : valueX - labelOffset - 4;
 				graphics.text(font, Component.literal(progress),
-						valueX - labelOffset - 4 - font.width(progress),
-						textY, PLACEMENT_COLOR);
+						runRight - font.width(progress), textY, PLACEMENT_COLOR);
 			}
 			textY += ROW_HEIGHT;
 		}
@@ -716,6 +794,52 @@ public class ProfileScreen extends Screen {
 	private static boolean showPlacements() {
 		SpogTiersConfig config = SpogTiersClient.config();
 		return config == null || config.showPlacements;
+	}
+
+	/**
+	 * Copies the profile to the clipboard as a picture.
+	 *
+	 * <p>Runs over two frames: this one marks the screen as exporting, and the
+	 * next renders it stripped of everything that is not the profile and is
+	 * read back. The flag is cleared once the capture has been taken, whether
+	 * or not it worked.
+	 */
+	private void beginExport() {
+		if (exporting) {
+			return;
+		}
+
+		// The profile panel on the left and the cards on the right, with a
+		// margin of the same width all round. The panel already runs the full
+		// height of the window, so the picture is as tall as the window less
+		// its margins -- padding beyond that would only add empty space.
+		// The panel is drawn down to height - MARGIN, so that is the bottom of
+		// the content whether or not the cards reach as far.
+		int right = Math.max(MARGIN + PROFILE_WIDTH, cardsRight);
+		int bottom = Math.max(height - MARGIN, cardsBottom);
+
+		exportLeft = Math.max(0, MARGIN - EXPORT_PADDING);
+		exportTop = Math.max(0, MARGIN - EXPORT_PADDING);
+		exportRight = Math.min(width, right + EXPORT_PADDING);
+		exportBottom = Math.min(height, bottom + EXPORT_PADDING);
+
+		// Only arm it here. The click arrives partway through a frame that has
+		// already been drawn with the buttons on it, so capturing now would
+		// grab that frame; the capture is taken at the end of the next one.
+		exporting = true;
+		captureQueued = true;
+		cleanFrameDrawn = false;
+	}
+
+	/**
+	 * Takes the capture, called at the end of the stripped-down frame.
+	 */
+	private void finishExport() {
+		captureQueued = false;
+		cleanFrameDrawn = false;
+		ProfileExport.copy(exportLeft, exportTop,
+				exportRight - exportLeft, exportBottom - exportTop,
+				() -> exporting = false);
 	}
 
 	/**
