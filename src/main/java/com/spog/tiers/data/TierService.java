@@ -555,10 +555,13 @@ public class TierService {
 	private PlayerTiers parsePvpHq(TierList list, JsonObject root) {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 
-		JsonElement regions = root.get("regions");
-		if (regions != null && regions.isJsonArray() && !regions.getAsJsonArray().isEmpty()) {
-			result.region(regions.getAsJsonArray().get(0).getAsString());
-		}
+		// PVPHQ used to publish a "regions" array; it now exposes the player's
+		// home country and the server location they queue closest to. The
+		// country is the better signal -- it is where the player is, not where
+		// they happen to get a good ping -- but it is only present when the
+		// player has chosen to show it, so the location backs it up.
+		String country = string(root, "country");
+		result.region(!country.isEmpty() ? country : string(root, "closestRegion"));
 
 		JsonElement ranked = root.get("ranked");
 		if (ranked == null || !ranked.isJsonArray()) {

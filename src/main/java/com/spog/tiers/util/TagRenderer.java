@@ -5,6 +5,7 @@ import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
+import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
 import net.minecraft.ChatFormatting;
@@ -187,18 +188,19 @@ public final class TagRenderer {
 		return mode == null ? null : ModeIcons.of(list, mode.key());
 	}
 
-	/** The player's region as a small coloured prefix. */
+	/**
+	 * The player's region as a small coloured prefix.
+	 *
+	 * <p>Resolved the same way the profile screen does it, so the nametag and
+	 * the panel never disagree about where someone is from.
+	 */
 	private static Component regionFor(UUID uuid) {
-		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(uuid);
-		for (TierList list : TierList.values()) {
-			PlayerTiers tiers = all.get(list);
-			if (tiers != null && !tiers.region().isEmpty() && tiers.region().length() <= 4) {
-				String code = tiers.region().toUpperCase(Locale.ROOT);
-				return Component.literal(code)
-						.setStyle(Style.EMPTY.withColor(regionColor(code)));
-			}
+		String code = Regions.resolve(SpogTiersClient.cache().allLists(uuid));
+		if (code.isEmpty()) {
+			return null;
 		}
-		return null;
+		return Component.literal(code)
+				.setStyle(Style.EMPTY.withColor(regionColor(code)));
 	}
 
 	private static int regionColor(String region) {

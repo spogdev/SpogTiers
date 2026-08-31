@@ -8,6 +8,7 @@ import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
 import com.spog.tiers.data.PlayerTiers;
+import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierDetail;
 import com.spog.tiers.data.TierList;
@@ -473,61 +474,13 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * The player's region code.
+	 * The player's region code, voted on across every list that reports one.
 	 *
-	 * <p>PvPTiers, SubTiers and MCTiers report proper codes ("EU", "NA"), so
-	 * those win. PVPHQ instead lists the <em>server locations</em> a player has
-	 * queued on ("MONTREAL", "LOS_ANGELES"), which we fold down to a continent
-	 * so the tag always reads as a region rather than a city.
+	 * <p>See {@link Regions} for why this is a vote rather than a preference
+	 * order.
 	 */
 	private String region() {
-		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
-
-		for (TierList list : TierList.values()) {
-			if (list.isPvpHq()) {
-				continue;
-			}
-			PlayerTiers tiers = all.get(list);
-			if (tiers != null && isRegionCode(tiers.region())) {
-				return tiers.region().toUpperCase(Locale.ROOT);
-			}
-		}
-
-		PlayerTiers pvpHq = all.get(TierList.PVPHQ);
-		return pvpHq == null ? "" : continentOf(pvpHq.region());
-	}
-
-	/** True for short codes like EU/NA/AS, false for "??" and city names. */
-	private static boolean isRegionCode(String raw) {
-		if (raw == null || raw.length() < 2 || raw.length() > 4) {
-			return false;
-		}
-		for (int i = 0; i < raw.length(); i++) {
-			if (!Character.isLetter(raw.charAt(i))) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/** Folds a PVPHQ server location down to a continent code. */
-	private static String continentOf(String location) {
-		if (location == null || location.isEmpty()) {
-			return "";
-		}
-		return switch (location.toUpperCase(Locale.ROOT)) {
-			case "MONTREAL", "TORONTO", "LOS_ANGELES", "PORTLAND", "CHICAGO",
-					"ASHBURN", "MIAMI", "DALLAS", "NEW_YORK", "SEATTLE",
-					"DENVER", "ATLANTA", "PHOENIX", "VANCOUVER" -> "NA";
-			case "LONDON", "FRANKFURT", "AMSTERDAM", "PARIS", "WARSAW",
-					"MADRID", "MILAN", "STOCKHOLM", "HELSINKI", "DUBLIN" -> "EU";
-			case "SINGAPORE", "TOKYO", "SEOUL", "MUMBAI", "HONG_KONG",
-					"OSAKA", "JAKARTA" -> "AS";
-			case "SYDNEY", "MELBOURNE", "AUCKLAND" -> "OCE";
-			case "SAO_PAULO", "SANTIAGO", "BUENOS_AIRES", "LIMA", "BOGOTA" -> "SA";
-			case "JOHANNESBURG", "CAPE_TOWN", "LAGOS" -> "AF";
-			default -> "";
-		};
+		return Regions.resolve(SpogTiersClient.cache().allLists(target));
 	}
 
 	/** One fixed-size card per ranked list, arranged in a balanced grid. */
