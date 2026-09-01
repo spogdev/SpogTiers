@@ -535,14 +535,20 @@ public class ProfileScreen extends Screen {
 			return;
 		}
 
-		int visible = Math.max(1, (historyBottom - y) / HISTORY_ROW_HEIGHT);
+		// y is panel-local here and historyBottom is a screen coordinate, so
+		// the band's depth is measured from historyTop. Mixing the two made
+		// visible far too large, which zeroed the scroll range and left the
+		// list stuck.
+		int bandDepth = Math.round((historyBottom - historyTop) / panelScale()) - y;
+		int visible = Math.max(1, bandDepth / HISTORY_ROW_HEIGHT);
 		historyMaxScroll = Math.max(0, previous.size() - visible);
 		historyScroll = Math.clamp(historyScroll, 0, historyMaxScroll);
 
 		// Clipped so a long history cannot spill over the close button.
 		// The scissor is in the transformed space too, so the band's bottom is
 		// expressed relative to the origin this method translated to.
-		graphics.enableScissor(x, y, right, historyBottom - historyTop);
+		graphics.enableScissor(x, y, right,
+				Math.round((historyBottom - historyTop) / panelScale()));
 		for (int i = 0; i < visible && i + historyScroll < previous.size(); i++) {
 			NameHistory.Entry entry = previous.get(i + historyScroll);
 			int rowY = y + i * HISTORY_ROW_HEIGHT;
@@ -684,10 +690,14 @@ public class ProfileScreen extends Screen {
 		int boxWidth = font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
 
-		tagLeft = x;
-		tagTop = y;
-		tagRight = x + boxWidth;
-		tagBottom = y + boxHeight;
+		// The tag is drawn inside the panel's transform, so these are panel
+		// coordinates; the hover test runs in screen space, so they are
+		// converted back here rather than there.
+		float scale = panelScale();
+		tagLeft = MARGIN + Math.round(x * scale);
+		tagTop = MARGIN + Math.round(y * scale);
+		tagRight = MARGIN + Math.round((x + boxWidth) * scale);
+		tagBottom = MARGIN + Math.round((y + boxHeight) * scale);
 
 		int foreground = regionForeground(text);
 		int background = regionBackground(text);
