@@ -252,6 +252,11 @@ public class ConfigScreen extends Screen {
 					selected ? 0xFFFFFFFF : (hovered ? LABEL_COLOR : MUTED_COLOR));
 
 			zones.add(new Zone(x, y, x + tabWidth, y + TAB_HEIGHT, () -> {
+				// Clicking the tab already open changes nothing, so it should
+				// not sound as though it did.
+				if (active == tab) {
+					return;
+				}
 				active = tab;
 				scroll = 0;
 				closeDropdowns();
@@ -268,9 +273,6 @@ public class ConfigScreen extends Screen {
 		int y = top + CARD_PADDING;
 
 		graphics.text(font, Component.literal("General"), x, y, 0xFFFFFFFF);
-		y += font.lineHeight + 4;
-		graphics.text(font, Component.literal("How the rows inside each tierlist card are shown."),
-				x, y, MUTED_COLOR);
 		y += font.lineHeight + 10;
 
 		graphics.text(font, Component.literal("Sorting"), x, y, LABEL_COLOR);
@@ -285,14 +287,11 @@ public class ConfigScreen extends Screen {
 
 		y += ROW_HEIGHT + 8;
 
-		y = drawSwitch(graphics, "Placements", config.showPlacements, x, y,
+		y = drawSwitch(graphics, "Show HQ Placements", config.showPlacements, x, y,
 				() -> {
 					config.showPlacements = !config.showPlacements;
 					config.save();
 				});
-		graphics.text(font, Component.literal("PVPHQ gamemodes still being placed into."),
-				x, y + 2, MUTED_COLOR);
-		y += font.lineHeight + 2;
 
 		return y + CARD_PADDING - top;
 	}
@@ -305,10 +304,6 @@ public class ConfigScreen extends Screen {
 		int y = top + CARD_PADDING;
 
 		graphics.text(font, Component.literal("Tierlists"), x, y, 0xFFFFFFFF);
-		y += font.lineHeight + 4;
-		graphics.text(font, Component.literal(
-						"Hide a list, or keep it out of nametags only."),
-				x, y, MUTED_COLOR);
 		y += font.lineHeight + 10;
 
 		for (TierList list : TierList.values()) {
@@ -402,8 +397,6 @@ public class ConfigScreen extends Screen {
 					config.showInChat = !config.showInChat;
 					config.save();
 				});
-		graphics.text(font, Component.literal("Chat tags need the player looked up first."),
-				x, y + 2, MUTED_COLOR);
 
 		return y + font.lineHeight + CARD_PADDING - top;
 	}
