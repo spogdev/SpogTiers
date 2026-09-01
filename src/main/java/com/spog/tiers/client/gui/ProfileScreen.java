@@ -326,7 +326,7 @@ public class ProfileScreen extends Screen {
 		// flag is only set while the screen is handling input, and the export
 		// frame renders with none.
 		if (copyButton != null && copyButton.isMouseOver(mouseX, mouseY)) {
-			drawLabelTooltip(graphics, "Export", mouseX, mouseY);
+			drawLabelTooltip(graphics, "Copy", mouseX, mouseY);
 		} else if (refreshButton != null && refreshButton.isMouseOver(mouseX, mouseY)) {
 			drawLabelTooltip(graphics, "Refresh", mouseX, mouseY);
 		} else if (hover != null) {
@@ -1395,7 +1395,7 @@ public class ProfileScreen extends Screen {
 			// it does have is the player's overall placing, which is worth
 			// showing rather than leaving the row blank.
 			if (tiers.overall() > 0) {
-				lines.add(new Line("Overall #" + tiers.overall(), 0xFF9DB2C8));
+				lines.add(new Line("Rank #" + tiers.overall(), 0xFF9DB2C8));
 			}
 			if (tiers.points() > 0.0f) {
 				lines.add(new Line(formatPoints(tiers.points()) + " points", 0xFFE4EAF2));
