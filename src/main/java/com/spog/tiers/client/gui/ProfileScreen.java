@@ -16,9 +16,11 @@ import com.spog.tiers.data.TierService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerSkin;
 
@@ -171,11 +173,10 @@ public class ProfileScreen extends Screen {
 		// carved out first and the model gets whatever remains. On a very short
 		// window the model has a minimum height and would grow back into this
 		// band, so the history yields rather than being drawn over.
-		int historyHeight = font.lineHeight + 4 + HISTORY_ROWS * HISTORY_ROW_HEIGHT;
 		historyBottom = cardBottom - CARD_PADDING - 20 - 10;
 		historyTop = Math.max(
 				cardTop + CARD_PADDING + FACE_SIZE + 12 + 80 + 8,
-				historyBottom - historyHeight);
+				historyBottom - historyBandHeight());
 
 		// Fit the model to whatever is left between the header and the history,
 		// so it never spills out of the profile card.
@@ -219,6 +220,7 @@ public class ProfileScreen extends Screen {
 				Component.literal("Copy as image"),
 				IconButton.Glyph.COPY,
 				button -> beginExport());
+		copyButton.setTooltip(Tooltip.create(Component.literal("Export")));
 		addRenderableWidget(copyButton);
 
 		refreshButton = new IconButton(
@@ -228,6 +230,7 @@ public class ProfileScreen extends Screen {
 				20,
 				Component.literal("Refresh"),
 				button -> refresh());
+		refreshButton.setTooltip(Tooltip.create(Component.literal("Refresh")));
 		addRenderableWidget(refreshButton);
 	}
 
@@ -248,6 +251,7 @@ public class ProfileScreen extends Screen {
 
 		hover = null;
 		headerHover = null;
+		refitSkin();
 		// Cards first: the panel sizes itself against them when exporting, and
 		// drawing them second would leave it a frame behind. Both are plain
 		// fills, so the order does not change what the frame looks like.
@@ -355,6 +359,65 @@ public class ProfileScreen extends Screen {
 		// keeps it recognisable. Using the on-screen model height here made the
 		// panel tower over the cards.
 		return skinTopLimit + EXPORT_SKIN_MIN + CARD_PADDING - MARGIN;
+	}
+
+	/**
+	 * How much room the name history needs.
+	 *
+	 * <p>Only as many rows as the player actually has, capped at what fits.
+	 * Reserving the full five regardless left a player with no previous names
+	 * -- most of them -- with a band of empty space, and squeezed the model
+	 * into what was left.
+	 */
+	private int historyBandHeight() {
+		NameHistory history = SpogTiersClient.service().nameHistory(target);
+		int rows = history == null ? 0 : Math.min(history.previous().size(), HISTORY_ROWS);
+		// The heading is always drawn, even with nothing under it.
+		return font.lineHeight + 4 + rows * HISTORY_ROW_HEIGHT;
+	}
+
+	/**
+	 * How tall the model is allowed to be before the history is asked to give
+	 * way.
+	 *
+	 * <p>A player with a full history would otherwise squeeze the model to
+	 * nothing. The list already scrolls, so it can hold fewer rows at once
+	 * rather than taking the space from the model.
+	 */
+	private int modelFloor() {
+		// Two thirds of the room between the name row and the button row, so
+		// the model stays the thing the panel is mostly showing.
+		int usable = (height - MARGIN - CARD_PADDING - 20 - 10) - skinTopLimit;
+		return Math.clamp(usable * 2 / 3, 80, SKIN_HEIGHT);
+	}
+
+	/**
+	 * Re-fits the model to the room the history leaves.
+	 *
+	 * <p>The history arrives after the screen opens, so the split cannot be
+	 * settled once in {@code init}: a player whose names land late would keep
+	 * the layout chosen when there were none.
+	 */
+	private void refitSkin() {
+		if (skinWidget == null || exporting) {
+			return;
+		}
+
+		int cardBottom = height - MARGIN;
+		int wanted = Math.max(
+				skinTopLimit + modelFloor() + 8,
+				cardBottom - CARD_PADDING - 20 - 10 - historyBandHeight());
+		if (wanted == historyTop) {
+			return;
+		}
+
+		historyTop = wanted;
+		int band = historyTop - 8 - skinTopLimit;
+		int fitted = Math.clamp(band, modelFloor(), SKIN_HEIGHT);
+		skinModelHeight = fitted;
+		skinScreenY = skinTopLimit + Math.max(0, (band - fitted) / 2);
+		skinWidget.setHeight(fitted);
+		skinWidget.setY(skinScreenY);
 	}
 
 	/** The profile card: face, name, region tag, skin model and buttons. */
@@ -1245,6 +1308,12 @@ public class ProfileScreen extends Screen {
 				}
 			}
 
+			// The played record, wins against losses, with the rate spelled out
+			// so a lopsided record is not read off two bare numbers.
+			if (detail.hasRecord()) {
+				lines.add(recordLine(detail));
+			}
+
 			// TR is progress toward the next tier, always out of 100. The old
 			// line divided the rating band instead, which is a different
 			// number entirely. A player still placing has neither: the run is
@@ -1301,8 +1370,13 @@ public class ProfileScreen extends Screen {
 
 		int lineY = boxY + TOOLTIP_PADDING;
 		for (Line line : lines) {
-			graphics.text(font, Component.literal(line.text()),
-					boxX + TOOLTIP_PADDING, lineY, line.color());
+			if (line.component() != null) {
+				graphics.text(font, line.component(),
+						boxX + TOOLTIP_PADDING, lineY, 0xFFFFFFFF);
+			} else {
+				graphics.text(font, Component.literal(line.text()),
+						boxX + TOOLTIP_PADDING, lineY, line.color());
+			}
 			lineY += font.lineHeight + 2;
 		}
 
@@ -1386,7 +1460,40 @@ public class ProfileScreen extends Screen {
 		};
 	}
 
-	private record Line(String text, int color) {
+	/**
+	 * One tooltip line.
+	 *
+	 * <p>Most lines are a string in a single colour. A line that needs more
+	 * than one -- a win/loss record, where the two halves are coloured against
+	 * each other -- carries a pre-styled component instead, and {@code text} is
+	 * kept alongside so the box can still be measured.
+	 */
+	private record Line(String text, int color, Component component) {
+		Line(String text, int color) {
+			this(text, color, null);
+		}
+	}
+
+	/**
+	 * A win/loss record: wins in green, losses in red, the rate after in grey.
+	 */
+	private Line recordLine(TierDetail detail) {
+		String wins = String.valueOf(detail.wins());
+		String losses = String.valueOf(detail.losses());
+		String rate = " (" + detail.winPercent() + "%)";
+
+		Component component = Component.literal(wins)
+				.setStyle(Style.EMPTY.withColor(0xFF7FD186))
+				.append(Component.literal("W ")
+						.setStyle(Style.EMPTY.withColor(0xFF7FD186)))
+				.append(Component.literal(losses)
+						.setStyle(Style.EMPTY.withColor(0xFFD97F7F)))
+				.append(Component.literal("L")
+						.setStyle(Style.EMPTY.withColor(0xFFD97F7F)))
+				.append(Component.literal(rate)
+						.setStyle(Style.EMPTY.withColor(MUTED_COLOR)));
+
+		return new Line(wins + "W " + losses + "L" + rate, 0xFFE4EAF2, component);
 	}
 
 	/** Formats an epoch-seconds timestamp as a plain calendar date. */

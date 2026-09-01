@@ -614,7 +614,9 @@ public class TierService {
 					intOr(value, "testGames", 0),
 					intOr(value, "testTarget", 0),
 					intOr(value, "tierProgress", 0),
-					value.has("hasTr") && value.get("hasTr").getAsBoolean()));
+					value.has("hasTr") && value.get("hasTr").getAsBoolean(),
+					intOr(value, "wins", 0),
+					intOr(value, "losses", 0)));
 		}
 		return result;
 	}

@@ -80,9 +80,10 @@ public final class TagRenderer {
 		PlayerTiers tiers;
 		Tier tier;
 
-		// Explicitly picking CatPVP still works; this only keeps it out of the
-		// automatic choices.
-		if (source != null && source.isCatPvp() && config.ignoreCatPvpInTags) {
+		// A list can be shown in results but kept off tags, so an explicitly
+		// picked slot is dropped rather than quoting a list the player asked
+		// not to see on nametags.
+		if (source != null && !config.isTagged(source)) {
 			return null;
 		}
 
@@ -139,7 +140,7 @@ public final class TagRenderer {
 			if (tiers == null || !config.isEnabled(list)) {
 				continue;
 			}
-			if (list.isCatPvp() && config.ignoreCatPvpInTags) {
+			if (!config.isTagged(list)) {
 				continue;
 			}
 			// A list that does not rank the chosen mode has no say here.

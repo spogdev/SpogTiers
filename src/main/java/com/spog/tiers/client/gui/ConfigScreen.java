@@ -280,7 +280,7 @@ public class ConfigScreen extends Screen {
 			orders.add(new Dropdown.Entry<>(value, value.title(), null));
 		}
 		sortOrder.setEntries(orders);
-		sortOrder.setBounds(x + 118, y - 4, 130);
+		sortOrder.setBounds(x + 118, y - 4, 152);
 		sortOrder.draw(graphics, font, config.sortOrder, mouseX, mouseY);
 
 		y += ROW_HEIGHT + 8;
@@ -307,7 +307,7 @@ public class ConfigScreen extends Screen {
 		graphics.text(font, Component.literal("Tierlists"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 4;
 		graphics.text(font, Component.literal(
-						"Hide a list to leave it out of results."),
+						"Hide a list, or keep it out of nametags only."),
 				x, y, MUTED_COLOR);
 		y += font.lineHeight + 10;
 
@@ -326,10 +326,28 @@ public class ConfigScreen extends Screen {
 			graphics.text(font, Component.literal(list.displayName()),
 					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);
 
-			int toggleWidth = 62;
-			int toggleX = right - CARD_PADDING - toggleWidth;
-			drawToggle(graphics, toggleX, y - 4, toggleWidth, shown ? "SHOWN" : "HIDDEN", shown);
-			zones.add(new Zone(toggleX, y - 4, toggleX + toggleWidth, y + 12, () -> {
+			// Two toggles: whether the list is looked up at all, and whether it
+			// may be quoted on a nametag. Hiding a list disables the tag
+			// toggle with it, since a list nobody queries has nothing to tag.
+			boolean tagged = config.isTagged(list);
+
+			int toggleWidth = 92;
+			int resultsX = right - CARD_PADDING - toggleWidth;
+			int tagsX = resultsX - toggleWidth - 6;
+
+			drawToggle(graphics, tagsX, y - 4, toggleWidth,
+					tagged ? "SHOWN TAGS" : "HIDDEN TAGS", tagged, shown);
+			if (shown) {
+				zones.add(new Zone(tagsX, y - 4, tagsX + toggleWidth, y + 12, () -> {
+					config.setTagged(list, !tagged);
+					config.save();
+					click();
+				}));
+			}
+
+			drawToggle(graphics, resultsX, y - 4, toggleWidth,
+					shown ? "SHOWN RESULTS" : "HIDDEN RESULTS", shown, true);
+			zones.add(new Zone(resultsX, y - 4, resultsX + toggleWidth, y + 12, () -> {
 				config.setEnabled(list, !shown);
 				config.save();
 				click();
@@ -364,13 +382,6 @@ public class ConfigScreen extends Screen {
 					config.showRegionOnNametag = !config.showRegionOnNametag;
 					config.save();
 				});
-		y = drawSwitch(graphics, "Skip CatPVP", config.ignoreCatPvpInTags, x, y,
-				() -> {
-					config.ignoreCatPvpInTags = !config.ignoreCatPvpInTags;
-					config.save();
-				});
-		graphics.text(font, Component.literal("Leave CatPVP out of tags."),
-				x, y + 2, MUTED_COLOR);
 		y += font.lineHeight + 10;
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);
@@ -484,7 +495,7 @@ public class ConfigScreen extends Screen {
 			lists.add(new Dropdown.Entry<>(list, list.displayName(), logoOf(list)));
 		}
 		listDropdown.setEntries(lists);
-		listDropdown.setBounds(toggleX + 50, y - 4, 104);
+		listDropdown.setBounds(toggleX + 50, y - 4, 122);
 		listDropdown.draw(graphics, font, slot.list, mouseX, mouseY);
 
 		// Gamemodes come from the chosen list, so an impossible pairing
@@ -506,7 +517,7 @@ public class ConfigScreen extends Screen {
 			}
 		}
 		modeDropdown.setEntries(modes);
-		modeDropdown.setBounds(toggleX + 160, y - 4, 108);
+		modeDropdown.setBounds(toggleX + 178, y - 4, 128);
 		modeDropdown.draw(graphics, font, slot.gamemode, mouseX, mouseY);
 
 		return y + ROW_HEIGHT;
@@ -526,9 +537,31 @@ public class ConfigScreen extends Screen {
 
 	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,
 			String text, boolean on) {
+		drawToggle(graphics, x, y, boxWidth, text, on, true);
+	}
+
+	/**
+	 * A boxed on/off label.
+	 *
+	 * <p>{@code enabled} is separate from {@code on}: a toggle that cannot be
+	 * changed right now is drawn faded rather than hidden, so the row keeps its
+	 * shape and the reason stays visible.
+	 */
+	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,
+			String text, boolean on, boolean enabled) {
 		int boxHeight = font.lineHeight + 8;
-		int fill = on ? 0x5023351F : 0x50241A1D;
-		int border = on ? 0xA05F9A56 : 0xA0955A5A;
+		int fill;
+		int border;
+		int textColor;
+		if (!enabled) {
+			fill = 0x30161B22;
+			border = 0x50323B47;
+			textColor = 0xFF5A636E;
+		} else {
+			fill = on ? 0x5023351F : 0x50241A1D;
+			border = on ? 0xA05F9A56 : 0xA0955A5A;
+			textColor = on ? 0xFFA8E39B : 0xFFE0A0A0;
+		}
 
 		graphics.fill(x, y, x + boxWidth, y + boxHeight, fill);
 		graphics.fill(x, y, x + boxWidth, y + 1, border);
@@ -537,8 +570,7 @@ public class ConfigScreen extends Screen {
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
 		graphics.text(font, Component.literal(text),
-				x + (boxWidth - font.width(text)) / 2, y + 4,
-				on ? 0xFFA8E39B : 0xFFE0A0A0);
+				x + (boxWidth - font.width(text)) / 2, y + 4, textColor);
 	}
 
 	private static Identifier logoOf(TierList list) {
