@@ -138,6 +138,15 @@ public final class ProfileExport {
 	 * on the clipboard.
 	 */
 	private static void setClipboard(BufferedImage image) {
+		// Windows can be done in-process. Spawning PowerShell cost about a
+		// second and a half -- roughly a second of that is the shell starting
+		// up and half a second loading System.Windows.Forms -- against about a
+		// tenth of a second calling the clipboard API directly.
+		if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+				&& WindowsClipboard.put(image)) {
+			return;
+		}
+
 		Path file = null;
 		try {
 			file = Files.createTempFile("spogtiers-profile", ".png");
