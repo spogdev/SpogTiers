@@ -66,6 +66,15 @@ public class ProfileScreen extends Screen {
 	/** Rows of past names shown under the model before scrolling is needed. */
 	private static final int HISTORY_ROWS = 5;
 	private static final int HISTORY_ROW_HEIGHT = 11;
+	/** Room kept to the right of the history rows for its scrollbar. */
+	private static final int SCROLLBAR_GUTTER = 6;
+	/**
+	 * Gap between the last history row and the button row.
+	 *
+	 * <p>The band hangs from this edge, so both the filled and the empty state
+	 * finish the same distance above the buttons.
+	 */
+	private static final int HISTORY_BUTTON_GAP = 4;
 	private static final int CARD_PADDING = 10;
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
@@ -184,7 +193,7 @@ public class ProfileScreen extends Screen {
 		// carved out first and the model gets whatever remains. On a very short
 		// window the model has a minimum height and would grow back into this
 		// band, so the history yields rather than being drawn over.
-		historyBottom = cardBottom - CARD_PADDING - 20 - 10;
+		historyBottom = cardBottom - CARD_PADDING - 20 - HISTORY_BUTTON_GAP;
 		historyTop = Math.max(
 				cardTop + CARD_PADDING + FACE_SIZE + 12 + 80 + 8,
 				historyBottom - historyBandHeight());
@@ -391,7 +400,12 @@ public class ProfileScreen extends Screen {
 	 */
 	private int historyBandHeight() {
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
-		int rows = history == null ? 0 : Math.min(history.previous().size(), HISTORY_ROWS);
+		// "Loading..." and "No previous names" take a row just as a name does,
+		// so the band is never shorter than one row under the heading -- the
+		// empty state would otherwise end higher than a filled one.
+		int rows = Math.max(1, history == null
+				? 0
+				: Math.min(history.previous().size(), HISTORY_ROWS));
 		// The heading is always drawn, even with nothing under it.
 		return textRenderer.fontHeight + 4 + rows * HISTORY_ROW_HEIGHT;
 	}
@@ -427,7 +441,7 @@ public class ProfileScreen extends Screen {
 		// only the rows it has, but never so much that the model is squeezed
 		// past its floor -- past that point the list scrolls instead.
 		int cardBottom = height - MARGIN;
-		int listBottom = cardBottom - CARD_PADDING - 20 - 10;
+		int listBottom = cardBottom - CARD_PADDING - 20 - HISTORY_BUTTON_GAP;
 		int wanted = Math.min(
 				listBottom,
 				Math.max(skinTopLimit + modelFloor() + 8,
@@ -510,7 +524,10 @@ public class ProfileScreen extends Screen {
 		graphics.getMatrices().scale(scale, scale);
 
 		int x = CARD_PADDING;
-		int right = PROFILE_WIDTH - CARD_PADDING;
+		// The scrollbar track sits just outside this edge, so the rows stop
+		// short of it rather than running right up to it -- at a small panel
+		// width the two were touching.
+		int right = PROFILE_WIDTH - CARD_PADDING - SCROLLBAR_GUTTER;
 		int y = 0;
 
 		graphics.drawTextWithShadow(textRenderer, Text.literal("Name history"), x, y, LABEL_COLOR);
