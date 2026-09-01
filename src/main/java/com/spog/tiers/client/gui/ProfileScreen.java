@@ -516,10 +516,14 @@ public class ProfileScreen extends Screen {
 		graphics.text(font, Component.literal("Name history"), x, y, LABEL_COLOR);
 		y += font.lineHeight + 4;
 
+		// Both of these leave early, so the panel transform has to come off
+		// first: leaking it left every tooltip drawn afterwards offset by the
+		// panel's own scale and origin.
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		if (history == null) {
 			graphics.text(font, Component.literal("Loading..."), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
+			graphics.pose().popMatrix();
 			return;
 		}
 
@@ -527,6 +531,7 @@ public class ProfileScreen extends Screen {
 		if (previous.isEmpty()) {
 			graphics.text(font, Component.literal("No previous names"), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
+			graphics.pose().popMatrix();
 			return;
 		}
 
@@ -1384,6 +1389,20 @@ public class ProfileScreen extends Screen {
 			}
 		} else if (detail.hasAttained()) {
 			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
+		} else if (target.list().isMcPvp()) {
+			// MCPvP publishes no rating, no dates and no per-kit standing: the
+			// same rank and points come back whichever kit is asked for. What
+			// it does have is the player's overall placing, which is worth
+			// showing rather than leaving the row blank.
+			if (tiers.overall() > 0) {
+				lines.add(new Line("Overall #" + tiers.overall(), 0xFF9DB2C8));
+			}
+			if (tiers.points() > 0.0f) {
+				lines.add(new Line(formatPoints(tiers.points()) + " points", 0xFFE4EAF2));
+			}
+			if (tiers.overall() <= 0 && tiers.points() <= 0.0f) {
+				lines.add(new Line("No detail available", MUTED_COLOR));
+			}
 		} else {
 			lines.add(new Line("No detail available", MUTED_COLOR));
 		}
@@ -1648,6 +1667,13 @@ public class ProfileScreen extends Screen {
 						.setStyle(Style.EMPTY.withColor(MUTED_COLOR)));
 
 		return new Line(wins + "W " + losses + "L" + rate, 0xFFE4EAF2, component);
+	}
+
+	/** Points without a trailing {@code .0}, since half points are common. */
+	private static String formatPoints(float points) {
+		return points == Math.rint(points)
+				? String.valueOf((int) points)
+				: String.valueOf(points);
 	}
 
 	/** Formats an epoch-seconds timestamp as a plain calendar date. */

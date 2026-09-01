@@ -16,7 +16,8 @@ public final class PlayerTiers {
 
 	private String region = "";
 	private int overall = 0;
-	private int points = 0;
+	/** Fractional on MCPvP, where half points are awarded. */
+	private float points = 0.0f;
 
 	public PlayerTiers(TierList source, String name, long fetchedAtMillis) {
 		this.source = source;
@@ -52,11 +53,11 @@ public final class PlayerTiers {
 		this.overall = overall;
 	}
 
-	public int points() {
+	public float points() {
 		return points;
 	}
 
-	public void points(int points) {
+	public void points(float points) {
 		this.points = points;
 	}
 
