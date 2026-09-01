@@ -819,9 +819,17 @@ public class ProfileScreen extends Screen {
 		if (exporting) {
 			originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
 		}
-		// Level with the top of the profile panel, since the two are now the
-		// same height.
-		int originY = contentTop;
+		// Centred in the height beside the panel on screen, which is what a
+		// single row of cards needs: at the top it sits against the panel's
+		// header with the whole lower half empty. A two-row grid fills that
+		// height anyway, so this only shows on the short case.
+		//
+		// In a picture the grid is grown to the panel's height already, so
+		// there is nothing to centre and the top is where it belongs.
+		int originY = exporting
+				? contentTop
+				: contentTop + Math.max(0,
+						(availableHeight - Math.round(blockHeight * scale)) / 2);
 
 		// Remembered so an export can crop to the cards rather than to the
 		// whole window.
