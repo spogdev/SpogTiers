@@ -35,7 +35,14 @@ public enum Gamemode {
 	SPEED("speed", "Speed", 0xFF48CAE4),
 	TRIDENT("trident", "Trident", 0xFF00B4D8),
 	BEAST("beast", "Beast", 0xFFE0685A),
-	BRIDGE("bridge", "Bridge", 0xFF7FB7E8);
+	BRIDGE("bridge", "Bridge", 0xFF7FB7E8),
+	// MCPvP ranks phases of a fight rather than a kit, so these have no
+	// equivalent on the other lists.
+	EARLY_GAME("early_game", "Early Game", 0xFF9BE39B),
+	LATE_GAME("late_game", "Late Game", 0xFFE0A05A),
+	END_GAME("end_game", "End Game", 0xFFB98AE8),
+	SHIELD("shield", "Shield", 0xFFC9A227),
+	SPEAR("mcpvp_spear", "Spear", 0xFF7FD1C4);
 
 	private final String key;
 	private final String displayName;
@@ -64,6 +71,20 @@ public enum Gamemode {
 	 * Resolves a provider's gamemode key. Normalises separators so
 	 * {@code neth_pot}, {@code nethpot} and {@code neth-pot} all match.
 	 */
+	/**
+	 * Resolves a provider's key, letting the provider settle any clash.
+	 *
+	 * <p>Only one key is genuinely ambiguous: {@code spear} is Spear Mace on
+	 * CatPVP but a kit of its own on MCPvP.
+	 */
+	public static Gamemode byKey(TierList list, String key) {
+		if (list != null && list.isMcPvp() && key != null
+				&& normalise(key).equals("spear")) {
+			return SPEAR;
+		}
+		return byKey(key);
+	}
+
 	public static Gamemode byKey(String key) {
 		if (key == null) {
 			return null;
@@ -82,7 +103,13 @@ public enum Gamemode {
 			case "htcart", "hightiercart" -> CART;
 			case "diamondcrystal" -> DIA_CRYSTAL;
 			case "potion" -> POT;
+			// CatPVP calls its Spear Mace mode simply "spear"; MCPvP's own Spear
+			// is a different mode and carries a distinct key to keep them apart.
 			case "spear" -> SPEAR_MACE;
+			// MCPvP spells its phases with a hyphen, which normalise() drops.
+			case "earlygame" -> EARLY_GAME;
+			case "lategame" -> LATE_GAME;
+			case "endgame" -> END_GAME;
 			default -> null;
 		};
 	}

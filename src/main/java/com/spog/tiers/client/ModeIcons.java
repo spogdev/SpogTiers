@@ -36,7 +36,8 @@ public final class ModeIcons {
 					"axe", "beast", "bow", "bridge", "cart", "creeper", "dia_smp",
 					"mace", "neth_pot", "pot", "smp", "spear_mace", "uhc", "vanilla"),
 			TierList.MCPVP, List.of(
-					"axe", "mace", "neth_pot", "pot", "smp", "sword", "uhc", "vanilla"),
+					"early_game", "end_game", "late_game", "mace", "mcpvp_spear",
+					"pot", "shield", "sword"),
 			TierList.MCTIERS, List.of(
 					"axe", "mace", "neth_pot", "pot", "smp", "sword", "uhc", "vanilla"),
 			TierList.PVPHQ, List.of(

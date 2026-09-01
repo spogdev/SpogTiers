@@ -403,17 +403,24 @@ public class ProfileScreen extends Screen {
 			return;
 		}
 
+		// The history sits between the model and the button row. It is given
+		// only the rows it has, but never so much that the model is squeezed
+		// past its floor -- past that point the list scrolls instead.
 		int cardBottom = height - MARGIN;
-		int wanted = Math.max(
-				skinTopLimit + modelFloor() + 8,
-				cardBottom - CARD_PADDING - 20 - 10 - historyBandHeight());
+		int listBottom = cardBottom - CARD_PADDING - 20 - 10;
+		int wanted = Math.min(
+				listBottom,
+				Math.max(skinTopLimit + modelFloor() + 8,
+						listBottom - historyBandHeight()));
 		if (wanted == historyTop) {
 			return;
 		}
 
 		historyTop = wanted;
+		// The model gets the room above the history and no more, so the two
+		// can never overlap however the floor works out.
 		int band = historyTop - 8 - skinTopLimit;
-		int fitted = Math.clamp(band, modelFloor(), SKIN_HEIGHT);
+		int fitted = Math.clamp(Math.min(band, SKIN_HEIGHT), 40, SKIN_HEIGHT);
 		skinModelHeight = fitted;
 		skinScreenY = skinTopLimit + Math.max(0, (band - fitted) / 2);
 		skinWidget.setHeight(fitted);

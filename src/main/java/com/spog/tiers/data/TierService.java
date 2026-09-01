@@ -450,7 +450,7 @@ public class TierService {
 					&& retired.get(key).getAsBoolean();
 			Tier tier = new Tier(parsed.tier(), parsed.position(), isRetired);
 
-			Gamemode mode = Gamemode.byKey(key);
+			Gamemode mode = Gamemode.byKey(list, key);
 			String label = mode != null ? mode.displayName() : key;
 			if (mode != null) {
 				result.put(mode, tier);

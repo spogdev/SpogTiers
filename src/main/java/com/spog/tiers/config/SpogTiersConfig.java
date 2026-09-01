@@ -47,7 +47,7 @@ public class SpogTiersConfig {
 	public int requestsPerSecond = 5;
 
 	/** How the rows inside each tier list card are ordered. */
-	public SortOrder sortOrder = SortOrder.DEFAULT;
+	public SortOrder sortOrder = SortOrder.RANKING;
 
 	/**
 	 * Show gamemodes a player is still placing into.
@@ -115,10 +115,11 @@ public class SpogTiersConfig {
 	 * to scan. The other two sort by the data instead.
 	 */
 	public enum SortOrder {
-		DEFAULT("Default"),
+		/** Whatever order the provider sent, which is its own default. */
+		DEFAULT("Recieved"),
 		DATE_OBTAINED("Date obtained"),
 		RANKING("Ranking"),
-		RANKING_PEAK("Ranking (Peak inclusive)");
+		RANKING_PEAK("Ranking (Include peak)");
 
 		private final String title;
 
@@ -221,7 +222,7 @@ public class SpogTiersConfig {
 			displayMode = Gamemode.VANILLA;
 		}
 		if (sortOrder == null) {
-			sortOrder = SortOrder.DEFAULT;
+			sortOrder = SortOrder.RANKING;
 		}
 		if (leftTag == null) {
 			leftTag = new TagSlot(true, TierList.PVPTIERS, null);
