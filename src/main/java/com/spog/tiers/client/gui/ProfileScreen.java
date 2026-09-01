@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,6 +59,11 @@ public class ProfileScreen extends Screen {
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
 	private static final int CARD_WIDTH = 162;
+	/**
+	 * Rows a card is sized for on screen, whatever it actually holds, so the
+	 * grid does not resize as lists arrive.
+	 */
+	private static final int CARD_ROWS = 11;
 	/** Narrowest a card is allowed to get, so the header still reads. */
 	private static final int CARD_WIDTH_MIN = 108;
 	/** Cards deeper than this keep the full width. */
@@ -683,19 +689,39 @@ public class ProfileScreen extends Screen {
 		};
 		int rowCount = (cards.size() + perRow - 1) / perRow;
 
-		// Each row is only as deep as its own longest card, so a row of short
-		// lists is not padded out to match a row carrying CatPVP's fourteen
-		// modes.
+		// On screen every card is the same size, whichever lists loaded and
+		// however many modes they rank: a floor of CARD_ROWS and a share of the
+		// window keep the grid from resizing as data lands. Tightening any of
+		// that is a picture-only concern -- a picture is taken once, so nothing
+		// is going to shift under the reader.
 		int[] rowHeights = new int[rowCount];
-		for (int row = 0; row < rowCount; row++) {
-			int rowsNeeded = 0;
-			for (int column = 0; column < perRow; column++) {
-				int index = row * perRow + column;
-				if (index < cards.size()) {
-					rowsNeeded = Math.max(rowsNeeded, cards.get(index).rows().size());
+		if (exporting) {
+			// Each row only as deep as its own longest card, so a row of short
+			// lists is not padded out to match a row carrying CatPVP's fourteen
+			// modes.
+			for (int row = 0; row < rowCount; row++) {
+				int rowsNeeded = 0;
+				for (int column = 0; column < perRow; column++) {
+					int index = row * perRow + column;
+					if (index < cards.size()) {
+						rowsNeeded = Math.max(rowsNeeded, cards.get(index).rows().size());
+					}
 				}
+				rowHeights[row] = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
 			}
-			rowHeights[row] = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
+		} else {
+			int rowsNeeded = CARD_ROWS;
+			for (Card card : cards) {
+				rowsNeeded = Math.max(rowsNeeded, card.rows().size());
+			}
+			// Sized as if the grid were two rows deep, so one row of cards is
+			// as tall as one row of a 2x2 grid rather than stretching to fill
+			// the screen.
+			int available = (contentBottom - contentTop) - CARD_GAP;
+			int uniform = Math.max(
+					CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
+					available / 2);
+			Arrays.fill(rowHeights, uniform);
 		}
 
 		int naturalHeight = 0;
@@ -704,22 +730,24 @@ public class ProfileScreen extends Screen {
 		}
 		naturalHeight += (rowCount - 1) * CARD_GAP;
 
-		// A card holding one or two modes is mostly empty across, and at full
-		// width that emptiness is what the eye lands on. Narrow it to what its
-		// contents actually need -- the header, and the widest label against
-		// its tier -- but only for genuinely short cards: doing it to a full
-		// card would leave the grid ragged for no gain.
+		// A card holding one or two modes is mostly empty across, and in a
+		// picture that emptiness is what the eye lands on. Narrow it to what
+		// its contents actually need -- the header, and the widest label
+		// against its tier -- but only for genuinely short cards, and only in
+		// a picture: on screen the width is fixed like the height.
 		int cardWidth = CARD_WIDTH;
-		int deepestRow = 0;
-		for (Card card : cards) {
-			deepestRow = Math.max(deepestRow, card.rows().size());
-		}
-		if (deepestRow <= NARROW_ROW_LIMIT) {
-			int needed = 0;
+		if (exporting) {
+			int deepestRow = 0;
 			for (Card card : cards) {
-				needed = Math.max(needed, cardContentWidth(card));
+				deepestRow = Math.max(deepestRow, card.rows().size());
 			}
-			cardWidth = Math.clamp(needed, CARD_WIDTH_MIN, CARD_WIDTH);
+			if (deepestRow <= NARROW_ROW_LIMIT) {
+				int needed = 0;
+				for (Card card : cards) {
+					needed = Math.max(needed, cardContentWidth(card));
+				}
+				cardWidth = Math.clamp(needed, CARD_WIDTH_MIN, CARD_WIDTH);
+			}
 		}
 
 		int blockWidth = perRow * cardWidth + (perRow - 1) * CARD_GAP;
@@ -744,13 +772,14 @@ public class ProfileScreen extends Screen {
 		}
 
 		// A player with a handful of tiers across many lists leaves the grid
-		// far shorter than the profile panel, which reads as unfinished. The
-		// spare height is handed back to the rows in proportion so they grow
-		// together and the grid finishes level with the panel.
+		// far shorter than the profile panel, which reads as unfinished in a
+		// picture. The spare height is handed back to the rows in proportion so
+		// they grow together and the grid finishes level with the panel. On
+		// screen the cards keep their fixed size instead.
 		//
 		// Measured in unscaled units, since that is what the rows are drawn in:
 		// the target is what the panel is worth once the scale is undone.
-		int target = Math.round(naturalPanelHeight() / scale);
+		int target = exporting ? Math.round(naturalPanelHeight() / scale) : 0;
 		if (naturalHeight < target) {
 			int spare = target - naturalHeight;
 			int contentOnly = naturalHeight - (rowCount - 1) * CARD_GAP;
