@@ -58,7 +58,6 @@ public class ProfileScreen extends Screen {
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
 	private static final int CARD_WIDTH = 162;
-	private static final int CARD_ROWS = 11;
 	private static final int LOGO_SIZE = 14;
 	private static final int MODE_ICON = 12;
 	private static final int TOOLTIP_PADDING = 6;
@@ -670,24 +669,6 @@ public class ProfileScreen extends Screen {
 			return;
 		}
 
-		// Fixed geometry: cards are the same size whether two lists load or
-		// four. The grid is sized to fill the profile card's height so the
-		// longest list (CatPVP ranks 14 modes) has room instead of
-		// spilling past the card edge.
-		// On screen the cards keep a floor of CARD_ROWS so they do not resize
-		// as lists load in. A picture has no such worry -- it is taken once --
-		// so there the tallest card decides and the rest of the empty space
-		// goes away.
-		int rowsNeeded = exporting ? 0 : CARD_ROWS;
-		for (Card card : cards) {
-			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
-		}
-
-		// The grid is sized to match the profile panel beside it, so the two
-		// columns start and finish level. Where the rows need more room than
-		// that, the cards win and the panel is stretched to follow them.
-		int contentHeight = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
-
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
 		int perRow = switch (cards.size()) {
@@ -698,20 +679,71 @@ public class ProfileScreen extends Screen {
 		};
 		int rowCount = (cards.size() + perRow - 1) / perRow;
 
-		// Divide the panel's height between the rows, then let the rows push
-		// back if that is not enough for their content.
-		int panelHeight = naturalPanelHeight();
-		int shareOfPanel = (panelHeight - (rowCount - 1) * CARD_GAP) / rowCount;
-		int cardHeight = Math.max(contentHeight, shareOfPanel);
+		// Each row is only as deep as its own longest card, so a row of short
+		// lists is not padded out to match a row carrying CatPVP's fourteen
+		// modes.
+		int[] rowHeights = new int[rowCount];
+		for (int row = 0; row < rowCount; row++) {
+			int rowsNeeded = 0;
+			for (int column = 0; column < perRow; column++) {
+				int index = row * perRow + column;
+				if (index < cards.size()) {
+					rowsNeeded = Math.max(rowsNeeded, cards.get(index).rows().size());
+				}
+			}
+			rowHeights[row] = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
+		}
+
+		int naturalHeight = 0;
+		for (int rowHeight : rowHeights) {
+			naturalHeight += rowHeight;
+		}
+		naturalHeight += (rowCount - 1) * CARD_GAP;
 
 		int blockWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
-		int blockHeight = rowCount * cardHeight + (rowCount - 1) * CARD_GAP;
+
 
 		// Scale only to fit; never blow the cards up when there is spare room.
+		// The width is what usually binds, so this is settled before the rows
+		// are grown -- growing first and scaling after would simply shrink the
+		// extra height straight back out again.
 		int availableHeight = contentBottom - contentTop;
 		float scale = Math.min(1.0f, Math.min(
 				(float) contentWidth / blockWidth,
-				(float) availableHeight / blockHeight));
+				(float) availableHeight / naturalHeight));
+
+		// A player with a handful of tiers across many lists leaves the grid
+		// far shorter than the profile panel, which reads as unfinished. The
+		// spare height is handed back to the rows in proportion so they grow
+		// together and the grid finishes level with the panel.
+		//
+		// Measured in unscaled units, since that is what the rows are drawn in:
+		// the target is what the panel is worth once the scale is undone.
+		int target = Math.round(naturalPanelHeight() / scale);
+		if (naturalHeight < target) {
+			int spare = target - naturalHeight;
+			int contentOnly = naturalHeight - (rowCount - 1) * CARD_GAP;
+			int given = 0;
+			for (int row = 0; row < rowCount; row++) {
+				// The last row takes the rounding remainder, so the total lands
+				// exactly on the target rather than a pixel or two short.
+				int share = row == rowCount - 1
+						? spare - given
+						: spare * rowHeights[row] / contentOnly;
+				rowHeights[row] += share;
+				given += share;
+			}
+			naturalHeight = target;
+		}
+
+		int blockHeight = naturalHeight;
+
+		// Row tops depend on the heights, so they are worked out once those
+		// have settled.
+		int[] rowTops = new int[rowCount];
+		for (int row = 1; row < rowCount; row++) {
+			rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + CARD_GAP;
+		}
 
 		// What the panel has to match: the height the cards are actually drawn
 		// at, which is the scaled one. Matching the unscaled height made the
@@ -746,13 +778,13 @@ public class ProfileScreen extends Screen {
 			int rowLeft = (blockWidth - rowWidth) / 2;
 
 			int x = rowLeft + column * (CARD_WIDTH + CARD_GAP);
-			int y = row * (cardHeight + CARD_GAP);
+			int y = rowTops[row];
 
 			// Mouse mapped into the scaled card space, so hit-testing matches
 			// what is actually drawn.
 			float localX = (mouseX - originX) / scale;
 			float localY = (mouseY - originY) / scale;
-			drawCard(graphics, cards.get(index), x, y, cardHeight, localX, localY);
+			drawCard(graphics, cards.get(index), x, y, rowHeights[row], localX, localY);
 		}
 
 		graphics.pose().popMatrix();
