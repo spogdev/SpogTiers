@@ -58,6 +58,10 @@ public class ProfileScreen extends Screen {
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
 	private static final int CARD_WIDTH = 162;
+	/** Narrowest a card is allowed to get, so the header still reads. */
+	private static final int CARD_WIDTH_MIN = 108;
+	/** Cards deeper than this keep the full width. */
+	private static final int NARROW_ROW_LIMIT = 3;
 	private static final int LOGO_SIZE = 14;
 	private static final int MODE_ICON = 12;
 	private static final int TOOLTIP_PADDING = 6;
@@ -700,7 +704,25 @@ public class ProfileScreen extends Screen {
 		}
 		naturalHeight += (rowCount - 1) * CARD_GAP;
 
-		int blockWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
+		// A card holding one or two modes is mostly empty across, and at full
+		// width that emptiness is what the eye lands on. Narrow it to what its
+		// contents actually need -- the header, and the widest label against
+		// its tier -- but only for genuinely short cards: doing it to a full
+		// card would leave the grid ragged for no gain.
+		int cardWidth = CARD_WIDTH;
+		int deepestRow = 0;
+		for (Card card : cards) {
+			deepestRow = Math.max(deepestRow, card.rows().size());
+		}
+		if (deepestRow <= NARROW_ROW_LIMIT) {
+			int needed = 0;
+			for (Card card : cards) {
+				needed = Math.max(needed, cardContentWidth(card));
+			}
+			cardWidth = Math.clamp(needed, CARD_WIDTH_MIN, CARD_WIDTH);
+		}
+
+		int blockWidth = perRow * cardWidth + (perRow - 1) * CARD_GAP;
 
 
 		// Scale only to fit; never blow the cards up when there is spare room.
@@ -711,6 +733,15 @@ public class ProfileScreen extends Screen {
 		float scale = Math.min(1.0f, Math.min(
 				(float) contentWidth / blockWidth,
 				(float) availableHeight / naturalHeight));
+
+		// Narrowing a card only to have the fit-scale blow it back up defeats
+		// the point: the block shrinks, the spare width becomes headroom, and
+		// the cards come out bigger than the full-width ones. Hold the scale
+		// where the full-width block would have put it.
+		if (cardWidth < CARD_WIDTH) {
+			int fullWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
+			scale = Math.min(scale, Math.min(1.0f, (float) contentWidth / fullWidth));
+		}
 
 		// A player with a handful of tiers across many lists leaves the grid
 		// far shorter than the profile panel, which reads as unfinished. The
@@ -751,11 +782,14 @@ public class ProfileScreen extends Screen {
 		cardsHeight = Math.round(blockHeight * scale);
 
 		int scaledWidth = Math.round(blockWidth * scale);
-		// Centred in the space beside the panel. An earlier version pinned the
-		// block to the panel to close a gap on wide windows, which threw the
-		// centring away; the gap is better closed by sizing the cards to the
-		// panel, which is what happens above.
+		// Centred in the space beside the panel on screen. In a picture there
+		// is no window to sit in the middle of, so the block is pulled in to a
+		// card gap from the panel and the empty right-hand side is cropped
+		// away with it.
 		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
+		if (exporting) {
+			originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
+		}
 		// Level with the top of the profile panel, since the two are now the
 		// same height.
 		int originY = contentTop;
@@ -774,27 +808,28 @@ public class ProfileScreen extends Screen {
 			int column = index % perRow;
 
 			int inThisRow = Math.min(perRow, cards.size() - row * perRow);
-			int rowWidth = inThisRow * CARD_WIDTH + (inThisRow - 1) * CARD_GAP;
+			int rowWidth = inThisRow * cardWidth + (inThisRow - 1) * CARD_GAP;
 			int rowLeft = (blockWidth - rowWidth) / 2;
 
-			int x = rowLeft + column * (CARD_WIDTH + CARD_GAP);
+			int x = rowLeft + column * (cardWidth + CARD_GAP);
 			int y = rowTops[row];
 
 			// Mouse mapped into the scaled card space, so hit-testing matches
 			// what is actually drawn.
 			float localX = (mouseX - originX) / scale;
 			float localY = (mouseY - originY) / scale;
-			drawCard(graphics, cards.get(index), x, y, rowHeights[row], localX, localY);
+			drawCard(graphics, cards.get(index), x, y, cardWidth, rowHeights[row],
+					localX, localY);
 		}
 
 		graphics.pose().popMatrix();
 	}
 
-	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y, int cardHeight,
-			float localX, float localY) {
+	private void drawCard(GuiGraphicsExtractor graphics, Card card, int x, int y,
+			int cardWidth, int cardHeight, float localX, float localY) {
 		Font font = this.font;
 
-		drawCardFrame(graphics, x, y, x + CARD_WIDTH, y + cardHeight);
+		drawCardFrame(graphics, x, y, x + cardWidth, y + cardHeight);
 
 		int textY = y + CARD_PADDING;
 
@@ -808,7 +843,7 @@ public class ProfileScreen extends Screen {
 		String title = card.list().displayName();
 		int badgeWidth = showRank ? font.width("#" + listRank) + 8 + 4 : 0;
 		int headerWidth = LOGO_SIZE + 4 + font.width(title) + badgeWidth;
-		int headerX = x + (CARD_WIDTH - headerWidth) / 2;
+		int headerX = x + (cardWidth - headerWidth) / 2;
 
 		Identifier logo = Identifier.fromNamespaceAndPath(
 				SpogTiers.MOD_ID, card.list().logoPath());
@@ -830,7 +865,7 @@ public class ProfileScreen extends Screen {
 		}
 
 		textY += font.lineHeight + 4;
-		graphics.fill(x + CARD_PADDING, textY, x + CARD_WIDTH - CARD_PADDING, textY + 1, 0x28FFFFFF);
+		graphics.fill(x + CARD_PADDING, textY, x + cardWidth - CARD_PADDING, textY + 1, 0x28FFFFFF);
 		// Extra gap so the first gamemode does not crowd the separator.
 		textY += 7;
 
@@ -850,11 +885,11 @@ public class ProfileScreen extends Screen {
 				widestPeak = Math.max(widestPeak, font.width(row.peak().label()));
 			}
 		}
-		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
+		int valueX = x + cardWidth - CARD_PADDING - widestValue;
 
 		for (Row row : card.rows()) {
 			// Whole row is the hit target, not just the label.
-			if (localX >= x && localX <= x + CARD_WIDTH
+			if (localX >= x && localX <= x + cardWidth
 					&& localY >= textY - 2 && localY < textY + ROW_HEIGHT - 2) {
 				hover = new Hover(card.list(), row);
 			}
@@ -895,7 +930,7 @@ public class ProfileScreen extends Screen {
 
 			// The value column ends here, so anything drawn in it is aligned to
 			// this edge rather than to the tier column's own left edge.
-			int valueRight = x + CARD_WIDTH - CARD_PADDING;
+			int valueRight = x + cardWidth - CARD_PADDING;
 
 			// While placing there is no tier to show, so the run goes in its
 			// place -- that is the useful fact about the row.
@@ -928,6 +963,39 @@ public class ProfileScreen extends Screen {
 			}
 			textY += ROW_HEIGHT;
 		}
+	}
+
+	/**
+	 * How wide a card needs to be for its own contents.
+	 *
+	 * <p>The wider of its header -- logo, name and rank badge -- and its widest
+	 * row, where a row is an icon, a label, and the tier hard against the right
+	 * edge with a gap between the two.
+	 */
+	private int cardContentWidth(Card card) {
+		Font font = this.font;
+
+		int listRank = SpogTiersClient.service().topRank(target, card.list(), null);
+		boolean showRank = listRank > 0 && listRank <= TierService.TOP_RANK_LIMIT;
+		int badgeWidth = showRank ? font.width("#" + listRank) + 8 + 4 : 0;
+		int widest = LOGO_SIZE + 4 + font.width(card.list().displayName()) + badgeWidth;
+
+		for (Row row : card.rows()) {
+			int label = MODE_ICON + 3 + font.width(row.label());
+			int value = row.placing()
+					? font.width(row.run())
+					: font.width(row.tier().label());
+			if (row.showsPeak()) {
+				value += font.width(row.peak().label()) + 5;
+			}
+			if (!row.run().isEmpty() && !row.placing()) {
+				value += font.width("(" + row.run() + ")") + 4;
+			}
+			// A comfortable gap between the label and the tier, so the two
+			// never read as one run of text.
+			widest = Math.max(widest, label + 12 + value);
+		}
+		return widest + CARD_PADDING * 2;
 	}
 
 	/** Whether placement rows are wanted at all. */
