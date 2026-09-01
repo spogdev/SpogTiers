@@ -50,7 +50,17 @@ public class ProfileScreen extends Screen {
 	private static final int MARGIN = 10;
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
+	/**
+	 * The profile panel's width in GUI space, and the share of the window it
+	 * is allowed to grow to.
+	 *
+	 * <p>The constant is a GUI-space figure, so the panel takes a larger share
+	 * of the screen the higher the GUI scale runs: about a quarter at scale 4,
+	 * but two fifths at scale 6, which leaves the cards beside it tiny. Scale 4
+	 * is the proportion worth keeping, so past it the panel narrows instead.
+	 */
 	private static final int PROFILE_WIDTH = 172;
+	private static final float PROFILE_WIDTH_SHARE = 0.27f;
 	private static final int SKIN_WIDTH = 110;
 	private static final int SKIN_HEIGHT = 170;
 	/** Rows of past names shown under the model before scrolling is needed. */
@@ -135,6 +145,8 @@ public class ProfileScreen extends Screen {
 	private int panelBottom;
 	/** Height of the card grid, which the panel matches. */
 	private int cardsHeight;
+	/** The scale the cards were last drawn at; tooltips follow it. */
+	private float cardScale = 1.0f;
 	private int historyScroll;
 	/** Rows that did not fit, so the wheel knows how far it may travel. */
 	private int historyMaxScroll;
@@ -184,9 +196,9 @@ public class ProfileScreen extends Screen {
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
-				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
+				skinWidgetWidth(), skinHeight, client.getEntityModels(), skin);
 		int skinY = skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2);
-		skinWidget.setPosition(cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2, skinY);
+		skinWidget.setPosition(cardLeft + (profileWidth() - skinWidgetWidth()) / 2, skinY);
 		addRenderableWidget(skinWidget);
 
 		// Kept so the export can re-centre the model in the shorter panel and
@@ -199,11 +211,14 @@ public class ProfileScreen extends Screen {
 		// Close takes the row, less two squares on the right: copy, then
 		// refresh.
 		int buttonTop = cardBottom - CARD_PADDING - 20;
-		int rowWidth = PROFILE_WIDTH - CARD_PADDING * 2;
+		int inset = Math.round(CARD_PADDING * panelScale());
+		int rowWidth = profileWidth() - inset * 2;
+		// The icons stay square and legible rather than shrinking with the
+		// panel; only the row they sit in narrows.
 		int iconSize = 20;
 
 		closeButton = new PanelButton(
-				cardLeft + CARD_PADDING,
+				cardLeft + inset,
 				buttonTop,
 				rowWidth - iconSize * 2 - 8,
 				20,
@@ -212,7 +227,7 @@ public class ProfileScreen extends Screen {
 		addRenderableWidget(closeButton);
 
 		copyButton = new IconButton(
-				cardLeft + CARD_PADDING + rowWidth - iconSize * 2 - 4,
+				cardLeft + inset + rowWidth - iconSize * 2 - 4,
 				buttonTop,
 				iconSize,
 				20,
@@ -222,7 +237,7 @@ public class ProfileScreen extends Screen {
 		addRenderableWidget(copyButton);
 
 		refreshButton = new IconButton(
-				cardLeft + CARD_PADDING + rowWidth - iconSize,
+				cardLeft + inset + rowWidth - iconSize,
 				buttonTop,
 				iconSize,
 				20,
@@ -249,6 +264,7 @@ public class ProfileScreen extends Screen {
 		hover = null;
 		headerHover = null;
 		refitSkin();
+		layoutButtons();
 		// Cards first: the panel sizes itself against them when exporting, and
 		// drawing them second would leave it a frame behind. Both are plain
 		// fills, so the order does not change what the frame looks like.
@@ -288,7 +304,7 @@ public class ProfileScreen extends Screen {
 			refreshButton.visible = true;
 			// Now that the stripped-down frame has been laid out, the panel
 			// and the cards are at their exported sizes and can be measured.
-			int right = Math.max(MARGIN + PROFILE_WIDTH, cardsRight);
+			int right = Math.max(MARGIN + profileWidth(), cardsRight);
 			int bottom = Math.max(panelBottom, cardsBottom);
 			exportLeft = Math.max(0, MARGIN - EXPORT_PADDING);
 			exportTop = Math.max(0, MARGIN - EXPORT_PADDING);
@@ -377,7 +393,7 @@ public class ProfileScreen extends Screen {
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		int rows = history == null ? 0 : Math.min(history.previous().size(), HISTORY_ROWS);
 		// The heading is always drawn, even with nothing under it.
-		return Math.round(font.lineHeight * textScale()) + 4 + rows * historyRowHeight();
+		return font.lineHeight + 4 + rows * HISTORY_ROW_HEIGHT;
 	}
 
 	/**
@@ -429,6 +445,11 @@ public class ProfileScreen extends Screen {
 		skinScreenY = skinTopLimit + Math.max(0, (band - fitted) / 2);
 		skinWidget.setHeight(fitted);
 		skinWidget.setY(skinScreenY);
+		// The panel's width follows the window, so the model is re-centred in
+		// it here rather than once at init.
+		int modelWidth = skinWidgetWidth();
+		skinWidget.setWidth(modelWidth);
+		skinWidget.setX(MARGIN + (profileWidth() - modelWidth) / 2);
 	}
 
 	/** The profile card: face, name, region tag, skin model and buttons. */
@@ -442,29 +463,34 @@ public class ProfileScreen extends Screen {
 		// stops there instead, and matches the cards beside it when they are
 		// taller.
 		int bottom = MARGIN + profilePanelHeight();
-		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, bottom);
+		drawCardFrame(graphics, left, top, left + profileWidth(), bottom);
 		panelBottom = bottom;
 
-		int innerX = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
+		// Laid out at the panel's full width and scaled down to whatever it
+		// actually got, so the face, name and tag keep their proportions.
+		float scale = panelScale();
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(left, top);
+		graphics.pose().scale(scale, scale);
+
+		int innerX = CARD_PADDING;
+		int y = CARD_PADDING;
 
 		drawFace(graphics, innerX, y);
 
 		int nameX = innerX + FACE_SIZE + 6;
 		// +1 so the text sits optically centred against the face icon.
-		int nameY = y + (FACE_SIZE - Math.round(font.lineHeight * textScale())) / 2 + 1;
-		scaledText(graphics, playerName, nameX, nameY, 0xFFFFFFFF);
+		int nameY = y + (FACE_SIZE - font.lineHeight) / 2 + 1;
+		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
 
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
 		tagRegion = region;
 		if (!region.isEmpty()) {
-			drawTag(graphics, nameX + scaledWidth(playerName) + 5, nameY - 3, region);
+			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
 		}
 
-		// Overall standing, when the player is near the top of a list that
-		// publishes one.
-
+		graphics.pose().popMatrix();
 	}
 
 	/**
@@ -477,57 +503,66 @@ public class ProfileScreen extends Screen {
 	 */
 	private void drawNameHistory(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
-		int x = MARGIN + CARD_PADDING;
-		int right = MARGIN + PROFILE_WIDTH - CARD_PADDING;
-		int y = historyTop;
+		// Same treatment as the header: laid out full width, drawn scaled.
+		float scale = panelScale();
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(MARGIN, historyTop);
+		graphics.pose().scale(scale, scale);
 
-		scaledText(graphics, "Name history", x, y, LABEL_COLOR);
-		y += Math.round(font.lineHeight * textScale()) + 4;
+		int x = CARD_PADDING;
+		int right = PROFILE_WIDTH - CARD_PADDING;
+		int y = 0;
+
+		graphics.text(font, Component.literal("Name history"), x, y, LABEL_COLOR);
+		y += font.lineHeight + 4;
 
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		if (history == null) {
-			scaledText(graphics, "Loading...", x, y, MUTED_COLOR);
+			graphics.text(font, Component.literal("Loading..."), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
 			return;
 		}
 
 		List<NameHistory.Entry> previous = history.previous();
 		if (previous.isEmpty()) {
-			scaledText(graphics, "No previous names", x, y, MUTED_COLOR);
+			graphics.text(font, Component.literal("No previous names"), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
 			return;
 		}
 
-		int visible = Math.max(1, (historyBottom - y) / historyRowHeight());
+		int visible = Math.max(1, (historyBottom - y) / HISTORY_ROW_HEIGHT);
 		historyMaxScroll = Math.max(0, previous.size() - visible);
 		historyScroll = Math.clamp(historyScroll, 0, historyMaxScroll);
 
 		// Clipped so a long history cannot spill over the close button.
-		graphics.enableScissor(x, y, right, historyBottom);
+		// The scissor is in the transformed space too, so the band's bottom is
+		// expressed relative to the origin this method translated to.
+		graphics.enableScissor(x, y, right, historyBottom - historyTop);
 		for (int i = 0; i < visible && i + historyScroll < previous.size(); i++) {
 			NameHistory.Entry entry = previous.get(i + historyScroll);
-			int rowY = y + i * historyRowHeight();
+			int rowY = y + i * HISTORY_ROW_HEIGHT;
 
 			String ago = entry.isDated() ? timeAgo(entry.changedAt()) : "";
-			int agoWidth = ago.isEmpty() ? 0 : scaledWidth(ago);
+			int agoWidth = ago.isEmpty() ? 0 : font.width(ago);
 
-			// Trimming works in unscaled widths, so the budget is converted
-			// back before it is handed over.
-			int budget = Math.round((right - x - agoWidth - 6) / textScale());
-			scaledText(graphics, trim(entry.name(), budget), x, rowY, 0xFFD5DCE5);
+			graphics.text(font, Component.literal(
+							trim(entry.name(), right - x - agoWidth - 6)),
+					x, rowY, 0xFFD5DCE5);
 			if (!ago.isEmpty()) {
-				scaledText(graphics, ago, right - agoWidth, rowY, MUTED_COLOR);
+				graphics.text(font, Component.literal(ago), right - agoWidth, rowY, MUTED_COLOR);
 			}
 		}
 		graphics.disableScissor();
 
 		if (historyMaxScroll > 0) {
-			int trackHeight = visible * historyRowHeight();
+			int trackHeight = visible * HISTORY_ROW_HEIGHT;
 			int thumbHeight = Math.max(8, trackHeight * visible / previous.size());
 			int thumbY = y + (trackHeight - thumbHeight) * historyScroll / historyMaxScroll;
 			graphics.fill(right + 2, y, right + 4, y + trackHeight, 0x40202A38);
 			graphics.fill(right + 2, thumbY, right + 4, thumbY + thumbHeight, 0x90727F8F);
 		}
+
+		graphics.pose().popMatrix();
 	}
 
 	/**
@@ -538,7 +573,7 @@ public class ProfileScreen extends Screen {
 	 */
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + PROFILE_WIDTH
+		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + profileWidth()
 				&& mouseY >= historyTop && mouseY <= historyBottom;
 		if (overHistory && historyMaxScroll > 0) {
 			historyScroll = Math.clamp(
@@ -738,7 +773,7 @@ public class ProfileScreen extends Screen {
 			}
 		}
 
-		int contentLeft = MARGIN + PROFILE_WIDTH + MARGIN;
+		int contentLeft = MARGIN + profileWidth() + MARGIN;
 		int contentWidth = Math.max(160, width - contentLeft - MARGIN);
 		int contentTop = MARGIN;
 		int contentBottom = height - MARGIN;
@@ -880,6 +915,10 @@ public class ProfileScreen extends Screen {
 			rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + CARD_GAP;
 		}
 
+		// Tooltips belonging to a card are drawn at the same size the card is,
+		// so a shrunken grid does not carry full-size tooltips over it.
+		cardScale = scale;
+
 		// What the panel has to match: the height the cards are actually drawn
 		// at, which is the scaled one. Matching the unscaled height made the
 		// panel tower over a grid that had been shrunk to fit.
@@ -892,7 +931,7 @@ public class ProfileScreen extends Screen {
 		// away with it.
 		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
 		if (exporting) {
-			originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
+			originX = Math.min(originX, MARGIN + profileWidth() + CARD_GAP);
 		}
 		// Centred in the height beside the panel on screen, which is what a
 		// single row of cards needs: at the top it sits against the panel's
@@ -1373,9 +1412,21 @@ public class ProfileScreen extends Screen {
 		int boxHeight = TOOLTIP_PADDING * 2 + lines.size() * (font.lineHeight + 2) - 2
 				+ (bar ? 10 : 0);
 
+		// Sized against the card it belongs to, so the two read as one object.
+		float scale = cardScale;
+		int drawnWidth = Math.round(boxWidth * scale);
+		int drawnHeight = Math.round(boxHeight * scale);
+
 		// Keep the tooltip on screen rather than letting it run off an edge.
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+		// Placed in screen space, then the box is drawn scaled from there.
+		int boxX = Math.min(mouseX + 12, width - drawnWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - drawnHeight - 4);
+
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(boxX, boxY);
+		graphics.pose().scale(scale, scale);
+		boxX = 0;
+		boxY = 0;
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
 		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
@@ -1413,6 +1464,8 @@ public class ProfileScreen extends Screen {
 						target.row().tier().color());
 			}
 		}
+
+		graphics.pose().popMatrix();
 	}
 
 	/** Half-strength version of a colour, for the struck-through peak. */
@@ -1422,52 +1475,70 @@ public class ProfileScreen extends Screen {
 
 	/** Names the region in full, in the tag's own colour. */
 	/**
-	 * How much to shrink the profile panel's text by.
+	 * Puts the button row where the panel's current width wants it.
 	 *
-	 * <p>Text is laid out in GUI space, so at GUI scale 4 it is drawn four
-	 * times the size -- the panel ends up dominated by lettering. This pulls
-	 * some of that back: at scale 1 and 2 nothing changes, and above that the
-	 * text grows at roughly half the rate the rest of the interface does.
+	 * <p>The buttons are real widgets, so they cannot be drawn inside the
+	 * panel's transform; they are moved to match it instead. Done every frame
+	 * because the panel's width follows the window, which {@code init} cannot
+	 * know about ahead of time.
 	 */
-	private float textScale() {
-		int gui = Minecraft.getInstance().getWindow().getGuiScale();
-		if (gui <= 2) {
-			return 1.0f;
-		}
-		// Half the excess: scale 3 draws at 5/6, scale 4 at 3/4.
-		return (gui + 2.0f) / (gui * 2.0f);
-	}
-
-	/**
-	 * Draws text shrunk by {@link #textScale()}, anchored at the same point.
-	 *
-	 * <p>The scale is applied about the text's own origin so callers can keep
-	 * laying out in ordinary GUI coordinates.
-	 */
-	private void scaledText(GuiGraphicsExtractor graphics, String text, int x, int y, int color) {
-		float scale = textScale();
-		if (scale >= 1.0f) {
-			graphics.text(font, Component.literal(text), x, y, color);
+	private void layoutButtons() {
+		if (closeButton == null) {
 			return;
 		}
-		graphics.pose().pushMatrix();
-		graphics.pose().translate(x, y);
-		graphics.pose().scale(scale, scale);
-		graphics.text(font, Component.literal(text), 0, 0, color);
-		graphics.pose().popMatrix();
+
+		float scale = panelScale();
+		int inset = Math.round(CARD_PADDING * scale);
+		int rowWidth = profileWidth() - inset * 2;
+		// The whole row shrinks together: icons that kept their full size ate
+		// the Close button's width once the panel narrowed.
+		int buttonHeight = Math.max(12, Math.round(20 * scale));
+		int iconSize = buttonHeight;
+		int left = MARGIN + inset;
+
+		// Anchored to the panel's own bottom edge rather than the window's:
+		// the two part company once the panel stops running full height.
+		// Computed rather than read from panelBottom, which drawHeader only
+		// sets later in the frame -- reading it here would trail by a frame and
+		// start at zero.
+		int top = MARGIN + profilePanelHeight() - inset - buttonHeight;
+
+		int gap = Math.max(2, Math.round(4 * scale));
+
+		closeButton.setX(left);
+		closeButton.setY(top);
+		closeButton.setWidth(Math.max(20, rowWidth - iconSize * 2 - gap * 2));
+		closeButton.setHeight(buttonHeight);
+
+		copyButton.setX(left + rowWidth - iconSize * 2 - gap);
+		copyButton.setY(top);
+		copyButton.setSize(iconSize, buttonHeight);
+
+		refreshButton.setX(left + rowWidth - iconSize);
+		refreshButton.setY(top);
+		refreshButton.setSize(iconSize, buttonHeight);
 	}
 
-	/** The width that text will actually occupy once shrunk. */
-	private int scaledWidth(String text) {
-		return Math.round(font.width(text) * textScale());
+	/** The panel's width, capped to its share of the window. */
+	private int profileWidth() {
+		return Math.min(PROFILE_WIDTH, Math.round(width * PROFILE_WIDTH_SHARE));
 	}
 
 	/**
-	 * Row pitch for the name history, following the text scale so the rows sit
-	 * as close together as their lettering is small.
+	 * How much the panel's contents are shrunk by.
+	 *
+	 * <p>The panel narrows once it would otherwise take too much of the window,
+	 * and everything inside it -- the face, the name, the history, the buttons
+	 * -- is drawn at this scale so it keeps its proportions instead of
+	 * overflowing a box that is no longer wide enough for it.
 	 */
-	private int historyRowHeight() {
-		return Math.max(7, Math.round(HISTORY_ROW_HEIGHT * textScale()));
+	private float panelScale() {
+		return profileWidth() / (float) PROFILE_WIDTH;
+	}
+
+	/** The model's width, which follows the panel so it stays inside it. */
+	private int skinWidgetWidth() {
+		return Math.min(SKIN_WIDTH, profileWidth() - CARD_PADDING * 2);
 	}
 
 	/** A one-line tooltip in the panel's own style. */
@@ -1499,13 +1570,19 @@ public class ProfileScreen extends Screen {
 		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
 		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
 
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+		// This one hangs off a card header, so it matches the cards as well.
+		float scale = cardScale;
+		int boxX = Math.min(mouseX + 12, width - Math.round(boxWidth * scale) - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - Math.round(boxHeight * scale) - 4);
 
-		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(boxX, boxY);
+		graphics.pose().scale(scale, scale);
+		drawCardFrame(graphics, 0, 0, boxWidth, boxHeight);
+		graphics.fill(1, 1, boxWidth - 1, boxHeight - 1, 0xE00E1219);
 		graphics.text(font, Component.literal(text),
-				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+				TOOLTIP_PADDING, TOOLTIP_PADDING, 0xFFE4EAF2);
+		graphics.pose().popMatrix();
 	}
 
 	private void drawRegionTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
