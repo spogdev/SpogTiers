@@ -427,7 +427,7 @@ public class TierService {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 		result.region(string(root, "region"));
 		result.overall(intOr(root, "rank", 0));
-		result.points(intOr(root, "points", 0));
+		result.points(floatOr(root, "points", 0.0f));
 
 		JsonElement ranks = root.get("kitRanks");
 		if (ranks == null || !ranks.isJsonObject()) {
@@ -499,7 +499,7 @@ public class TierService {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 		result.region(string(root, "region"));
 		result.overall(intOr(root, "overall", 0));
-		result.points(intOr(root, "points", 0));
+		result.points(floatOr(root, "points", 0.0f));
 
 		JsonElement rankings = root.get("rankings");
 		if (rankings == null || !rankings.isJsonObject()) {
@@ -641,6 +641,12 @@ public class TierService {
 	private static int intOr(JsonObject object, String key, int fallback) {
 		JsonElement element = object.get(key);
 		return element == null || element.isJsonNull() ? fallback : element.getAsInt();
+	}
+
+	/** MCPvP awards half points, so its totals are not whole numbers. */
+	private static float floatOr(JsonObject object, String key, float fallback) {
+		JsonElement element = object.get(key);
+		return element == null || element.isJsonNull() ? fallback : element.getAsFloat();
 	}
 
 	/** The name history for a player, or null until it has been fetched. */
