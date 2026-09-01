@@ -42,7 +42,8 @@ public final class ProfileExport {
 	 */
 	public static void copy(int guiX, int guiY, int guiWidth, int guiHeight, Runnable onDone) {
 		Minecraft client = Minecraft.getInstance();
-		RenderTarget target = client.getMainRenderTarget();
+		// 26.2 moved the main render target off Minecraft onto GameRenderer.
+		RenderTarget target = client.gameRenderer.mainRenderTarget();
 		if (target == null || guiWidth <= 0 || guiHeight <= 0) {
 			onDone.run();
 			return;
