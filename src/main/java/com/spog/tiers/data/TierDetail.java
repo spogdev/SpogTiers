@@ -22,19 +22,42 @@ public record TierDetail(
 		int testGames,
 		int testTarget,
 		int tierPoints,
-		boolean reportsTierPoints) {
+		boolean reportsTierPoints,
+		int wins,
+		int losses) {
 
 	/** Tier points always run to this, whatever the tier. */
 	public static final int TIER_POINT_TARGET = 100;
 
 	public static final TierDetail EMPTY =
-			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false);
+			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false, 0, 0);
 
 	/** The shape the other providers use, which report no placement games. */
 	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
 			int tierCeiling, String nextTier, int peakPoints, Tier peak) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
-				peakPoints, peak, 0, 0, 0, 0, 0, false);
+				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0);
+	}
+
+	/** The shape PVPHQ used before win/loss counts were carried. */
+	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
+			int tierCeiling, String nextTier, int peakPoints, Tier peak,
+			int placementGames, int placementTarget, int testGames, int testTarget,
+			int tierPoints, boolean reportsTierPoints) {
+		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
+				peakPoints, peak, placementGames, placementTarget, testGames,
+				testTarget, tierPoints, reportsTierPoints, 0, 0);
+	}
+
+	/** True when the list reports a played record for this ranking. */
+	public boolean hasRecord() {
+		return wins > 0 || losses > 0;
+	}
+
+	/** Games won as a percentage of games played, rounded to a whole number. */
+	public int winPercent() {
+		int played = wins + losses;
+		return played == 0 ? 0 : Math.round(wins * 100.0f / played);
 	}
 
 	/**

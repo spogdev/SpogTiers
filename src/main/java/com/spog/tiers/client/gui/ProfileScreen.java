@@ -8,6 +8,7 @@ import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
 import com.spog.tiers.data.PlayerTiers;
+import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierDetail;
 import com.spog.tiers.data.TierList;
@@ -18,6 +19,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.text.Text;
+import net.minecraft.text.Style;
 import net.minecraft.util.Identifier;
 import net.minecraft.entity.player.SkinTextures;
 
@@ -25,6 +27,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -47,7 +50,17 @@ public class ProfileScreen extends Screen {
 	private static final int MARGIN = 10;
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
+	/**
+	 * The profile panel's width in GUI space, and the share of the window it
+	 * is allowed to grow to.
+	 *
+	 * <p>The constant is a GUI-space figure, so the panel takes a larger share
+	 * of the screen the higher the GUI scale runs: about a quarter at scale 4,
+	 * but two fifths at scale 6, which leaves the cards beside it tiny. Scale 4
+	 * is the proportion worth keeping, so past it the panel narrows instead.
+	 */
 	private static final int PROFILE_WIDTH = 172;
+	private static final float PROFILE_WIDTH_SHARE = 0.27f;
 	private static final int SKIN_WIDTH = 110;
 	private static final int SKIN_HEIGHT = 170;
 	/** Rows of past names shown under the model before scrolling is needed. */
@@ -57,10 +70,22 @@ public class ProfileScreen extends Screen {
 	private static final int CARD_GAP = 10;
 	/** Cards are a fixed size so two lists look the same as four. */
 	private static final int CARD_WIDTH = 162;
+	/**
+	 * Rows a card is sized for on screen, whatever it actually holds, so the
+	 * grid does not resize as lists arrive.
+	 */
 	private static final int CARD_ROWS = 11;
+	/** Narrowest a card is allowed to get, so the header still reads. */
+	private static final int CARD_WIDTH_MIN = 108;
+	/** Cards deeper than this keep the full width. */
+	private static final int NARROW_ROW_LIMIT = 3;
 	private static final int LOGO_SIZE = 14;
 	private static final int MODE_ICON = 12;
 	private static final int TOOLTIP_PADDING = 6;
+	/** Breathing room around the exported picture. */
+	private static final int EXPORT_PADDING = 6;
+	/** Smallest the model is drawn at in a picture. */
+	private static final int EXPORT_SKIN_MIN = 90;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	/** Placement runs read as pending rather than as a rank. */
@@ -88,9 +113,40 @@ public class ProfileScreen extends Screen {
 	private String tagRegion = "";
 	private PanelButton closeButton;
 	private IconButton refreshButton;
+	private IconButton copyButton;
+	/**
+	 * Set for the single frame being captured. While it is set the screen
+	 * draws only the profile itself: no dimmed backdrop, no buttons, no
+	 * tooltips, so none of it lands in the picture.
+	 */
+	private boolean exporting;
+	/** Where the exported picture starts and how far it runs, in GUI space. */
+	private int exportLeft;
+	private int exportTop;
+	private int exportRight;
+	private int exportBottom;
+	/** Where the card grid ends, measured as it is laid out. */
+	private int cardsRight;
+	private int cardsBottom;
+	/** Set between arming an export and the frame that gets captured. */
+	private boolean captureQueued;
+	/** True once the stripped-down frame has been drawn and submitted. */
+	private boolean cleanFrameDrawn;
 	/** Vertical band the name history occupies, set during layout. */
 	private int historyTop;
 	private int historyBottom;
+	private AnimatedSkinWidget skinWidget;
+	/** The model's on-screen y, restored after a capture. */
+	private int skinScreenY;
+	/** Highest the model may sit: just below the name row. */
+	private int skinTopLimit;
+	private int skinModelHeight;
+	/** Where the panel frame was last drawn to. */
+	private int panelBottom;
+	/** Height of the card grid, which the panel matches. */
+	private int cardsHeight;
+	/** The scale the cards were last drawn at; tooltips follow it. */
+	private float cardScale = 1.0f;
 	private int historyScroll;
 	/** Rows that did not fit, so the wheel knows how far it may travel. */
 	private int historyMaxScroll;
@@ -128,11 +184,10 @@ public class ProfileScreen extends Screen {
 		// carved out first and the model gets whatever remains. On a very short
 		// window the model has a minimum height and would grow back into this
 		// band, so the history yields rather than being drawn over.
-		int historyHeight = textRenderer.fontHeight + 4 + HISTORY_ROWS * HISTORY_ROW_HEIGHT;
 		historyBottom = cardBottom - CARD_PADDING - 20 - 10;
 		historyTop = Math.max(
 				cardTop + CARD_PADDING + FACE_SIZE + 12 + 80 + 8,
-				historyBottom - historyHeight);
+				historyBottom - historyBandHeight());
 
 		// Fit the model to whatever is left between the header and the history,
 		// so it never spills out of the profile card.
@@ -141,30 +196,50 @@ public class ProfileScreen extends Screen {
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
-				SKIN_WIDTH, skinHeight, client.getLoadedEntityModels(), skin);
-		skinWidget.setPosition(
-				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
-				skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2));
+				skinWidgetWidth(), skinHeight, client.getLoadedEntityModels(), skin);
+		int skinY = skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2);
+		skinWidget.setPosition(cardLeft + (profileWidth() - skinWidgetWidth()) / 2, skinY);
 		addDrawableChild(skinWidget);
 
-		// Close takes the row, less a square on the right for refresh.
+		// Kept so the export can re-centre the model in the shorter panel and
+		// put it straight back afterwards.
+		this.skinWidget = skinWidget;
+		this.skinScreenY = skinY;
+		this.skinTopLimit = skinTop;
+		this.skinModelHeight = skinHeight;
+
+		// Close takes the row, less two squares on the right: copy, then
+		// refresh.
 		int buttonTop = cardBottom - CARD_PADDING - 20;
-		int rowWidth = PROFILE_WIDTH - CARD_PADDING * 2;
-		int refreshSize = 20;
+		int inset = Math.round(CARD_PADDING * panelScale());
+		int rowWidth = profileWidth() - inset * 2;
+		// The icons stay square and legible rather than shrinking with the
+		// panel; only the row they sit in narrows.
+		int iconSize = 20;
 
 		closeButton = new PanelButton(
-				cardLeft + CARD_PADDING,
+				cardLeft + inset,
 				buttonTop,
-				rowWidth - refreshSize - 4,
+				rowWidth - iconSize * 2 - 8,
 				20,
 				Text.literal("Close"),
 				button -> close());
 		addDrawableChild(closeButton);
 
-		refreshButton = new IconButton(
-				cardLeft + CARD_PADDING + rowWidth - refreshSize,
+		copyButton = new IconButton(
+				cardLeft + inset + rowWidth - iconSize * 2 - 4,
 				buttonTop,
-				refreshSize,
+				iconSize,
+				20,
+				Text.literal("Copy as image"),
+				IconButton.Glyph.COPY,
+				button -> beginExport());
+		addDrawableChild(copyButton);
+
+		refreshButton = new IconButton(
+				cardLeft + inset + rowWidth - iconSize,
+				buttonTop,
+				iconSize,
 				20,
 				Text.literal("Refresh"),
 				button -> refresh());
@@ -176,13 +251,70 @@ public class ProfileScreen extends Screen {
 		// NB: the blurred background is drawn for us by the framework, which
 		// calls extractBackground immediately before this method. Blurring again
 		// here throws "Can only blur once per frame".
-		graphics.fill(0, 0, width, height, 0xC00B0E13);
+		// The clean frame has been submitted by the time the next one starts,
+		// so the readback is requested here rather than mid-extract.
+		if (exporting && cleanFrameDrawn && captureQueued) {
+			finishExport();
+		}
+
+		// A solid fill while exporting: the usual translucent wash would let
+		// the world show through into the picture.
+		graphics.fill(0, 0, width, height, exporting ? 0xFF0B0E13 : 0xC00B0E13);
 
 		hover = null;
 		headerHover = null;
+		refitSkin();
+		layoutButtons();
+		// Cards first: the panel sizes itself against them when exporting, and
+		// drawing them second would leave it a frame behind. Both are plain
+		// fills, so the order does not change what the frame looks like.
+		// Hovers are suppressed during a capture so no row highlights itself
+		// in the picture.
+		drawCards(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
 		drawHeader(graphics);
-		drawNameHistory(graphics);
-		drawCards(graphics, mouseX, mouseY);
+		// Name history is a browsing aid, not part of the ranking picture.
+		if (!exporting) {
+			drawNameHistory(graphics);
+		}
+
+		if (exporting) {
+			// The skin model is a widget, so it has to render for the picture
+			// to contain it -- but the buttons must not.
+			closeButton.visible = false;
+			copyButton.visible = false;
+			refreshButton.visible = false;
+			// Centre the model in the shortened panel; without this it stays
+			// where the taller on-screen layout put it and leaves a gap
+			// underneath.
+			if (skinWidget != null) {
+				// Fit the model to the panel rather than the window, then
+				// centre it in what is left.
+				int band = exportPanelBottom() - CARD_PADDING - skinTopLimit;
+				int fitted = Math.clamp(band, EXPORT_SKIN_MIN, SKIN_HEIGHT);
+				skinWidget.setHeight(fitted);
+				skinWidget.setY(skinTopLimit + Math.max(0, (band - fitted) / 2));
+			}
+			super.render(graphics, -1, -1, partialTick);
+			if (skinWidget != null) {
+				skinWidget.setHeight(skinModelHeight);
+				skinWidget.setY(skinScreenY);
+			}
+			closeButton.visible = true;
+			copyButton.visible = true;
+			refreshButton.visible = true;
+			// Now that the stripped-down frame has been laid out, the panel
+			// and the cards are at their exported sizes and can be measured.
+			int right = Math.max(MARGIN + profileWidth(), cardsRight);
+			int bottom = Math.max(panelBottom, cardsBottom);
+			exportLeft = Math.max(0, MARGIN - EXPORT_PADDING);
+			exportTop = Math.max(0, MARGIN - EXPORT_PADDING);
+			exportRight = Math.min(width, right + EXPORT_PADDING);
+			exportBottom = Math.min(height, bottom + EXPORT_PADDING);
+
+			// Mark it drawn; the readback happens as the next frame begins.
+			cleanFrameDrawn = true;
+			return;
+		}
 
 		// Widgets (the skin model included) render after our fills, so they are
 		// not painted over.
@@ -190,7 +322,14 @@ public class ProfileScreen extends Screen {
 
 		// Tooltip last and outside the card transform, so it is never clipped
 		// or scaled with the grid.
-		if (hover != null) {
+		// Tested against the pointer rather than the widget's own flag: the
+		// flag is only set while the screen is handling input, and the export
+		// frame renders with none.
+		if (copyButton != null && copyButton.isMouseOver(mouseX, mouseY)) {
+			drawLabelTooltip(graphics, "Copy", mouseX, mouseY);
+		} else if (refreshButton != null && refreshButton.isMouseOver(mouseX, mouseY)) {
+			drawLabelTooltip(graphics, "Refresh", mouseX, mouseY);
+		} else if (hover != null) {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
 		} else if (headerHover != null) {
 			drawResponseTooltip(graphics, headerHover, mouseX, mouseY);
@@ -202,16 +341,140 @@ public class ProfileScreen extends Screen {
 
 	}
 
+	/**
+	 * How far down the panel reaches in a picture.
+	 *
+	 * <p>It ends below the model, and stretches to meet the cards when they
+	 * run lower so the two columns finish level. The model is centred in
+	 * whatever height that gives, which is handled by the widget itself.
+	 */
+	private int exportPanelBottom() {
+		return MARGIN + profilePanelHeight();
+	}
+
+	/**
+	 * How tall the profile panel is, which is also what the cards match.
+	 *
+	 * <p>On screen it fills the window. In a picture there is no history and
+	 * no button row, so it only needs to reach below the model. Either way the
+	 * cards stretch it further when their rows will not fit.
+	 */
+	private int profilePanelHeight() {
+		return Math.max(naturalPanelHeight(), cardsHeight);
+	}
+
+	/**
+	 * The panel's height before the cards have any say.
+	 *
+	 * <p>Kept separate from {@link #profilePanelHeight()} so the cards can be
+	 * sized against it: measuring them against the combined height would feed
+	 * their own height back in and let it climb frame after frame.
+	 */
+	private int naturalPanelHeight() {
+		if (!exporting) {
+			return height - MARGIN * 2;
+		}
+		// In a picture the panel holds only the name row and the model, and the
+		// model shrinks to fit whatever the cards leave -- down to a floor that
+		// keeps it recognisable. Using the on-screen model height here made the
+		// panel tower over the cards.
+		return skinTopLimit + EXPORT_SKIN_MIN + CARD_PADDING - MARGIN;
+	}
+
+	/**
+	 * How much room the name history needs.
+	 *
+	 * <p>Only as many rows as the player actually has, capped at what fits.
+	 * Reserving the full five regardless left a player with no previous names
+	 * -- most of them -- with a band of empty space, and squeezed the model
+	 * into what was left.
+	 */
+	private int historyBandHeight() {
+		NameHistory history = SpogTiersClient.service().nameHistory(target);
+		int rows = history == null ? 0 : Math.min(history.previous().size(), HISTORY_ROWS);
+		// The heading is always drawn, even with nothing under it.
+		return textRenderer.fontHeight + 4 + rows * HISTORY_ROW_HEIGHT;
+	}
+
+	/**
+	 * How tall the model is allowed to be before the history is asked to give
+	 * way.
+	 *
+	 * <p>A player with a full history would otherwise squeeze the model to
+	 * nothing. The list already scrolls, so it can hold fewer rows at once
+	 * rather than taking the space from the model.
+	 */
+	private int modelFloor() {
+		// Two thirds of the room between the name row and the button row, so
+		// the model stays the thing the panel is mostly showing.
+		int usable = (height - MARGIN - CARD_PADDING - 20 - 10) - skinTopLimit;
+		return Math.clamp(usable * 2 / 3, 80, SKIN_HEIGHT);
+	}
+
+	/**
+	 * Re-fits the model to the room the history leaves.
+	 *
+	 * <p>The history arrives after the screen opens, so the split cannot be
+	 * settled once in {@code init}: a player whose names land late would keep
+	 * the layout chosen when there were none.
+	 */
+	private void refitSkin() {
+		if (skinWidget == null || exporting) {
+			return;
+		}
+
+		// The history sits between the model and the button row. It is given
+		// only the rows it has, but never so much that the model is squeezed
+		// past its floor -- past that point the list scrolls instead.
+		int cardBottom = height - MARGIN;
+		int listBottom = cardBottom - CARD_PADDING - 20 - 10;
+		int wanted = Math.min(
+				listBottom,
+				Math.max(skinTopLimit + modelFloor() + 8,
+						listBottom - historyBandHeight()));
+		if (wanted == historyTop) {
+			return;
+		}
+
+		historyTop = wanted;
+		// The model gets the room above the history and no more, so the two
+		// can never overlap however the floor works out.
+		int band = historyTop - 8 - skinTopLimit;
+		int fitted = Math.clamp(Math.min(band, SKIN_HEIGHT), 40, SKIN_HEIGHT);
+		skinModelHeight = fitted;
+		skinScreenY = skinTopLimit + Math.max(0, (band - fitted) / 2);
+		skinWidget.setHeight(fitted);
+		skinWidget.setY(skinScreenY);
+		// The panel's width follows the window, so the model is re-centred in
+		// it here rather than once at init.
+		int modelWidth = skinWidgetWidth();
+		skinWidget.setWidth(modelWidth);
+		skinWidget.setX(MARGIN + (profileWidth() - modelWidth) / 2);
+	}
+
 	/** The profile card: face, name, region tag, skin model and buttons. */
 	private void drawHeader(DrawContext graphics) {
 		TextRenderer textRenderer = this.textRenderer;
 
 		int left = MARGIN;
 		int top = MARGIN;
-		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, height - MARGIN);
+		// On screen the panel runs the full height of the window. In a picture
+		// there is nothing below the model -- no history, no buttons -- so it
+		// stops there instead, and matches the cards beside it when they are
+		// taller.
+		int bottom = MARGIN + profilePanelHeight();
+		drawCardFrame(graphics, left, top, left + profileWidth(), bottom);
+		panelBottom = bottom;
 
-		int innerX = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
+		// Laid out at the panel's full width and scaled down to whatever it
+		// actually got, so the face, name and tag keep their proportions.
+		float scale = panelScale();
+		graphics.getMatrices().pushMatrix();
+		graphics.getMatrices().translate(left, top);
+		graphics.getMatrices().scale(scale, scale);
+
+		int innerX = CARD_PADDING;
+		int y = CARD_PADDING;
 
 		drawFace(graphics, innerX, y);
 
@@ -227,9 +490,7 @@ public class ProfileScreen extends Screen {
 			drawTag(graphics, nameX + textRenderer.getWidth(playerName) + 5, nameY - 3, region);
 		}
 
-		// Overall standing, when the player is near the top of a list that
-		// publishes one.
-
+		graphics.getMatrices().popMatrix();
 	}
 
 	/**
@@ -242,17 +503,27 @@ public class ProfileScreen extends Screen {
 	 */
 	private void drawNameHistory(DrawContext graphics) {
 		TextRenderer textRenderer = this.textRenderer;
-		int x = MARGIN + CARD_PADDING;
-		int right = MARGIN + PROFILE_WIDTH - CARD_PADDING;
-		int y = historyTop;
+		// Same treatment as the header: laid out full width, drawn scaled.
+		float scale = panelScale();
+		graphics.getMatrices().pushMatrix();
+		graphics.getMatrices().translate(MARGIN, historyTop);
+		graphics.getMatrices().scale(scale, scale);
+
+		int x = CARD_PADDING;
+		int right = PROFILE_WIDTH - CARD_PADDING;
+		int y = 0;
 
 		graphics.drawTextWithShadow(textRenderer, Text.literal("Name history"), x, y, LABEL_COLOR);
 		y += textRenderer.fontHeight + 4;
 
+		// Both of these leave early, so the panel transform has to come off
+		// first: leaking it left every tooltip drawn afterwards offset by the
+		// panel's own scale and origin.
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		if (history == null) {
 			graphics.drawTextWithShadow(textRenderer, Text.literal("Loading..."), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
+			graphics.getMatrices().popMatrix();
 			return;
 		}
 
@@ -260,15 +531,24 @@ public class ProfileScreen extends Screen {
 		if (previous.isEmpty()) {
 			graphics.drawTextWithShadow(textRenderer, Text.literal("No previous names"), x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
+			graphics.getMatrices().popMatrix();
 			return;
 		}
 
-		int visible = Math.max(1, (historyBottom - y) / HISTORY_ROW_HEIGHT);
+		// y is panel-local here and historyBottom is a screen coordinate, so
+		// the band's depth is measured from historyTop. Mixing the two made
+		// visible far too large, which zeroed the scroll range and left the
+		// list stuck.
+		int bandDepth = Math.round((historyBottom - historyTop) / panelScale()) - y;
+		int visible = Math.max(1, bandDepth / HISTORY_ROW_HEIGHT);
 		historyMaxScroll = Math.max(0, previous.size() - visible);
 		historyScroll = Math.clamp(historyScroll, 0, historyMaxScroll);
 
 		// Clipped so a long history cannot spill over the close button.
-		graphics.enableScissor(x, y, right, historyBottom);
+		// The scissor is in the transformed space too, so the band's bottom is
+		// expressed relative to the origin this method translated to.
+		graphics.enableScissor(x, y, right,
+				Math.round((historyBottom - historyTop) / panelScale()));
 		for (int i = 0; i < visible && i + historyScroll < previous.size(); i++) {
 			NameHistory.Entry entry = previous.get(i + historyScroll);
 			int rowY = y + i * HISTORY_ROW_HEIGHT;
@@ -292,6 +572,8 @@ public class ProfileScreen extends Screen {
 			graphics.fill(right + 2, y, right + 4, y + trackHeight, 0x40202A38);
 			graphics.fill(right + 2, thumbY, right + 4, thumbY + thumbHeight, 0x90727F8F);
 		}
+
+		graphics.getMatrices().popMatrix();
 	}
 
 	/**
@@ -302,7 +584,7 @@ public class ProfileScreen extends Screen {
 	 */
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + PROFILE_WIDTH
+		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + profileWidth()
 				&& mouseY >= historyTop && mouseY <= historyBottom;
 		if (overHistory && historyMaxScroll > 0) {
 			historyScroll = Math.clamp(
@@ -408,10 +690,14 @@ public class ProfileScreen extends Screen {
 		int boxWidth = textRenderer.getWidth(text) + 8;
 		int boxHeight = textRenderer.fontHeight + 5;
 
-		tagLeft = x;
-		tagTop = y;
-		tagRight = x + boxWidth;
-		tagBottom = y + boxHeight;
+		// The tag is drawn inside the panel's transform, so these are panel
+		// coordinates; the hover test runs in screen space, so they are
+		// converted back here rather than there.
+		float scale = panelScale();
+		tagLeft = MARGIN + Math.round(x * scale);
+		tagTop = MARGIN + Math.round(y * scale);
+		tagRight = MARGIN + Math.round((x + boxWidth) * scale);
+		tagBottom = MARGIN + Math.round((y + boxHeight) * scale);
 
 		int foreground = regionForeground(text);
 		int background = regionBackground(text);
@@ -473,61 +759,13 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * The player's region code.
+	 * The player's region code, voted on across every list that reports one.
 	 *
-	 * <p>PvPTiers, SubTiers and MCTiers report proper codes ("EU", "NA"), so
-	 * those win. PVPHQ instead lists the <em>server locations</em> a player has
-	 * queued on ("MONTREAL", "LOS_ANGELES"), which we fold down to a continent
-	 * so the tag always reads as a region rather than a city.
+	 * <p>See {@link Regions} for why this is a vote rather than a preference
+	 * order.
 	 */
 	private String region() {
-		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(target);
-
-		for (TierList list : TierList.values()) {
-			if (list.isPvpHq()) {
-				continue;
-			}
-			PlayerTiers tiers = all.get(list);
-			if (tiers != null && isRegionCode(tiers.region())) {
-				return tiers.region().toUpperCase(Locale.ROOT);
-			}
-		}
-
-		PlayerTiers pvpHq = all.get(TierList.PVPHQ);
-		return pvpHq == null ? "" : continentOf(pvpHq.region());
-	}
-
-	/** True for short codes like EU/NA/AS, false for "??" and city names. */
-	private static boolean isRegionCode(String raw) {
-		if (raw == null || raw.length() < 2 || raw.length() > 4) {
-			return false;
-		}
-		for (int i = 0; i < raw.length(); i++) {
-			if (!Character.isLetter(raw.charAt(i))) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/** Folds a PVPHQ server location down to a continent code. */
-	private static String continentOf(String location) {
-		if (location == null || location.isEmpty()) {
-			return "";
-		}
-		return switch (location.toUpperCase(Locale.ROOT)) {
-			case "MONTREAL", "TORONTO", "LOS_ANGELES", "PORTLAND", "CHICAGO",
-					"ASHBURN", "MIAMI", "DALLAS", "NEW_YORK", "SEATTLE",
-					"DENVER", "ATLANTA", "PHOENIX", "VANCOUVER" -> "NA";
-			case "LONDON", "FRANKFURT", "AMSTERDAM", "PARIS", "WARSAW",
-					"MADRID", "MILAN", "STOCKHOLM", "HELSINKI", "DUBLIN" -> "EU";
-			case "SINGAPORE", "TOKYO", "SEOUL", "MUMBAI", "HONG_KONG",
-					"OSAKA", "JAKARTA" -> "AS";
-			case "SYDNEY", "MELBOURNE", "AUCKLAND" -> "OCE";
-			case "SAO_PAULO", "SANTIAGO", "BUENOS_AIRES", "LIMA", "BOGOTA" -> "SA";
-			case "JOHANNESBURG", "CAPE_TOWN", "LAGOS" -> "AF";
-			default -> "";
-		};
+		return Regions.resolve(SpogTiersClient.cache().allLists(target));
 	}
 
 	/** One fixed-size card per ranked list, arranged in a balanced grid. */
@@ -550,7 +788,7 @@ public class ProfileScreen extends Screen {
 			}
 		}
 
-		int contentLeft = MARGIN + PROFILE_WIDTH + MARGIN;
+		int contentLeft = MARGIN + profileWidth() + MARGIN;
 		int contentWidth = Math.max(160, width - contentLeft - MARGIN);
 		int contentTop = MARGIN;
 		int contentBottom = height - MARGIN;
@@ -566,23 +804,6 @@ public class ProfileScreen extends Screen {
 			return;
 		}
 
-		// Fixed geometry: cards are the same size whether two lists load or
-		// four. The grid is sized to fill the profile card's height so the
-		// longest list (CatPVP ranks 14 modes) has room instead of
-		// spilling past the card edge.
-		int rowsNeeded = CARD_ROWS;
-		for (Card card : cards) {
-			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
-		}
-
-		// Always size cards as if the grid were two rows deep, so a single row
-		// of cards is the same height as one row of a 2x2 grid rather than
-		// stretching to fill the screen.
-		int available = (contentBottom - contentTop) - CARD_GAP;
-		int cardHeight = Math.max(
-				CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
-				available / 2);
-
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
 		int perRow = switch (cards.size()) {
@@ -593,17 +814,156 @@ public class ProfileScreen extends Screen {
 		};
 		int rowCount = (cards.size() + perRow - 1) / perRow;
 
-		int blockWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
-		int blockHeight = rowCount * cardHeight + (rowCount - 1) * CARD_GAP;
+		// On screen every card is the same size, whichever lists loaded and
+		// however many modes they rank: a floor of CARD_ROWS and a share of the
+		// window keep the grid from resizing as data lands. Tightening any of
+		// that is a picture-only concern -- a picture is taken once, so nothing
+		// is going to shift under the reader.
+		int[] rowHeights = new int[rowCount];
+		if (exporting) {
+			// Each row only as deep as its own longest card, so a row of short
+			// lists is not padded out to match a row carrying CatPVP's fourteen
+			// modes.
+			for (int row = 0; row < rowCount; row++) {
+				int rowsNeeded = 0;
+				for (int column = 0; column < perRow; column++) {
+					int index = row * perRow + column;
+					if (index < cards.size()) {
+						rowsNeeded = Math.max(rowsNeeded, cards.get(index).rows().size());
+					}
+				}
+				rowHeights[row] = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
+			}
+		} else {
+			int rowsNeeded = CARD_ROWS;
+			for (Card card : cards) {
+				rowsNeeded = Math.max(rowsNeeded, card.rows().size());
+			}
+			// Sized as if the grid were two rows deep, so one row of cards is
+			// as tall as one row of a 2x2 grid rather than stretching to fill
+			// the screen.
+			int available = (contentBottom - contentTop) - CARD_GAP;
+			int uniform = Math.max(
+					CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
+					available / 2);
+			Arrays.fill(rowHeights, uniform);
+		}
+
+		int naturalHeight = 0;
+		for (int rowHeight : rowHeights) {
+			naturalHeight += rowHeight;
+		}
+		naturalHeight += (rowCount - 1) * CARD_GAP;
+
+		// A card holding one or two modes is mostly empty across, and in a
+		// picture that emptiness is what the eye lands on. Narrow it to what
+		// its contents actually need -- the header, and the widest label
+		// against its tier -- but only for genuinely short cards, and only in
+		// a picture: on screen the width is fixed like the height.
+		int cardWidth = CARD_WIDTH;
+		if (exporting) {
+			int deepestRow = 0;
+			for (Card card : cards) {
+				deepestRow = Math.max(deepestRow, card.rows().size());
+			}
+			if (deepestRow <= NARROW_ROW_LIMIT) {
+				int needed = 0;
+				for (Card card : cards) {
+					needed = Math.max(needed, cardContentWidth(card));
+				}
+				cardWidth = Math.clamp(needed, CARD_WIDTH_MIN, CARD_WIDTH);
+			}
+		}
+
+		int blockWidth = perRow * cardWidth + (perRow - 1) * CARD_GAP;
+
 
 		// Scale only to fit; never blow the cards up when there is spare room.
+		// The width is what usually binds, so this is settled before the rows
+		// are grown -- growing first and scaling after would simply shrink the
+		// extra height straight back out again.
 		int availableHeight = contentBottom - contentTop;
 		float scale = Math.min(1.0f, Math.min(
 				(float) contentWidth / blockWidth,
-				(float) availableHeight / blockHeight));
+				(float) availableHeight / naturalHeight));
 
-		int originX = contentLeft + (contentWidth - Math.round(blockWidth * scale)) / 2;
-		int originY = contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
+		// Narrowing a card only to have the fit-scale blow it back up defeats
+		// the point: the block shrinks, the spare width becomes headroom, and
+		// the cards come out bigger than the full-width ones. Hold the scale
+		// where the full-width block would have put it.
+		if (cardWidth < CARD_WIDTH) {
+			int fullWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
+			scale = Math.min(scale, Math.min(1.0f, (float) contentWidth / fullWidth));
+		}
+
+		// A player with a handful of tiers across many lists leaves the grid
+		// far shorter than the profile panel, which reads as unfinished in a
+		// picture. The spare height is handed back to the rows in proportion so
+		// they grow together and the grid finishes level with the panel. On
+		// screen the cards keep their fixed size instead.
+		//
+		// Measured in unscaled units, since that is what the rows are drawn in:
+		// the target is what the panel is worth once the scale is undone.
+		int target = exporting ? Math.round(naturalPanelHeight() / scale) : 0;
+		if (naturalHeight < target) {
+			int spare = target - naturalHeight;
+			int contentOnly = naturalHeight - (rowCount - 1) * CARD_GAP;
+			int given = 0;
+			for (int row = 0; row < rowCount; row++) {
+				// The last row takes the rounding remainder, so the total lands
+				// exactly on the target rather than a pixel or two short.
+				int share = row == rowCount - 1
+						? spare - given
+						: spare * rowHeights[row] / contentOnly;
+				rowHeights[row] += share;
+				given += share;
+			}
+			naturalHeight = target;
+		}
+
+		int blockHeight = naturalHeight;
+
+		// Row tops depend on the heights, so they are worked out once those
+		// have settled.
+		int[] rowTops = new int[rowCount];
+		for (int row = 1; row < rowCount; row++) {
+			rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + CARD_GAP;
+		}
+
+		// Tooltips belonging to a card are drawn at the same size the card is,
+		// so a shrunken grid does not carry full-size tooltips over it.
+		cardScale = scale;
+
+		// What the panel has to match: the height the cards are actually drawn
+		// at, which is the scaled one. Matching the unscaled height made the
+		// panel tower over a grid that had been shrunk to fit.
+		cardsHeight = Math.round(blockHeight * scale);
+
+		int scaledWidth = Math.round(blockWidth * scale);
+		// Centred in the space beside the panel on screen. In a picture there
+		// is no window to sit in the middle of, so the block is pulled in to a
+		// card gap from the panel and the empty right-hand side is cropped
+		// away with it.
+		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
+		if (exporting) {
+			originX = Math.min(originX, MARGIN + profileWidth() + CARD_GAP);
+		}
+		// Centred in the height beside the panel on screen, which is what a
+		// single row of cards needs: at the top it sits against the panel's
+		// header with the whole lower half empty. A two-row grid fills that
+		// height anyway, so this only shows on the short case.
+		//
+		// In a picture the grid is grown to the panel's height already, so
+		// there is nothing to centre and the top is where it belongs.
+		int originY = exporting
+				? contentTop
+				: contentTop + Math.max(0,
+						(availableHeight - Math.round(blockHeight * scale)) / 2);
+
+		// Remembered so an export can crop to the cards rather than to the
+		// whole window.
+		cardsRight = originX + scaledWidth;
+		cardsBottom = originY + Math.round(blockHeight * scale);
 
 		graphics.getMatrices().pushMatrix();
 		graphics.getMatrices().translate(originX, originY);
@@ -614,27 +974,28 @@ public class ProfileScreen extends Screen {
 			int column = index % perRow;
 
 			int inThisRow = Math.min(perRow, cards.size() - row * perRow);
-			int rowWidth = inThisRow * CARD_WIDTH + (inThisRow - 1) * CARD_GAP;
+			int rowWidth = inThisRow * cardWidth + (inThisRow - 1) * CARD_GAP;
 			int rowLeft = (blockWidth - rowWidth) / 2;
 
-			int x = rowLeft + column * (CARD_WIDTH + CARD_GAP);
-			int y = row * (cardHeight + CARD_GAP);
+			int x = rowLeft + column * (cardWidth + CARD_GAP);
+			int y = rowTops[row];
 
 			// Mouse mapped into the scaled card space, so hit-testing matches
 			// what is actually drawn.
 			float localX = (mouseX - originX) / scale;
 			float localY = (mouseY - originY) / scale;
-			drawCard(graphics, cards.get(index), x, y, cardHeight, localX, localY);
+			drawCard(graphics, cards.get(index), x, y, cardWidth, rowHeights[row],
+					localX, localY);
 		}
 
 		graphics.getMatrices().popMatrix();
 	}
 
-	private void drawCard(DrawContext graphics, Card card, int x, int y, int cardHeight,
-			float localX, float localY) {
+	private void drawCard(DrawContext graphics, Card card, int x, int y,
+			int cardWidth, int cardHeight, float localX, float localY) {
 		TextRenderer textRenderer = this.textRenderer;
 
-		drawCardFrame(graphics, x, y, x + CARD_WIDTH, y + cardHeight);
+		drawCardFrame(graphics, x, y, x + cardWidth, y + cardHeight);
 
 		int textY = y + CARD_PADDING;
 
@@ -648,7 +1009,7 @@ public class ProfileScreen extends Screen {
 		String title = card.list().displayName();
 		int badgeWidth = showRank ? textRenderer.getWidth("#" + listRank) + 8 + 4 : 0;
 		int headerWidth = LOGO_SIZE + 4 + textRenderer.getWidth(title) + badgeWidth;
-		int headerX = x + (CARD_WIDTH - headerWidth) / 2;
+		int headerX = x + (cardWidth - headerWidth) / 2;
 
 		Identifier logo = Identifier.of(
 				SpogTiers.MOD_ID, card.list().logoPath());
@@ -670,7 +1031,7 @@ public class ProfileScreen extends Screen {
 		}
 
 		textY += textRenderer.fontHeight + 4;
-		graphics.fill(x + CARD_PADDING, textY, x + CARD_WIDTH - CARD_PADDING, textY + 1, 0x28FFFFFF);
+		graphics.fill(x + CARD_PADDING, textY, x + cardWidth - CARD_PADDING, textY + 1, 0x28FFFFFF);
 		// Extra gap so the first gamemode does not crowd the separator.
 		textY += 7;
 
@@ -690,11 +1051,11 @@ public class ProfileScreen extends Screen {
 				widestPeak = Math.max(widestPeak, textRenderer.getWidth(row.peak().label()));
 			}
 		}
-		int valueX = x + CARD_WIDTH - CARD_PADDING - widestValue;
+		int valueX = x + cardWidth - CARD_PADDING - widestValue;
 
 		for (Row row : card.rows()) {
 			// Whole row is the hit target, not just the label.
-			if (localX >= x && localX <= x + CARD_WIDTH
+			if (localX >= x && localX <= x + cardWidth
 					&& localY >= textY - 2 && localY < textY + ROW_HEIGHT - 2) {
 				hover = new Hover(card.list(), row);
 			}
@@ -713,22 +1074,29 @@ public class ProfileScreen extends Screen {
 			}
 			graphics.drawTextWithShadow(textRenderer, Text.literal(row.label()), labelX, textY, row.accent());
 
-
+			// Everything left of the tier column stacks leftward from here, so
+			// a row carrying both a peak and a promotion run lays them out end
+			// to end instead of drawing one over the other.
+			int extrasRight = valueX - 5;
 
 			// Peak sits to the left of the current tier, struck through to read
 			// as "used to be".
 			if (row.showsPeak()) {
 				String peakLabel = row.peak().label();
-				int peakX = valueX - widestPeak - 5 + (widestPeak - textRenderer.getWidth(peakLabel));
+				int peakX = extrasRight - widestPeak + (widestPeak - textRenderer.getWidth(peakLabel));
 				int peakColor = fade(row.peak().color());
 				graphics.drawTextWithShadow(textRenderer, Text.literal(peakLabel), peakX, textY, peakColor);
 				graphics.fill(peakX, textY + textRenderer.fontHeight / 2,
 						peakX + textRenderer.getWidth(peakLabel), textY + textRenderer.fontHeight / 2 + 1, peakColor);
+				// Reserve the whole peak column, not just this label, so runs
+				// stay in one line down the card rather than jittering with
+				// each row's peak width.
+				extrasRight -= widestPeak + 5;
 			}
 
 			// The value column ends here, so anything drawn in it is aligned to
 			// this edge rather than to the tier column's own left edge.
-			int valueRight = x + CARD_WIDTH - CARD_PADDING;
+			int valueRight = x + cardWidth - CARD_PADDING;
 
 			// While placing there is no tier to show, so the run goes in its
 			// place -- that is the useful fact about the row.
@@ -748,21 +1116,93 @@ public class ProfileScreen extends Screen {
 					valueX - labelOffset, textY, row.tier().color());
 
 			// A test run sits in brackets to the left of the tier it is trying
-			// to leave, so the tier column itself stays aligned.
+			// to leave -- and to the left of the peak as well when the row has
+			// one, since both want the same space.
 			if (!row.run().isEmpty() && !row.placing()) {
 				String progress = "(" + row.run() + ")";
+				// Without a peak the run keeps hugging the tier column, which
+				// is where it has always sat; the retired R is allowed to
+				// overhang into the same gap.
+				int runRight = row.showsPeak() ? extrasRight : valueX - labelOffset - 4;
 				graphics.drawTextWithShadow(textRenderer, Text.literal(progress),
-						valueX - labelOffset - 4 - textRenderer.getWidth(progress),
-						textY, PLACEMENT_COLOR);
+						runRight - textRenderer.getWidth(progress), textY, PLACEMENT_COLOR);
 			}
 			textY += ROW_HEIGHT;
 		}
+	}
+
+	/**
+	 * How wide a card needs to be for its own contents.
+	 *
+	 * <p>The wider of its header -- logo, name and rank badge -- and its widest
+	 * row, where a row is an icon, a label, and the tier hard against the right
+	 * edge with a gap between the two.
+	 */
+	private int cardContentWidth(Card card) {
+		TextRenderer textRenderer = this.textRenderer;
+
+		int listRank = SpogTiersClient.service().topRank(target, card.list(), null);
+		boolean showRank = listRank > 0 && listRank <= TierService.TOP_RANK_LIMIT;
+		int badgeWidth = showRank ? textRenderer.getWidth("#" + listRank) + 8 + 4 : 0;
+		int widest = LOGO_SIZE + 4 + textRenderer.getWidth(card.list().displayName()) + badgeWidth;
+
+		for (Row row : card.rows()) {
+			int label = MODE_ICON + 3 + textRenderer.getWidth(row.label());
+			int value = row.placing()
+					? textRenderer.getWidth(row.run())
+					: textRenderer.getWidth(row.tier().label());
+			if (row.showsPeak()) {
+				value += textRenderer.getWidth(row.peak().label()) + 5;
+			}
+			if (!row.run().isEmpty() && !row.placing()) {
+				value += textRenderer.getWidth("(" + row.run() + ")") + 4;
+			}
+			// A comfortable gap between the label and the tier, so the two
+			// never read as one run of text.
+			widest = Math.max(widest, label + 12 + value);
+		}
+		return widest + CARD_PADDING * 2;
 	}
 
 	/** Whether placement rows are wanted at all. */
 	private static boolean showPlacements() {
 		SpogTiersConfig config = SpogTiersClient.config();
 		return config == null || config.showPlacements;
+	}
+
+	/**
+	 * Copies the profile to the clipboard as a picture.
+	 *
+	 * <p>Runs over two frames: this one marks the screen as exporting, and the
+	 * next renders it stripped of everything that is not the profile and is
+	 * read back. The flag is cleared once the capture has been taken, whether
+	 * or not it worked.
+	 */
+	private void beginExport() {
+		if (exporting) {
+			return;
+		}
+
+		// Bounds cannot be measured yet: the clean frame has not been drawn,
+		// so the panel and the cards are still at their on-screen sizes. They
+		// are taken from that frame instead, once both have shrunk.
+		// Only arm it here. The click arrives partway through a frame that has
+		// already been drawn with the buttons on it, so capturing now would
+		// grab that frame; the capture is taken at the end of the next one.
+		exporting = true;
+		captureQueued = true;
+		cleanFrameDrawn = false;
+	}
+
+	/**
+	 * Takes the capture, called at the end of the stripped-down frame.
+	 */
+	private void finishExport() {
+		captureQueued = false;
+		cleanFrameDrawn = false;
+		ProfileExport.copy(exportLeft, exportTop,
+				exportRight - exportLeft, exportBottom - exportTop,
+				() -> exporting = false);
 	}
 
 	/**
@@ -934,6 +1374,12 @@ public class ProfileScreen extends Screen {
 				}
 			}
 
+			// The played record, wins against losses, with the rate spelled out
+			// so a lopsided record is not read off two bare numbers.
+			if (detail.hasRecord()) {
+				lines.add(recordLine(detail));
+			}
+
 			// TR is progress toward the next tier, always out of 100. The old
 			// line divided the rating band instead, which is a different
 			// number entirely. A player still placing has neither: the run is
@@ -953,6 +1399,20 @@ public class ProfileScreen extends Screen {
 			}
 		} else if (detail.hasAttained()) {
 			lines.add(new Line("Attained " + formatDate(detail.attainedSeconds()), 0xFFE4EAF2));
+		} else if (target.list().isMcPvp()) {
+			// MCPvP publishes no rating, no dates and no per-kit standing: the
+			// same rank and points come back whichever kit is asked for. What
+			// it does have is the player's overall placing, which is worth
+			// showing rather than leaving the row blank.
+			if (tiers.overall() > 0) {
+				lines.add(new Line("Rank #" + tiers.overall(), 0xFF9DB2C8));
+			}
+			if (tiers.points() > 0.0f) {
+				lines.add(new Line(formatPoints(tiers.points()) + " points", 0xFFE4EAF2));
+			}
+			if (tiers.overall() <= 0 && tiers.points() <= 0.0f) {
+				lines.add(new Line("No detail available", MUTED_COLOR));
+			}
 		} else {
 			lines.add(new Line("No detail available", MUTED_COLOR));
 		}
@@ -981,17 +1441,34 @@ public class ProfileScreen extends Screen {
 		int boxHeight = TOOLTIP_PADDING * 2 + lines.size() * (textRenderer.fontHeight + 2) - 2
 				+ (bar ? 10 : 0);
 
+		// Sized against the card it belongs to, so the two read as one object.
+		float scale = cardScale;
+		int drawnWidth = Math.round(boxWidth * scale);
+		int drawnHeight = Math.round(boxHeight * scale);
+
 		// Keep the tooltip on screen rather than letting it run off an edge.
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+		// Placed in screen space, then the box is drawn scaled from there.
+		int boxX = Math.min(mouseX + 12, width - drawnWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - drawnHeight - 4);
+
+		graphics.getMatrices().pushMatrix();
+		graphics.getMatrices().translate(boxX, boxY);
+		graphics.getMatrices().scale(scale, scale);
+		boxX = 0;
+		boxY = 0;
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
 		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
 
 		int lineY = boxY + TOOLTIP_PADDING;
 		for (Line line : lines) {
-			graphics.drawTextWithShadow(textRenderer, Text.literal(line.text()),
-					boxX + TOOLTIP_PADDING, lineY, line.color());
+			if (line.component() != null) {
+				graphics.drawTextWithShadow(textRenderer, line.component(),
+						boxX + TOOLTIP_PADDING, lineY, 0xFFFFFFFF);
+			} else {
+				graphics.drawTextWithShadow(textRenderer, Text.literal(line.text()),
+						boxX + TOOLTIP_PADDING, lineY, line.color());
+			}
 			lineY += textRenderer.fontHeight + 2;
 		}
 
@@ -1016,6 +1493,8 @@ public class ProfileScreen extends Screen {
 						target.row().tier().color());
 			}
 		}
+
+		graphics.getMatrices().popMatrix();
 	}
 
 	/** Half-strength version of a colour, for the struck-through peak. */
@@ -1024,6 +1503,91 @@ public class ProfileScreen extends Screen {
 	}
 
 	/** Names the region in full, in the tag's own colour. */
+	/**
+	 * Puts the button row where the panel's current width wants it.
+	 *
+	 * <p>The buttons are real widgets, so they cannot be drawn inside the
+	 * panel's transform; they are moved to match it instead. Done every frame
+	 * because the panel's width follows the window, which {@code init} cannot
+	 * know about ahead of time.
+	 */
+	private void layoutButtons() {
+		if (closeButton == null) {
+			return;
+		}
+
+		float scale = panelScale();
+		int inset = Math.round(CARD_PADDING * scale);
+		int rowWidth = profileWidth() - inset * 2;
+		// The whole row shrinks together: icons that kept their full size ate
+		// the Close button's width once the panel narrowed.
+		int buttonHeight = Math.max(12, Math.round(20 * scale));
+		int iconSize = buttonHeight;
+		int left = MARGIN + inset;
+
+		// Anchored to the panel's own bottom edge rather than the window's:
+		// the two part company once the panel stops running full height.
+		// Computed rather than read from panelBottom, which drawHeader only
+		// sets later in the frame -- reading it here would trail by a frame and
+		// start at zero.
+		int top = MARGIN + profilePanelHeight() - inset - buttonHeight;
+
+		int gap = Math.max(2, Math.round(4 * scale));
+
+		closeButton.setX(left);
+		closeButton.setY(top);
+		closeButton.setWidth(Math.max(20, rowWidth - iconSize * 2 - gap * 2));
+		closeButton.setHeight(buttonHeight);
+
+		copyButton.setX(left + rowWidth - iconSize * 2 - gap);
+		copyButton.setY(top);
+		copyButton.setWidth(iconSize);
+		copyButton.setHeight(buttonHeight);
+
+		refreshButton.setX(left + rowWidth - iconSize);
+		refreshButton.setY(top);
+		refreshButton.setWidth(iconSize);
+		refreshButton.setHeight(buttonHeight);
+	}
+
+	/** The panel's width, capped to its share of the window. */
+	private int profileWidth() {
+		return Math.min(PROFILE_WIDTH, Math.round(width * PROFILE_WIDTH_SHARE));
+	}
+
+	/**
+	 * How much the panel's contents are shrunk by.
+	 *
+	 * <p>The panel narrows once it would otherwise take too much of the window,
+	 * and everything inside it -- the face, the name, the history, the buttons
+	 * -- is drawn at this scale so it keeps its proportions instead of
+	 * overflowing a box that is no longer wide enough for it.
+	 */
+	private float panelScale() {
+		return profileWidth() / (float) PROFILE_WIDTH;
+	}
+
+	/** The model's width, which follows the panel so it stays inside it. */
+	private int skinWidgetWidth() {
+		return Math.min(SKIN_WIDTH, profileWidth() - CARD_PADDING * 2);
+	}
+
+	/** A one-line tooltip in the panel's own style. */
+	private void drawLabelTooltip(DrawContext graphics, String text,
+			int mouseX, int mouseY) {
+		TextRenderer textRenderer = this.textRenderer;
+		int boxWidth = textRenderer.getWidth(text) + TOOLTIP_PADDING * 2;
+		int boxHeight = textRenderer.fontHeight + TOOLTIP_PADDING * 2;
+
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.drawTextWithShadow(textRenderer, Text.literal(text),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+	}
+
 	/** How long that list took to answer, and nothing else. */
 	private void drawResponseTooltip(DrawContext graphics, TierList list,
 			int mouseX, int mouseY) {
@@ -1037,13 +1601,19 @@ public class ProfileScreen extends Screen {
 		int boxWidth = textRenderer.getWidth(text) + TOOLTIP_PADDING * 2;
 		int boxHeight = textRenderer.fontHeight + TOOLTIP_PADDING * 2;
 
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+		// This one hangs off a card header, so it matches the cards as well.
+		float scale = cardScale;
+		int boxX = Math.min(mouseX + 12, width - Math.round(boxWidth * scale) - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - Math.round(boxHeight * scale) - 4);
 
-		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.getMatrices().pushMatrix();
+		graphics.getMatrices().translate(boxX, boxY);
+		graphics.getMatrices().scale(scale, scale);
+		drawCardFrame(graphics, 0, 0, boxWidth, boxHeight);
+		graphics.fill(1, 1, boxWidth - 1, boxHeight - 1, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text),
-				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+				TOOLTIP_PADDING, TOOLTIP_PADDING, 0xFFE4EAF2);
+		graphics.getMatrices().popMatrix();
 	}
 
 	private void drawRegionTooltip(DrawContext graphics, int mouseX, int mouseY) {
@@ -1075,7 +1645,47 @@ public class ProfileScreen extends Screen {
 		};
 	}
 
-	private record Line(String text, int color) {
+	/**
+	 * One tooltip line.
+	 *
+	 * <p>Most lines are a string in a single colour. A line that needs more
+	 * than one -- a win/loss record, where the two halves are coloured against
+	 * each other -- carries a pre-styled component instead, and {@code text} is
+	 * kept alongside so the box can still be measured.
+	 */
+	private record Line(String text, int color, Text component) {
+		Line(String text, int color) {
+			this(text, color, null);
+		}
+	}
+
+	/**
+	 * A win/loss record: wins in green, losses in red, the rate after in grey.
+	 */
+	private Line recordLine(TierDetail detail) {
+		String wins = String.valueOf(detail.wins());
+		String losses = String.valueOf(detail.losses());
+		String rate = " (" + detail.winPercent() + "%)";
+
+		Text component = Text.literal(wins)
+				.setStyle(Style.EMPTY.withColor(0xFF7FD186))
+				.append(Text.literal("W ")
+						.setStyle(Style.EMPTY.withColor(0xFF7FD186)))
+				.append(Text.literal(losses)
+						.setStyle(Style.EMPTY.withColor(0xFFD97F7F)))
+				.append(Text.literal("L")
+						.setStyle(Style.EMPTY.withColor(0xFFD97F7F)))
+				.append(Text.literal(rate)
+						.setStyle(Style.EMPTY.withColor(MUTED_COLOR)));
+
+		return new Line(wins + "W " + losses + "L" + rate, 0xFFE4EAF2, component);
+	}
+
+	/** Points without a trailing {@code .0}, since half points are common. */
+	private static String formatPoints(float points) {
+		return points == Math.rint(points)
+				? String.valueOf((int) points)
+				: String.valueOf(points);
 	}
 
 	/** Formats an epoch-seconds timestamp as a plain calendar date. */

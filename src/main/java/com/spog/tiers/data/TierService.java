@@ -427,7 +427,7 @@ public class TierService {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 		result.region(string(root, "region"));
 		result.overall(intOr(root, "rank", 0));
-		result.points(intOr(root, "points", 0));
+		result.points(floatOr(root, "points", 0.0f));
 
 		JsonElement ranks = root.get("kitRanks");
 		if (ranks == null || !ranks.isJsonObject()) {
@@ -450,7 +450,7 @@ public class TierService {
 					&& retired.get(key).getAsBoolean();
 			Tier tier = new Tier(parsed.tier(), parsed.position(), isRetired);
 
-			Gamemode mode = Gamemode.byKey(key);
+			Gamemode mode = Gamemode.byKey(list, key);
 			String label = mode != null ? mode.displayName() : key;
 			if (mode != null) {
 				result.put(mode, tier);
@@ -499,7 +499,7 @@ public class TierService {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 		result.region(string(root, "region"));
 		result.overall(intOr(root, "overall", 0));
-		result.points(intOr(root, "points", 0));
+		result.points(floatOr(root, "points", 0.0f));
 
 		JsonElement rankings = root.get("rankings");
 		if (rankings == null || !rankings.isJsonObject()) {
@@ -555,10 +555,13 @@ public class TierService {
 	private PlayerTiers parsePvpHq(TierList list, JsonObject root) {
 		PlayerTiers result = new PlayerTiers(list, string(root, "name"), System.currentTimeMillis());
 
-		JsonElement regions = root.get("regions");
-		if (regions != null && regions.isJsonArray() && !regions.getAsJsonArray().isEmpty()) {
-			result.region(regions.getAsJsonArray().get(0).getAsString());
-		}
+		// PVPHQ used to publish a "regions" array; it now exposes the player's
+		// home country and the server location they queue closest to. The
+		// country is the better signal -- it is where the player is, not where
+		// they happen to get a good ping -- but it is only present when the
+		// player has chosen to show it, so the location backs it up.
+		String country = string(root, "country");
+		result.region(!country.isEmpty() ? country : string(root, "closestRegion"));
 
 		JsonElement ranked = root.get("ranked");
 		if (ranked == null || !ranked.isJsonArray()) {
@@ -611,7 +614,9 @@ public class TierService {
 					intOr(value, "testGames", 0),
 					intOr(value, "testTarget", 0),
 					intOr(value, "tierProgress", 0),
-					value.has("hasTr") && value.get("hasTr").getAsBoolean()));
+					value.has("hasTr") && value.get("hasTr").getAsBoolean(),
+					intOr(value, "wins", 0),
+					intOr(value, "losses", 0)));
 		}
 		return result;
 	}
@@ -636,6 +641,12 @@ public class TierService {
 	private static int intOr(JsonObject object, String key, int fallback) {
 		JsonElement element = object.get(key);
 		return element == null || element.isJsonNull() ? fallback : element.getAsInt();
+	}
+
+	/** MCPvP awards half points, so its totals are not whole numbers. */
+	private static float floatOr(JsonObject object, String key, float fallback) {
+		JsonElement element = object.get(key);
+		return element == null || element.isJsonNull() ? fallback : element.getAsFloat();
 	}
 
 	/** The name history for a player, or null until it has been fetched. */

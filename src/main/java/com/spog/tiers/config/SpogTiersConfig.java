@@ -47,7 +47,7 @@ public class SpogTiersConfig {
 	public int requestsPerSecond = 5;
 
 	/** How the rows inside each tier list card are ordered. */
-	public SortOrder sortOrder = SortOrder.DEFAULT;
+	public SortOrder sortOrder = SortOrder.RANKING;
 
 	/**
 	 * Show gamemodes a player is still placing into.
@@ -58,13 +58,14 @@ public class SpogTiersConfig {
 	public boolean showPlacements = true;
 
 	/**
-	 * Leave CatPVP out of nametag, chat and tab tags.
+	 * Per-list tag toggles, separate from {@link #enabledLists}.
 	 *
-	 * <p>Its ranks are not directly comparable with the HT/LT lists, so a Best
-	 * tag can end up quoting CatPVP where another list is the fairer read. Off
-	 * by default: the profile screen always shows every list either way.
+	 * <p>A list can be worth reading on the profile screen without being worth
+	 * quoting on a nametag -- CatPVP is the obvious case, since its ranks are
+	 * not directly comparable with the HT/LT lists, so a Best tag can end up
+	 * quoting it where another list is the fairer read.
 	 */
-	public boolean ignoreCatPvpInTags = false;
+	public Map<TierList, Boolean> taggedLists = defaultLists();
 
 	/** Show the region code before the name. */
 	public boolean showRegionOnNametag = false;
@@ -114,10 +115,11 @@ public class SpogTiersConfig {
 	 * to scan. The other two sort by the data instead.
 	 */
 	public enum SortOrder {
-		DEFAULT("Default"),
+		/** Whatever order the provider sent, which is its own default. */
+		DEFAULT("Received"),
 		DATE_OBTAINED("Date obtained"),
 		RANKING("Ranking"),
-		RANKING_PEAK("Ranking (Peak inclusive)");
+		RANKING_PEAK("Ranking (Include peak)");
 
 		private final String title;
 
@@ -146,6 +148,24 @@ public class SpogTiersConfig {
 
 	public boolean isEnabled(TierList list) {
 		return enabledLists == null || enabledLists.getOrDefault(list, true);
+	}
+
+	/**
+	 * Whether this list may appear on a nametag.
+	 *
+	 * <p>A hidden list is never queried, so it cannot be tagged either however
+	 * this is set.
+	 */
+	public boolean isTagged(TierList list) {
+		return isEnabled(list)
+				&& (taggedLists == null || taggedLists.getOrDefault(list, true));
+	}
+
+	public void setTagged(TierList list, boolean value) {
+		if (taggedLists == null) {
+			taggedLists = defaultLists();
+		}
+		taggedLists.put(list, value);
 	}
 
 	public void setEnabled(TierList list, boolean value) {
@@ -186,6 +206,15 @@ public class SpogTiersConfig {
 				enabledLists.putIfAbsent(list, true);
 			}
 		}
+		// A config written before tag toggles existed has no map at all, and
+		// one written before a list was added is missing that entry.
+		if (taggedLists == null) {
+			taggedLists = defaultLists();
+		} else {
+			for (TierList list : TierList.values()) {
+				taggedLists.putIfAbsent(list, true);
+			}
+		}
 		if (displayList == null) {
 			displayList = TierList.PVPTIERS;
 		}
@@ -193,7 +222,7 @@ public class SpogTiersConfig {
 			displayMode = Gamemode.VANILLA;
 		}
 		if (sortOrder == null) {
-			sortOrder = SortOrder.DEFAULT;
+			sortOrder = SortOrder.RANKING;
 		}
 		if (leftTag == null) {
 			leftTag = new TagSlot(true, TierList.PVPTIERS, null);

@@ -5,6 +5,7 @@ import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerTiers;
+import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
 import net.minecraft.util.Formatting;
@@ -79,9 +80,10 @@ public final class TagRenderer {
 		PlayerTiers tiers;
 		Tier tier;
 
-		// Explicitly picking CatPVP still works; this only keeps it out of the
-		// automatic choices.
-		if (source != null && source.isCatPvp() && config.ignoreCatPvpInTags) {
+		// A list can be shown in results but kept off tags, so an explicitly
+		// picked slot is dropped rather than quoting a list the player asked
+		// not to see on nametags.
+		if (source != null && !config.isTagged(source)) {
 			return null;
 		}
 
@@ -138,7 +140,7 @@ public final class TagRenderer {
 			if (tiers == null || !config.isEnabled(list)) {
 				continue;
 			}
-			if (list.isCatPvp() && config.ignoreCatPvpInTags) {
+			if (!config.isTagged(list)) {
 				continue;
 			}
 			// A list that does not rank the chosen mode has no say here.
@@ -187,18 +189,19 @@ public final class TagRenderer {
 		return mode == null ? null : ModeIcons.of(list, mode.key());
 	}
 
-	/** The player's region as a small coloured prefix. */
+	/**
+	 * The player's region as a small coloured prefix.
+	 *
+	 * <p>Resolved the same way the profile screen does it, so the nametag and
+	 * the panel never disagree about where someone is from.
+	 */
 	private static Text regionFor(UUID uuid) {
-		Map<TierList, PlayerTiers> all = SpogTiersClient.cache().allLists(uuid);
-		for (TierList list : TierList.values()) {
-			PlayerTiers tiers = all.get(list);
-			if (tiers != null && !tiers.region().isEmpty() && tiers.region().length() <= 4) {
-				String code = tiers.region().toUpperCase(Locale.ROOT);
-				return Text.literal(code)
-						.setStyle(Style.EMPTY.withColor(regionColor(code)));
-			}
+		String code = Regions.resolve(SpogTiersClient.cache().allLists(uuid));
+		if (code.isEmpty()) {
+			return null;
 		}
-		return null;
+		return Text.literal(code)
+				.setStyle(Style.EMPTY.withColor(regionColor(code)));
 	}
 
 	private static int regionColor(String region) {

@@ -114,8 +114,11 @@ public enum TierList {
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
 					"dia_smp", "elytra", "manhunt", "minecart", "og_vanilla",
 					"speed", "trident");
-			case MCPVP -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
-					"uhc", "vanilla");
+			// Straight from MCPvP's own kit list: five kits and three phases of
+			// a fight. It ranks neither axe nor the SMP modes the other lists
+			// do, and the phases have no equivalent anywhere else.
+			case MCPVP -> modes("early_game", "end_game", "late_game", "mace",
+					"mcpvp_spear", "pot", "shield", "sword");
 			case CATPVP -> modes("axe", "beast", "bow", "bridge", "cart", "creeper",
 					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
 					"uhc", "vanilla");

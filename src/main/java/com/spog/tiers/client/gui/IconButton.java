@@ -9,10 +9,10 @@ import net.minecraft.text.Text;
 import java.util.function.Consumer;
 
 /**
- * A square panel button carrying a refresh glyph instead of a label.
+ * A square panel button carrying a small glyph instead of a label.
  *
- * <p>The arrow is drawn rather than blitted: it is a handful of fills, which
- * costs less than shipping and loading a texture for one small icon.
+ * <p>The glyphs are drawn rather than blitted: they are a handful of fills,
+ * which costs less than shipping and loading a texture per icon.
  */
 public class IconButton extends PressableWidget {
 	private static final int FILL = 0x60161B22;
@@ -22,11 +22,24 @@ public class IconButton extends PressableWidget {
 	private static final int ICON = 0xFFD7DEE6;
 	private static final int ICON_HOVERED = 0xFFFFFFFF;
 
+	/** Which glyph a button wears. */
+	public enum Glyph {
+		REFRESH,
+		COPY
+	}
+
 	private final Consumer<IconButton> onPress;
+	private final Glyph glyph;
 
 	public IconButton(int x, int y, int width, int height, Text message,
 			Consumer<IconButton> onPress) {
+		this(x, y, width, height, message, Glyph.REFRESH, onPress);
+	}
+
+	public IconButton(int x, int y, int width, int height, Text message,
+			Glyph glyph, Consumer<IconButton> onPress) {
 		super(x, y, width, height, message);
+		this.glyph = glyph;
 		this.onPress = onPress;
 	}
 
@@ -51,39 +64,78 @@ public class IconButton extends PressableWidget {
 		graphics.fill(left, top, left + 1, bottom, border);
 		graphics.fill(right - 1, top, right, bottom, border);
 
-		drawRefreshArrow(graphics, left + width / 2, top + height / 2,
-				hovered ? ICON_HOVERED : ICON);
+		int color = hovered ? ICON_HOVERED : ICON;
+		int cx = left + width / 2;
+		int cy = top + height / 2;
+		switch (glyph) {
+			case REFRESH -> drawRefreshArrow(graphics, cx, cy, color);
+			case COPY -> drawCopyGlyph(graphics, cx, cy, color);
+		}
 	}
 
 	/**
 	 * A circular arrow: a ring with a gap at the top right, and a head on the
 	 * gap's leading edge so it reads as turning clockwise.
+	 *
+	 * <p>Sized to sit level with the copy glyph beside it -- the earlier ring
+	 * was a couple of pixels smaller all round, which read as a mistake rather
+	 * than a difference.
 	 */
 	private static void drawRefreshArrow(DrawContext graphics, int cx, int cy, int color) {
-		// Eight-point ring, minus the two cells where the gap goes.
 		int[][] ring = {
-			{-1, -3}, {0, -3},
-			{2, -2},
-			{3, -1}, {3, 0}, {3, 1},
-			{2, 2},
-			{1, 3}, {0, 3}, {-1, 3},
-			{-2, 2},
-			{-3, 1}, {-3, 0}, {-3, -1},
-			{-2, -2},
+			{-3, -4}, {-2, -4}, {-1, -4}, {0, -4}, {1, -4}, {2, -4},
+			{-4, -3}, {-3, -3},
+			{-4, -2},
+			{-4, -1},
+			{-4, 0},
+			{-4, 1}, {4, 1},
+			{-4, 2}, {4, 2},
+			{-4, 3}, {-3, 3}, {3, 3}, {4, 3},
+			{-3, 4}, {-2, 4}, {-1, 4}, {0, 4}, {1, 4}, {2, 4}, {3, 4},
 		};
 		for (int[] cell : ring) {
 			graphics.fill(cx + cell[0], cy + cell[1], cx + cell[0] + 1, cy + cell[1] + 1, color);
 		}
 
 		// Arrowhead on the open end, pointing clockwise into the gap.
-		int[][] head = {{1, -4}, {2, -4}, {2, -3}, {3, -3}, {1, -2}, {2, -2}};
+		int[][] head = {
+			{2, -6}, {3, -6},
+			{2, -5}, {3, -5}, {4, -5},
+			{2, -4}, {3, -4}, {4, -4}, {5, -4},
+			{3, -3}, {4, -3},
+			{3, -2},
+		};
 		for (int[] cell : head) {
 			graphics.fill(cx + cell[0], cy + cell[1], cx + cell[0] + 1, cy + cell[1] + 1, color);
 		}
 	}
 
+	/**
+	 * Two overlapping page outlines, the usual shorthand for "copy".
+	 *
+	 * <p>Both are hollow so the glyph stays readable at this size; a filled
+	 * pair turned into an unreadable blob.
+	 */
+	private static void drawCopyGlyph(DrawContext graphics, int cx, int cy, int color) {
+		// Back page, up and to the right.
+		outline(graphics, cx - 1, cy - 5, 7, 9, color);
+		// Front page, down and to the left, cleared first so the two read as
+		// separate sheets rather than a grid.
+		graphics.fill(cx - 5, cy - 2, cx + 2, cy + 6, 0xFF10151C);
+		outline(graphics, cx - 5, cy - 2, 7, 8, color);
+	}
+
+	/** A one-pixel rectangle border. */
+	private static void outline(DrawContext graphics, int x, int y,
+			int width, int height, int color) {
+		graphics.fill(x, y, x + width, y + 1, color);
+		graphics.fill(x, y + height - 1, x + width, y + height, color);
+		graphics.fill(x, y, x + 1, y + height, color);
+		graphics.fill(x + width - 1, y, x + width, y + height, color);
+	}
+
 	@Override
-	protected void appendClickableNarrations(NarrationMessageBuilder builder) {
-		appendDefaultNarrations(builder);
+	protected void appendClickableNarrations(NarrationMessageBuilder output) {
+		appendDefaultNarrations(output);
 	}
 }
