@@ -64,6 +64,8 @@ public class ProfileScreen extends Screen {
 	private static final int TOOLTIP_PADDING = 6;
 	/** Breathing room around the exported picture. */
 	private static final int EXPORT_PADDING = 6;
+	/** Smallest the model is drawn at in a picture. */
+	private static final int EXPORT_SKIN_MIN = 90;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	/** Placement runs read as pending rather than as a rank. */
@@ -121,6 +123,8 @@ public class ProfileScreen extends Screen {
 	private int skinModelHeight;
 	/** Where the panel frame was last drawn to. */
 	private int panelBottom;
+	/** Height of the card grid, which the panel matches. */
+	private int cardsHeight;
 	private int historyScroll;
 	/** Rows that did not fit, so the wheel knows how far it may travel. */
 	private int historyMaxScroll;
@@ -257,11 +261,16 @@ public class ProfileScreen extends Screen {
 			// where the taller on-screen layout put it and leaves a gap
 			// underneath.
 			if (skinWidget != null) {
-				int free = exportPanelBottom() - skinTopLimit - skinModelHeight;
-				skinWidget.setY(skinTopLimit + Math.max(0, free / 2));
+				// Fit the model to the panel rather than the window, then
+				// centre it in what is left.
+				int band = exportPanelBottom() - CARD_PADDING - skinTopLimit;
+				int fitted = Math.clamp(band, EXPORT_SKIN_MIN, SKIN_HEIGHT);
+				skinWidget.setHeight(fitted);
+				skinWidget.setY(skinTopLimit + Math.max(0, (band - fitted) / 2));
 			}
 			super.extractRenderState(graphics, -1, -1, partialTick);
 			if (skinWidget != null) {
+				skinWidget.setHeight(skinModelHeight);
 				skinWidget.setY(skinScreenY);
 			}
 			closeButton.visible = true;
@@ -307,11 +316,36 @@ public class ProfileScreen extends Screen {
 	 * whatever height that gives, which is handled by the widget itself.
 	 */
 	private int exportPanelBottom() {
-		// Measured from where the model would sit at the top of its band, not
-		// from wherever it currently is: the export moves it, and reading its
-		// live position here would feed back into itself.
-		int minimum = skinTopLimit + skinModelHeight + CARD_PADDING;
-		return Math.max(minimum, cardsBottom);
+		return MARGIN + profilePanelHeight();
+	}
+
+	/**
+	 * How tall the profile panel is, which is also what the cards match.
+	 *
+	 * <p>On screen it fills the window. In a picture there is no history and
+	 * no button row, so it only needs to reach below the model. Either way the
+	 * cards stretch it further when their rows will not fit.
+	 */
+	private int profilePanelHeight() {
+		return Math.max(naturalPanelHeight(), cardsHeight);
+	}
+
+	/**
+	 * The panel's height before the cards have any say.
+	 *
+	 * <p>Kept separate from {@link #profilePanelHeight()} so the cards can be
+	 * sized against it: measuring them against the combined height would feed
+	 * their own height back in and let it climb frame after frame.
+	 */
+	private int naturalPanelHeight() {
+		if (!exporting) {
+			return height - MARGIN * 2;
+		}
+		// In a picture the panel holds only the name row and the model, and the
+		// model shrinks to fit whatever the cards leave -- down to a floor that
+		// keeps it recognisable. Using the on-screen model height here made the
+		// panel tower over the cards.
+		return skinTopLimit + EXPORT_SKIN_MIN + CARD_PADDING - MARGIN;
 	}
 
 	/** The profile card: face, name, region tag, skin model and buttons. */
@@ -324,9 +358,7 @@ public class ProfileScreen extends Screen {
 		// there is nothing below the model -- no history, no buttons -- so it
 		// stops there instead, and matches the cards beside it when they are
 		// taller.
-		int bottom = exporting
-				? exportPanelBottom()
-				: height - MARGIN;
+		int bottom = MARGIN + profilePanelHeight();
 		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, bottom);
 		panelBottom = bottom;
 
@@ -651,15 +683,10 @@ public class ProfileScreen extends Screen {
 			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
 		}
 
-		// Always size cards as if the grid were two rows deep, so a single row
-		// of cards is the same height as one row of a 2x2 grid rather than
-		// stretching to fill the screen. Again, not when exporting: there the
-		// card is exactly as tall as its rows need.
-		int available = (contentBottom - contentTop) - CARD_GAP;
+		// The grid is sized to match the profile panel beside it, so the two
+		// columns start and finish level. Where the rows need more room than
+		// that, the cards win and the panel is stretched to follow them.
 		int contentHeight = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
-		int cardHeight = exporting
-				? contentHeight
-				: Math.max(contentHeight, available / 2);
 
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
@@ -671,6 +698,12 @@ public class ProfileScreen extends Screen {
 		};
 		int rowCount = (cards.size() + perRow - 1) / perRow;
 
+		// Divide the panel's height between the rows, then let the rows push
+		// back if that is not enough for their content.
+		int panelHeight = naturalPanelHeight();
+		int shareOfPanel = (panelHeight - (rowCount - 1) * CARD_GAP) / rowCount;
+		int cardHeight = Math.max(contentHeight, shareOfPanel);
+
 		int blockWidth = perRow * CARD_WIDTH + (perRow - 1) * CARD_GAP;
 		int blockHeight = rowCount * cardHeight + (rowCount - 1) * CARD_GAP;
 
@@ -680,17 +713,20 @@ public class ProfileScreen extends Screen {
 				(float) contentWidth / blockWidth,
 				(float) availableHeight / blockHeight));
 
-		// Centred in the leftover width, the block drifted away from the profile
-		// panel on a wide window. Pull it back so the two sit a card gap apart,
-		// and only centre what is left over beyond that.
+		// What the panel has to match: the height the cards are actually drawn
+		// at, which is the scaled one. Matching the unscaled height made the
+		// panel tower over a grid that had been shrunk to fit.
+		cardsHeight = Math.round(blockHeight * scale);
+
 		int scaledWidth = Math.round(blockWidth * scale);
+		// Centred in the space beside the panel. An earlier version pinned the
+		// block to the panel to close a gap on wide windows, which threw the
+		// centring away; the gap is better closed by sizing the cards to the
+		// panel, which is what happens above.
 		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
-		originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
-		// Centred on screen, but flush to the top in a picture so the cards sit
-		// level with the profile panel instead of floating in the middle.
-		int originY = exporting
-				? contentTop
-				: contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
+		// Level with the top of the profile panel, since the two are now the
+		// same height.
+		int originY = contentTop;
 
 		// Remembered so an export can crop to the cards rather than to the
 		// whole window.

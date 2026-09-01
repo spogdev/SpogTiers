@@ -76,25 +76,35 @@ public class IconButton extends AbstractButton {
 	/**
 	 * A circular arrow: a ring with a gap at the top right, and a head on the
 	 * gap's leading edge so it reads as turning clockwise.
+	 *
+	 * <p>Sized to sit level with the copy glyph beside it -- the earlier ring
+	 * was a couple of pixels smaller all round, which read as a mistake rather
+	 * than a difference.
 	 */
 	private static void drawRefreshArrow(GuiGraphicsExtractor graphics, int cx, int cy, int color) {
-		// Eight-point ring, minus the two cells where the gap goes.
 		int[][] ring = {
-			{-1, -3}, {0, -3},
-			{2, -2},
-			{3, -1}, {3, 0}, {3, 1},
-			{2, 2},
-			{1, 3}, {0, 3}, {-1, 3},
-			{-2, 2},
-			{-3, 1}, {-3, 0}, {-3, -1},
-			{-2, -2},
+			{-3, -4}, {-2, -4}, {-1, -4}, {0, -4}, {1, -4}, {2, -4},
+			{-4, -3}, {-3, -3},
+			{-4, -2},
+			{-4, -1},
+			{-4, 0},
+			{-4, 1}, {4, 1},
+			{-4, 2}, {4, 2},
+			{-4, 3}, {-3, 3}, {3, 3}, {4, 3},
+			{-3, 4}, {-2, 4}, {-1, 4}, {0, 4}, {1, 4}, {2, 4}, {3, 4},
 		};
 		for (int[] cell : ring) {
 			graphics.fill(cx + cell[0], cy + cell[1], cx + cell[0] + 1, cy + cell[1] + 1, color);
 		}
 
 		// Arrowhead on the open end, pointing clockwise into the gap.
-		int[][] head = {{1, -4}, {2, -4}, {2, -3}, {3, -3}, {1, -2}, {2, -2}};
+		int[][] head = {
+			{2, -6}, {3, -6},
+			{2, -5}, {3, -5}, {4, -5},
+			{2, -4}, {3, -4}, {4, -4}, {5, -4},
+			{3, -3}, {4, -3},
+			{3, -2},
+		};
 		for (int[] cell : head) {
 			graphics.fill(cx + cell[0], cy + cell[1], cx + cell[0] + 1, cy + cell[1] + 1, color);
 		}
