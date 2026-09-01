@@ -6,13 +6,14 @@ import com.spog.tiers.SpogTiers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 
-import java.awt.Image;
-import java.awt.Toolkit;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Copies the profile to the clipboard as a picture.
@@ -22,8 +23,9 @@ import java.awt.image.BufferedImage;
  * the screen hides everything that is not the profile for a single frame, and
  * this reads that frame back out of the framebuffer and crops it.
  *
- * <p>GLFW's clipboard carries text only, so the image goes through AWT's
- * clipboard, which understands image flavours.
+ * <p>GLFW's clipboard carries text only and AWT's is unavailable in a
+ * headless JVM, so the picture goes out through the platform's own
+ * clipboard tool.
  */
 public final class ProfileExport {
 	/** Drawn behind the capture, so no transparency reaches the clipboard. */
@@ -49,15 +51,24 @@ public final class ProfileExport {
 		double scale = client.getWindow().getGuiScale();
 
 		Screenshot.takeScreenshot(target, image -> {
+			BufferedImage cropped = null;
 			try (NativeImage source = image) {
-				BufferedImage cropped = crop(source, guiX, guiY, guiWidth, guiHeight, scale);
-				if (cropped != null) {
-					setClipboard(cropped);
-				}
+				cropped = crop(source, guiX, guiY, guiWidth, guiHeight, scale);
 			} catch (Exception e) {
-				SpogTiers.LOGGER.warn("Could not copy the profile image", e);
+				SpogTiers.LOGGER.warn("Could not read the profile image", e);
 			} finally {
+				// The screen goes back to normal as soon as the pixels are
+				// out; encoding and the clipboard tool are not worth freezing
+				// a frame for.
 				onDone.run();
+			}
+
+			if (cropped != null) {
+				BufferedImage finished = cropped;
+				Thread worker = new Thread(() -> setClipboard(finished),
+						"SpogTiers Clipboard");
+				worker.setDaemon(true);
+				worker.start();
 			}
 		});
 	}
@@ -112,36 +123,93 @@ public final class ProfileExport {
 		return (outRed << 16) | (outGreen << 8) | outBlue;
 	}
 
+	/**
+	 * Hands the picture to the system clipboard.
+	 *
+	 * <p>Not through AWT: Minecraft starts the JVM with
+	 * {@code java.awt.headless=true}, so {@code getSystemClipboard} throws
+	 * {@link java.awt.HeadlessException}. That cannot be undone from inside the
+	 * game -- clearing the cached flag needs reflection into {@code java.awt},
+	 * which the module system refuses without an {@code --add-opens} nobody
+	 * launching Minecraft is going to have.
+	 *
+	 * <p>Encoding a PNG needs no display, so the picture is written to a
+	 * temporary file and the platform's own clipboard tool is asked to put it
+	 * on the clipboard.
+	 */
 	private static void setClipboard(BufferedImage image) {
-		// AWT starts its own threads, so this stays off the render thread's
-		// critical path and out of the way if the toolkit is unavailable.
+		Path file = null;
 		try {
-			System.setProperty("java.awt.headless", "false");
-			Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-			clipboard.setContents(new ImageTransferable(image), null);
-		} catch (Exception | Error e) {
-			SpogTiers.LOGGER.warn("Clipboard unavailable", e);
+			file = Files.createTempFile("spogtiers-profile", ".png");
+			if (!ImageIO.write(image, "png", file.toFile())) {
+				SpogTiers.LOGGER.warn("No PNG encoder available");
+				return;
+			}
+
+			List<String> command = clipboardCommand(file);
+			if (command == null) {
+				SpogTiers.LOGGER.warn("No clipboard tool for this platform");
+				return;
+			}
+
+			Process process = new ProcessBuilder(command)
+					.redirectErrorStream(true)
+					.start();
+			if (!process.waitFor(15, TimeUnit.SECONDS)) {
+				process.destroyForcibly();
+				SpogTiers.LOGGER.warn("Clipboard tool timed out");
+				return;
+			}
+			if (process.exitValue() != 0) {
+				String output = new String(process.getInputStream().readAllBytes(),
+						StandardCharsets.UTF_8).trim();
+				SpogTiers.LOGGER.warn("Clipboard tool failed ({}): {}",
+						process.exitValue(), output);
+			}
+		} catch (Exception e) {
+			SpogTiers.LOGGER.warn("Could not reach the clipboard", e);
+		} finally {
+			// The tool has read the file by the time it exits; on Windows the
+			// clipboard keeps its own copy, so this is safe to remove.
+			if (file != null) {
+				try {
+					Files.deleteIfExists(file);
+				} catch (Exception ignored) {
+					// A leftover temp file is not worth reporting.
+				}
+			}
 		}
 	}
 
-	/** The one flavour AWT needs to hand an image to another application. */
-	private record ImageTransferable(Image image) implements Transferable {
-		@Override
-		public DataFlavor[] getTransferDataFlavors() {
-			return new DataFlavor[] {DataFlavor.imageFlavor};
-		}
+	/** The command that puts an image file on this platform's clipboard. */
+	private static List<String> clipboardCommand(Path file) {
+		String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+		String path = file.toAbsolutePath().toString();
 
-		@Override
-		public boolean isDataFlavorSupported(DataFlavor flavor) {
-			return DataFlavor.imageFlavor.equals(flavor);
+		if (os.contains("win")) {
+			// SetDataObject with copy=true leaves the image on the clipboard
+			// after PowerShell exits; PNG is offered alongside the bitmap so
+			// applications that prefer it (browsers, chat clients) get it.
+			String script = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
+					+ "$bytes=[System.IO.File]::ReadAllBytes('" + path + "');"
+					+ "$ms=New-Object System.IO.MemoryStream(,$bytes);"
+					+ "$img=[System.Drawing.Image]::FromStream($ms);"
+					+ "$data=New-Object System.Windows.Forms.DataObject;"
+					+ "$data.SetData('PNG',$false,$ms);"
+					+ "$data.SetImage($img);"
+					+ "[System.Windows.Forms.Clipboard]::SetDataObject($data,$true);";
+			return List.of("powershell", "-NoProfile", "-STA", "-Command", script);
 		}
-
-		@Override
-		public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-			if (!DataFlavor.imageFlavor.equals(flavor)) {
-				throw new UnsupportedFlavorException(flavor);
-			}
-			return image;
+		if (os.contains("mac")) {
+			return List.of("osascript", "-e",
+					"set the clipboard to (read (POSIX file \"" + path + "\") as «class PNGf»)");
 		}
+		// Wayland and X11 respectively; whichever is installed will run.
+		if (System.getenv("WAYLAND_DISPLAY") != null) {
+			return List.of("sh", "-c",
+					"wl-copy --type image/png < '" + path + "'");
+		}
+		return List.of("sh", "-c",
+				"xclip -selection clipboard -t image/png -i '" + path + "'");
 	}
 }
