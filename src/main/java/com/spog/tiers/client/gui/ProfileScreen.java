@@ -113,6 +113,14 @@ public class ProfileScreen extends Screen {
 	/** Vertical band the name history occupies, set during layout. */
 	private int historyTop;
 	private int historyBottom;
+	private AnimatedSkinWidget skinWidget;
+	/** The model's on-screen y, restored after a capture. */
+	private int skinScreenY;
+	/** Highest the model may sit: just below the name row. */
+	private int skinTopLimit;
+	private int skinModelHeight;
+	/** Where the panel frame was last drawn to. */
+	private int panelBottom;
 	private int historyScroll;
 	/** Rows that did not fit, so the wheel knows how far it may travel. */
 	private int historyMaxScroll;
@@ -164,10 +172,16 @@ public class ProfileScreen extends Screen {
 
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
 				SKIN_WIDTH, skinHeight, client.getEntityModels(), skin);
-		skinWidget.setPosition(
-				cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2,
-				skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2));
+		int skinY = skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2);
+		skinWidget.setPosition(cardLeft + (PROFILE_WIDTH - SKIN_WIDTH) / 2, skinY);
 		addRenderableWidget(skinWidget);
+
+		// Kept so the export can re-centre the model in the shorter panel and
+		// put it straight back afterwards.
+		this.skinWidget = skinWidget;
+		this.skinScreenY = skinY;
+		this.skinTopLimit = skinTop;
+		this.skinModelHeight = skinHeight;
 
 		// Close takes the row, less two squares on the right: copy, then
 		// refresh.
@@ -221,11 +235,17 @@ public class ProfileScreen extends Screen {
 
 		hover = null;
 		headerHover = null;
-		drawHeader(graphics);
-		drawNameHistory(graphics);
+		// Cards first: the panel sizes itself against them when exporting, and
+		// drawing them second would leave it a frame behind. Both are plain
+		// fills, so the order does not change what the frame looks like.
 		// Hovers are suppressed during a capture so no row highlights itself
 		// in the picture.
 		drawCards(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
+		drawHeader(graphics);
+		// Name history is a browsing aid, not part of the ranking picture.
+		if (!exporting) {
+			drawNameHistory(graphics);
+		}
 
 		if (exporting) {
 			// The skin model is a widget, so it has to render for the picture
@@ -233,10 +253,29 @@ public class ProfileScreen extends Screen {
 			closeButton.visible = false;
 			copyButton.visible = false;
 			refreshButton.visible = false;
+			// Centre the model in the shortened panel; without this it stays
+			// where the taller on-screen layout put it and leaves a gap
+			// underneath.
+			if (skinWidget != null) {
+				int free = exportPanelBottom() - skinTopLimit - skinModelHeight;
+				skinWidget.setY(skinTopLimit + Math.max(0, free / 2));
+			}
 			super.extractRenderState(graphics, -1, -1, partialTick);
+			if (skinWidget != null) {
+				skinWidget.setY(skinScreenY);
+			}
 			closeButton.visible = true;
 			copyButton.visible = true;
 			refreshButton.visible = true;
+			// Now that the stripped-down frame has been laid out, the panel
+			// and the cards are at their exported sizes and can be measured.
+			int right = Math.max(MARGIN + PROFILE_WIDTH, cardsRight);
+			int bottom = Math.max(panelBottom, cardsBottom);
+			exportLeft = Math.max(0, MARGIN - EXPORT_PADDING);
+			exportTop = Math.max(0, MARGIN - EXPORT_PADDING);
+			exportRight = Math.min(width, right + EXPORT_PADDING);
+			exportBottom = Math.min(height, bottom + EXPORT_PADDING);
+
 			// Mark it drawn; the readback happens as the next frame begins.
 			cleanFrameDrawn = true;
 			return;
@@ -260,13 +299,36 @@ public class ProfileScreen extends Screen {
 
 	}
 
+	/**
+	 * How far down the panel reaches in a picture.
+	 *
+	 * <p>It ends below the model, and stretches to meet the cards when they
+	 * run lower so the two columns finish level. The model is centred in
+	 * whatever height that gives, which is handled by the widget itself.
+	 */
+	private int exportPanelBottom() {
+		// Measured from where the model would sit at the top of its band, not
+		// from wherever it currently is: the export moves it, and reading its
+		// live position here would feed back into itself.
+		int minimum = skinTopLimit + skinModelHeight + CARD_PADDING;
+		return Math.max(minimum, cardsBottom);
+	}
+
 	/** The profile card: face, name, region tag, skin model and buttons. */
 	private void drawHeader(GuiGraphicsExtractor graphics) {
 		Font font = this.font;
 
 		int left = MARGIN;
 		int top = MARGIN;
-		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, height - MARGIN);
+		// On screen the panel runs the full height of the window. In a picture
+		// there is nothing below the model -- no history, no buttons -- so it
+		// stops there instead, and matches the cards beside it when they are
+		// taller.
+		int bottom = exporting
+				? exportPanelBottom()
+				: height - MARGIN;
+		drawCardFrame(graphics, left, top, left + PROFILE_WIDTH, bottom);
+		panelBottom = bottom;
 
 		int innerX = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
@@ -580,18 +642,24 @@ public class ProfileScreen extends Screen {
 		// four. The grid is sized to fill the profile card's height so the
 		// longest list (CatPVP ranks 14 modes) has room instead of
 		// spilling past the card edge.
-		int rowsNeeded = CARD_ROWS;
+		// On screen the cards keep a floor of CARD_ROWS so they do not resize
+		// as lists load in. A picture has no such worry -- it is taken once --
+		// so there the tallest card decides and the rest of the empty space
+		// goes away.
+		int rowsNeeded = exporting ? 0 : CARD_ROWS;
 		for (Card card : cards) {
 			rowsNeeded = Math.max(rowsNeeded, card.rows().size());
 		}
 
 		// Always size cards as if the grid were two rows deep, so a single row
 		// of cards is the same height as one row of a 2x2 grid rather than
-		// stretching to fill the screen.
+		// stretching to fill the screen. Again, not when exporting: there the
+		// card is exactly as tall as its rows need.
 		int available = (contentBottom - contentTop) - CARD_GAP;
-		int cardHeight = Math.max(
-				CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT,
-				available / 2);
+		int contentHeight = CARD_PADDING * 2 + 18 + rowsNeeded * ROW_HEIGHT;
+		int cardHeight = exporting
+				? contentHeight
+				: Math.max(contentHeight, available / 2);
 
 		// Prefer a balanced grid over a full first row: 4 cards read better as
 		// 2x2 than 3+1, and 3 stay on one row.
@@ -618,7 +686,11 @@ public class ProfileScreen extends Screen {
 		int scaledWidth = Math.round(blockWidth * scale);
 		int originX = contentLeft + (contentWidth - scaledWidth) / 2;
 		originX = Math.min(originX, MARGIN + PROFILE_WIDTH + CARD_GAP);
-		int originY = contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
+		// Centred on screen, but flush to the top in a picture so the cards sit
+		// level with the profile panel instead of floating in the middle.
+		int originY = exporting
+				? contentTop
+				: contentTop + Math.max(0, (availableHeight - Math.round(blockHeight * scale)) / 2);
 
 		// Remembered so an export can crop to the cards rather than to the
 		// whole window.
@@ -809,20 +881,9 @@ public class ProfileScreen extends Screen {
 			return;
 		}
 
-		// The profile panel on the left and the cards on the right, with a
-		// margin of the same width all round. The panel already runs the full
-		// height of the window, so the picture is as tall as the window less
-		// its margins -- padding beyond that would only add empty space.
-		// The panel is drawn down to height - MARGIN, so that is the bottom of
-		// the content whether or not the cards reach as far.
-		int right = Math.max(MARGIN + PROFILE_WIDTH, cardsRight);
-		int bottom = Math.max(height - MARGIN, cardsBottom);
-
-		exportLeft = Math.max(0, MARGIN - EXPORT_PADDING);
-		exportTop = Math.max(0, MARGIN - EXPORT_PADDING);
-		exportRight = Math.min(width, right + EXPORT_PADDING);
-		exportBottom = Math.min(height, bottom + EXPORT_PADDING);
-
+		// Bounds cannot be measured yet: the clean frame has not been drawn,
+		// so the panel and the cards are still at their on-screen sizes. They
+		// are taken from that frame instead, once both have shrunk.
 		// Only arm it here. The click arrives partway through a frame that has
 		// already been drawn with the buttons on it, so capturing now would
 		// grab that frame; the capture is taken at the end of the next one.
