@@ -22,6 +22,18 @@ import java.util.Map;
  * answers when nobody else did.
  */
 public final class Regions {
+	/** What a list stating a region is worth. */
+	private static final int ORDINARY_VOTE = 2;
+	/**
+	 * What PVPHQ's region is worth.
+	 *
+	 * <p>Three against two, so it outweighs any single list and settles a
+	 * two-way split on its own, but two lists agreeing against it still win.
+	 * Its answer is a home country rather than a picked region, which makes it
+	 * the better single signal without making it the only one.
+	 */
+	private static final int PVPHQ_VOTE = 3;
+
 	private Regions() {
 	}
 
@@ -49,7 +61,7 @@ public final class Regions {
 			}
 			String code = normalise(tiers.region());
 			if (!code.isEmpty()) {
-				votes.merge(code, 1, Integer::sum);
+				votes.merge(code, ORDINARY_VOTE, Integer::sum);
 			}
 		}
 
@@ -58,6 +70,13 @@ public final class Regions {
 		if (votes.isEmpty()) {
 			// Nobody stated a region, so PVPHQ's guess is all there is.
 			return pvpHq;
+		}
+
+		// PVPHQ votes with the rest rather than only breaking ties, and its
+		// vote counts for more: it reports a home country, where the others
+		// report whatever region the player picked for themselves.
+		if (!pvpHq.isEmpty()) {
+			votes.merge(pvpHq, PVPHQ_VOTE, Integer::sum);
 		}
 
 		int best = 0;
@@ -75,7 +94,7 @@ public final class Regions {
 		if (leaders.size() == 1) {
 			return leaders.get(0);
 		}
-		// A tie: PVPHQ decides, if it agrees with one of the leaders.
+		// Still level: PVPHQ decides, if it is one of the leaders.
 		return leaders.contains(pvpHq) ? pvpHq : leaders.get(0);
 	}
 

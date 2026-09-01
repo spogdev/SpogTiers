@@ -16,7 +16,6 @@ import com.spog.tiers.data.TierService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
@@ -220,7 +219,6 @@ public class ProfileScreen extends Screen {
 				Component.literal("Copy as image"),
 				IconButton.Glyph.COPY,
 				button -> beginExport());
-		copyButton.setTooltip(Tooltip.create(Component.literal("Export")));
 		addRenderableWidget(copyButton);
 
 		refreshButton = new IconButton(
@@ -230,7 +228,6 @@ public class ProfileScreen extends Screen {
 				20,
 				Component.literal("Refresh"),
 				button -> refresh());
-		refreshButton.setTooltip(Tooltip.create(Component.literal("Refresh")));
 		addRenderableWidget(refreshButton);
 	}
 
@@ -309,7 +306,14 @@ public class ProfileScreen extends Screen {
 
 		// Tooltip last and outside the card transform, so it is never clipped
 		// or scaled with the grid.
-		if (hover != null) {
+		// Tested against the pointer rather than the widget's own flag: the
+		// flag is only set while the screen is handling input, and the export
+		// frame renders with none.
+		if (copyButton != null && copyButton.isMouseOver(mouseX, mouseY)) {
+			drawLabelTooltip(graphics, "Export", mouseX, mouseY);
+		} else if (refreshButton != null && refreshButton.isMouseOver(mouseX, mouseY)) {
+			drawLabelTooltip(graphics, "Refresh", mouseX, mouseY);
+		} else if (hover != null) {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
 		} else if (headerHover != null) {
 			drawResponseTooltip(graphics, headerHover, mouseX, mouseY);
@@ -373,7 +377,7 @@ public class ProfileScreen extends Screen {
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		int rows = history == null ? 0 : Math.min(history.previous().size(), HISTORY_ROWS);
 		// The heading is always drawn, even with nothing under it.
-		return font.lineHeight + 4 + rows * HISTORY_ROW_HEIGHT;
+		return Math.round(font.lineHeight * textScale()) + 4 + rows * historyRowHeight();
 	}
 
 	/**
@@ -448,14 +452,14 @@ public class ProfileScreen extends Screen {
 
 		int nameX = innerX + FACE_SIZE + 6;
 		// +1 so the text sits optically centred against the face icon.
-		int nameY = y + (FACE_SIZE - font.lineHeight) / 2 + 1;
-		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
+		int nameY = y + (FACE_SIZE - Math.round(font.lineHeight * textScale())) / 2 + 1;
+		scaledText(graphics, playerName, nameX, nameY, 0xFFFFFFFF);
 
 		// Region reads as a small boxed tag beside the name.
 		String region = region();
 		tagRegion = region;
 		if (!region.isEmpty()) {
-			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
+			drawTag(graphics, nameX + scaledWidth(playerName) + 5, nameY - 3, region);
 		}
 
 		// Overall standing, when the player is near the top of a list that
@@ -477,24 +481,24 @@ public class ProfileScreen extends Screen {
 		int right = MARGIN + PROFILE_WIDTH - CARD_PADDING;
 		int y = historyTop;
 
-		graphics.text(font, Component.literal("Name history"), x, y, LABEL_COLOR);
-		y += font.lineHeight + 4;
+		scaledText(graphics, "Name history", x, y, LABEL_COLOR);
+		y += Math.round(font.lineHeight * textScale()) + 4;
 
 		NameHistory history = SpogTiersClient.service().nameHistory(target);
 		if (history == null) {
-			graphics.text(font, Component.literal("Loading..."), x, y, MUTED_COLOR);
+			scaledText(graphics, "Loading...", x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
 			return;
 		}
 
 		List<NameHistory.Entry> previous = history.previous();
 		if (previous.isEmpty()) {
-			graphics.text(font, Component.literal("No previous names"), x, y, MUTED_COLOR);
+			scaledText(graphics, "No previous names", x, y, MUTED_COLOR);
 			historyMaxScroll = 0;
 			return;
 		}
 
-		int visible = Math.max(1, (historyBottom - y) / HISTORY_ROW_HEIGHT);
+		int visible = Math.max(1, (historyBottom - y) / historyRowHeight());
 		historyMaxScroll = Math.max(0, previous.size() - visible);
 		historyScroll = Math.clamp(historyScroll, 0, historyMaxScroll);
 
@@ -502,22 +506,23 @@ public class ProfileScreen extends Screen {
 		graphics.enableScissor(x, y, right, historyBottom);
 		for (int i = 0; i < visible && i + historyScroll < previous.size(); i++) {
 			NameHistory.Entry entry = previous.get(i + historyScroll);
-			int rowY = y + i * HISTORY_ROW_HEIGHT;
+			int rowY = y + i * historyRowHeight();
 
 			String ago = entry.isDated() ? timeAgo(entry.changedAt()) : "";
-			int agoWidth = ago.isEmpty() ? 0 : font.width(ago);
+			int agoWidth = ago.isEmpty() ? 0 : scaledWidth(ago);
 
-			graphics.text(font, Component.literal(
-							trim(entry.name(), right - x - agoWidth - 6)),
-					x, rowY, 0xFFD5DCE5);
+			// Trimming works in unscaled widths, so the budget is converted
+			// back before it is handed over.
+			int budget = Math.round((right - x - agoWidth - 6) / textScale());
+			scaledText(graphics, trim(entry.name(), budget), x, rowY, 0xFFD5DCE5);
 			if (!ago.isEmpty()) {
-				graphics.text(font, Component.literal(ago), right - agoWidth, rowY, MUTED_COLOR);
+				scaledText(graphics, ago, right - agoWidth, rowY, MUTED_COLOR);
 			}
 		}
 		graphics.disableScissor();
 
 		if (historyMaxScroll > 0) {
-			int trackHeight = visible * HISTORY_ROW_HEIGHT;
+			int trackHeight = visible * historyRowHeight();
 			int thumbHeight = Math.max(8, trackHeight * visible / previous.size());
 			int thumbY = y + (trackHeight - thumbHeight) * historyScroll / historyMaxScroll;
 			graphics.fill(right + 2, y, right + 4, y + trackHeight, 0x40202A38);
@@ -1416,6 +1421,71 @@ public class ProfileScreen extends Screen {
 	}
 
 	/** Names the region in full, in the tag's own colour. */
+	/**
+	 * How much to shrink the profile panel's text by.
+	 *
+	 * <p>Text is laid out in GUI space, so at GUI scale 4 it is drawn four
+	 * times the size -- the panel ends up dominated by lettering. This pulls
+	 * some of that back: at scale 1 and 2 nothing changes, and above that the
+	 * text grows at roughly half the rate the rest of the interface does.
+	 */
+	private float textScale() {
+		int gui = Minecraft.getInstance().getWindow().getGuiScale();
+		if (gui <= 2) {
+			return 1.0f;
+		}
+		// Half the excess: scale 3 draws at 5/6, scale 4 at 3/4.
+		return (gui + 2.0f) / (gui * 2.0f);
+	}
+
+	/**
+	 * Draws text shrunk by {@link #textScale()}, anchored at the same point.
+	 *
+	 * <p>The scale is applied about the text's own origin so callers can keep
+	 * laying out in ordinary GUI coordinates.
+	 */
+	private void scaledText(GuiGraphicsExtractor graphics, String text, int x, int y, int color) {
+		float scale = textScale();
+		if (scale >= 1.0f) {
+			graphics.text(font, Component.literal(text), x, y, color);
+			return;
+		}
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(x, y);
+		graphics.pose().scale(scale, scale);
+		graphics.text(font, Component.literal(text), 0, 0, color);
+		graphics.pose().popMatrix();
+	}
+
+	/** The width that text will actually occupy once shrunk. */
+	private int scaledWidth(String text) {
+		return Math.round(font.width(text) * textScale());
+	}
+
+	/**
+	 * Row pitch for the name history, following the text scale so the rows sit
+	 * as close together as their lettering is small.
+	 */
+	private int historyRowHeight() {
+		return Math.max(7, Math.round(HISTORY_ROW_HEIGHT * textScale()));
+	}
+
+	/** A one-line tooltip in the panel's own style. */
+	private void drawLabelTooltip(GuiGraphicsExtractor graphics, String text,
+			int mouseX, int mouseY) {
+		Font font = this.font;
+		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
+		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
+
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.text(font, Component.literal(text),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+	}
+
 	/** How long that list took to answer, and nothing else. */
 	private void drawResponseTooltip(GuiGraphicsExtractor graphics, TierList list,
 			int mouseX, int mouseY) {
