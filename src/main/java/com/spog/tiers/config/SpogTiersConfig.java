@@ -116,7 +116,7 @@ public class SpogTiersConfig {
 	 */
 	public enum SortOrder {
 		/** Whatever order the provider sent, which is its own default. */
-		DEFAULT("Recieved"),
+		DEFAULT("Received"),
 		DATE_OBTAINED("Date obtained"),
 		RANKING("Ranking"),
 		RANKING_PEAK("Ranking (Include peak)");
