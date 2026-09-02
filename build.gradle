@@ -120,3 +120,36 @@ loom {
 		}
 	}
 }
+// Every name in the mixin config must have a matching source file, and every
+// mixin source must be listed. A mismatch is only caught at launch otherwise,
+// as a mod that fails to load with no compile error -- and cherry-picking
+// between the mojmap and yarn branches renames these files, so it happens.
+tasks.register('checkMixinConfig') {
+	group = 'verification'
+	description = 'Cross-checks the mixin config against the mixin sources.'
+
+	def config = file('src/main/resources/spogtiers.client.mixins.json')
+	def dir = file('src/main/java/com/spog/tiers/mixin')
+	inputs.file(config)
+	inputs.dir(dir)
+
+	doLast {
+		def listed = new groovy.json.JsonSlurper().parse(config).client as Set
+		def present = dir.listFiles()
+				.findAll { it.name.endsWith('.java') }
+				.collect { it.name - '.java' } as Set
+
+		def missing = listed - present
+		def unlisted = present - listed
+		if (missing) {
+			throw new GradleException("mixin config lists classes that do not exist: ${missing}")
+		}
+		if (unlisted) {
+			throw new GradleException("mixin sources missing from the config: ${unlisted}")
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn 'checkMixinConfig'
+}
