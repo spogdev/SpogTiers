@@ -221,7 +221,8 @@ public class TierService {
 				grades.put(uuid, PlayerGrade.UNGRADED);
 			} else {
 				grades.put(uuid, new PlayerGrade(label, parseHexColor(string(root, "color")),
-						root.has("gradedAt") ? root.get("gradedAt").getAsLong() : 0L));
+						root.has("gradedAt") ? root.get("gradedAt").getAsLong() : 0L,
+						root.has("retired") && root.get("retired").getAsBoolean()));
 			}
 			gradeFetchedAt.put(uuid, System.currentTimeMillis());
 		} catch (Exception e) {
