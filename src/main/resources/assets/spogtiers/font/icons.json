@@ -566,15 +566,6 @@
       "chars": [
         ""
       ]
-    },
-    {
-      "type": "bitmap",
-      "file": "spogtiers:gui/modes/doorsmp/globe.png",
-      "ascent": 8,
-      "height": 10,
-      "chars": [
-        ""
-      ]
     }
   ]
 }
