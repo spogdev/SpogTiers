@@ -29,8 +29,13 @@ public class LabelMixin {
 	 *
 	 * <p>Negative is up: vanilla passes this same argument through to
 	 * {@code submitNameTag} for both of its own lines.
+	 *
+	 * <p>Exactly nine, the line height vanilla uses between its own two lines.
+	 * Ten left a pixel of this label's backdrop lying over the name's, and
+	 * where two translucent backdrops overlap the alpha doubles and shows as a
+	 * dark band at each end.
 	 */
-	private static final int LINE_OFFSET = -10;
+	private static final int LINE_OFFSET = -9;
 
 	@Inject(method = "submitNameDisplay(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"
 			+ "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;"
