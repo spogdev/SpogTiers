@@ -118,8 +118,8 @@ grading:
 
 The `name` is a comment for whoever reads the file; only `id` is used.
 
-Now in Discord try `/setgrade Notch S`. You should get a pink confirmation. Then `/grade Notch` for
-the embed. If `/setgrade` says you lack permission, your ID is wrong or you didn't restart.
+Now in Discord try `/settier Notch S`. You should get a pink confirmation. Then `/tier Notch` for
+the embed. If `/settier` says you lack permission, your ID is wrong or you didn't restart.
 
 ---
 
@@ -251,7 +251,7 @@ curl https://doorsmptl.spog.dev/health
 ```
 
 `{"status":"ok","grades":0}` over **https** means DNS, Caddy, the certificate and the service are
-all working. Then in Discord, `/setgrade <someone> A` and re-run:
+all working. Then in Discord, `/settier <someone> A` and re-run:
 
 ```bash
 curl https://doorsmptl.spog.dev/api/v1/grade/name/<someone>
@@ -286,10 +286,10 @@ Players you have not graded show no badge at all — that is the normal case and
 
 | Command | Does |
 |---|---|
-| `/setgrade <player> <grade>` | Sets a grade. Tells you the old one if it is a change. |
-| `/removegrade <player>` | Removes it. |
-| `/grade <player>` | Looks one up. Anyone can run this. |
-| `/gradelist [grade]` | Everyone graded, best first. |
+| `/settier <player> <tier>` | Sets a tier. Tells you the old one if it is a change. |
+| `/removetier <player>` | Removes it. |
+| `/tier <player>` | Looks one up. Anyone can run this. |
+| `/tierlist [tier]` | The whole list, grouped by tier. |
 
 **Adding a grader:** edit `/opt/doorsmp/graders.json`, then `systemctl restart doorsmp-backend`. The
 restart is required — the list is read at startup on purpose, so granting the ability to grade takes
@@ -325,7 +325,7 @@ A restart drops nothing — grades are on disk and the bot reconnects on its own
 | `UnsupportedClassVersionError` | Java older than 25. `java -version`. |
 | Service won't start, "Unable to access jarfile" | The jar is owned by root. `chown doorsmp:doorsmp` it (C4). |
 | `curl https://…` certificate error | DNS not resolving yet, or port 80 blocked so Let's Encrypt can't issue. `nslookup doorsmptl.spog.dev`. |
-| `/setgrade` says "You do not have permission" | Your ID isn't in `graders.json`, or you added it but didn't restart. Copy **User ID**, not username. |
+| `/settier` says "You do not have permission" | Your ID isn't in `graders.json`, or you added it but didn't restart. Copy **User ID**, not username. |
 | Bot is offline in Discord | Token wrong or missing. `journalctl -u doorsmp-backend` — it says `DISCORD_TOKEN is not set` or fails to log in. |
 | Slash commands don't appear | Bot invited without the `applications.commands` scope. Re-invite with B4's URL. |
 | API works, no badge in game | Wrong jar for your MC version, or the player genuinely has no grade. Check with `curl .../api/v1/grade/name/<them>`. |

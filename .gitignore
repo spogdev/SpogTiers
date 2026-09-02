@@ -35,3 +35,6 @@ mappings/client-*.jar
 # local test data from a dev run of the backend
 /graders.json
 /grades.json
+
+# bot token -- a password, never commit it
+token.txt

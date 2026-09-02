@@ -20,7 +20,9 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.Color;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -83,6 +85,14 @@ public final class DiscordBot extends ListenerAdapter {
 		// to propagate, which looks exactly like a broken bot; a guild's appear
 		// at once. The bot is invited to a handful of servers at most, so there
 		// is nothing to gain from the global route.
+		// Wipe the global set. An earlier build registered there, and Discord
+		// keeps showing those alongside the per-guild copies, so every command
+		// appears twice until the global ones are explicitly cleared. Harmless
+		// once they are gone -- it just publishes an empty list.
+		event.getJDA().updateCommands().queue(
+				ok -> LOG.debug("cleared global commands"),
+				error -> LOG.warn("could not clear global commands", error));
+
 		List<Guild> guilds = event.getJDA().getGuilds();
 		if (guilds.isEmpty()) {
 			LOG.warn("not in any server yet -- invite the bot and it will "
@@ -109,25 +119,25 @@ public final class DiscordBot extends ListenerAdapter {
 		// unrepresentable, and graders get a picker instead of having to
 		// remember the ladder.
 		OptionData grade = new OptionData(OptionType.STRING, "grade",
-				"The grade to assign", true);
+				"The tier to assign", true);
 		for (Grade value : Grade.values()) {
 			grade.addChoice(value.label(), value.label());
 		}
 
 		OptionData filter = new OptionData(OptionType.STRING, "grade",
-				"Only show this grade", false);
+				"Only show this tier", false);
 		for (Grade value : Grade.values()) {
 			filter.addChoice(value.label(), value.label());
 		}
 
 		List<SlashCommandData> commands = List.of(
-				Commands.slash("setgrade", "Set a player's " + LIST_NAME + " grade")
+				Commands.slash("settier", "Set a player's " + LIST_NAME + " tier")
 						.addOptions(player, grade),
-				Commands.slash("removegrade", "Remove a player's " + LIST_NAME + " grade")
+				Commands.slash("removetier", "Remove a player's " + LIST_NAME + " tier")
 						.addOptions(player),
-				Commands.slash("grade", "Look up a player's " + LIST_NAME + " grade")
+				Commands.slash("tier", "Look up a player's " + LIST_NAME + " tier")
 						.addOptions(player),
-				Commands.slash("gradelist", "List every graded player")
+				Commands.slash("tierlist", "Show the whole tierlist")
 						.addOptions(filter));
 
 		guild.updateCommands().addCommands(commands).queue(
@@ -140,22 +150,22 @@ public final class DiscordBot extends ListenerAdapter {
 	@Override
 	public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
 		switch (event.getName()) {
-			case "setgrade" -> setGrade(event);
-			case "removegrade" -> removeGrade(event);
-			case "grade" -> lookup(event);
-			case "gradelist" -> list(event);
+			case "settier" -> setTier(event);
+			case "removetier" -> removeTier(event);
+			case "tier" -> lookup(event);
+			case "tierlist" -> list(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
 	}
 
-	private void setGrade(SlashCommandInteractionEvent event) {
+	private void setTier(SlashCommandInteractionEvent event) {
 		if (!authorised(event)) {
 			return;
 		}
 		String name = event.getOption("player", "", OptionMapping::getAsString);
 		Grade grade = Grade.parse(event.getOption("grade", "", OptionMapping::getAsString));
 		if (grade == null) {
-			event.reply("That is not a valid grade.").setEphemeral(true).queue();
+			event.reply("That is not a valid tier.").setEphemeral(true).queue();
 			return;
 		}
 
@@ -182,7 +192,7 @@ public final class DiscordBot extends ListenerAdapter {
 				.build()).queue();
 	}
 
-	private void removeGrade(SlashCommandInteractionEvent event) {
+	private void removeTier(SlashCommandInteractionEvent event) {
 		if (!authorised(event)) {
 			return;
 		}
@@ -245,36 +255,54 @@ public final class DiscordBot extends ListenerAdapter {
 
 	private void list(SlashCommandInteractionEvent event) {
 		Grade filter = Grade.parse(event.getOption("grade", "", OptionMapping::getAsString));
-		List<GradeStore.Record> all = grades.all();
 
-		List<String> lines = new ArrayList<>();
-		for (GradeStore.Record record : all) {
+		// all() is already sorted best tier first, then by name, so grouping is
+		// just a walk: a LinkedHashMap keeps the tiers in that same order.
+		Map<Grade, List<String>> byTier = new LinkedHashMap<>();
+		int total = 0;
+		for (GradeStore.Record record : grades.all()) {
 			if (filter != null && record.grade() != filter) {
 				continue;
 			}
-			lines.add("`" + pad(record.grade().label()) + "`  " + record.name());
+			byTier.computeIfAbsent(record.grade(), k -> new ArrayList<>()).add(record.name());
+			total++;
 		}
 
-		if (lines.isEmpty()) {
+		if (total == 0) {
 			event.reply(filter == null
-					? "Nobody is graded yet."
-					: "Nobody is graded **" + filter.label() + "**.").queue();
+					? "Nobody is on the tierlist yet."
+					: "Nobody is **" + filter.label() + "**.").queue();
 			return;
 		}
 
-		// An embed description caps at 4096 characters; trim rather than have
-		// Discord reject the whole message.
+		// A tier heading followed by its players, one per line:
+		//
+		//   **S**
+		//   - Notch
+		//   - _Spog
+		//
+		// The description caps at 4096 characters, so this stops on the last
+		// whole tier that fits rather than cutting a list mid-way and leaving
+		// a heading with nobody under it.
 		StringBuilder body = new StringBuilder();
 		int shown = 0;
-		for (String line : lines) {
-			if (body.length() + line.length() + 1 > 3900) {
+		for (Map.Entry<Grade, List<String>> entry : byTier.entrySet()) {
+			StringBuilder block = new StringBuilder();
+			if (body.length() > 0) {
+				block.append('\n');
+			}
+			block.append("**").append(entry.getKey().label()).append("**\n");
+			for (String name : entry.getValue()) {
+				block.append("- ").append(name).append('\n');
+			}
+			if (body.length() + block.length() > 3900) {
 				break;
 			}
-			body.append(line).append('\n');
-			shown++;
+			body.append(block);
+			shown += entry.getValue().size();
 		}
-		if (shown < lines.size()) {
-			body.append("\n_...and ").append(lines.size() - shown).append(" more._");
+		if (shown < total) {
+			body.append("\n_...and ").append(total - shown).append(" more._");
 		}
 
 		MessageEmbed embed = new EmbedBuilder()
@@ -282,7 +310,7 @@ public final class DiscordBot extends ListenerAdapter {
 						+ (filter == null ? "" : " -- " + filter.label()))
 				.setDescription(body.toString())
 				.setColor(filter == null ? NEUTRAL : new Color(filter.color()))
-				.setFooter(lines.size() + " player" + (lines.size() == 1 ? "" : "s"))
+				.setFooter(total + " player" + (total == 1 ? "" : "s"))
 				.build();
 		event.replyEmbeds(embed).queue();
 	}
@@ -298,7 +326,7 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 		// Identical whether or not graders are configured: a caller learns
 		// nothing about the setup from being refused.
-		event.reply("You do not have permission to grade.").setEphemeral(true).queue();
+		event.reply("You do not have permission to set tiers.").setEphemeral(true).queue();
 		return false;
 	}
 
@@ -324,12 +352,14 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 	}
 
-	/** Left-pads a grade label so the listing lines up in Discord's monospace. */
-	private static String pad(String label) {
-		return label.length() >= 2 ? label : label + " ";
-	}
-
+	/**
+	 * The player's face, for the embed thumbnail.
+	 *
+	 * <p>Undashed and with no query string on purpose: minotar 301-redirects a
+	 * dashed UUID, and Discord's image proxy is unreliable with redirects, so
+	 * the thumbnail silently fails to load.
+	 */
 	private static String head(UUID id) {
-		return "https://crafatar.com/avatars/" + id + "?overlay";
+		return "https://minotar.net/helm/" + id.toString().replace("-", "") + "/128.png";
 	}
 }

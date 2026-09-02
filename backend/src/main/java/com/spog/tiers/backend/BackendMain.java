@@ -5,6 +5,9 @@ import net.dv8tion.jda.api.JDA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -25,6 +28,9 @@ public final class BackendMain {
 	private static final Logger LOG = LoggerFactory.getLogger(BackendMain.class);
 
 	private static final int DEFAULT_PORT = 8081;
+
+	/** Where the token is kept when it is not in the environment. */
+	private static final String TOKEN_FILE = "token.txt";
 
 	public static void main(String[] args) throws Exception {
 		int port = DEFAULT_PORT;
@@ -54,9 +60,11 @@ public final class BackendMain {
 		LOG.info("Door SMP API listening on {}:{}", host, port);
 
 		JDA jda = null;
-		String token = System.getenv("DISCORD_TOKEN");
+		String token = resolveToken(dataDir);
 		if (token == null || token.isBlank()) {
-			LOG.warn("DISCORD_TOKEN is not set; running API-only, no grading commands");
+			LOG.warn("no Discord token found; running API-only, no tier commands. "
+					+ "Set DISCORD_TOKEN or put the token in {}",
+					dataDir.resolve(TOKEN_FILE).toAbsolutePath());
 		} else {
 			try {
 				jda = new DiscordBot(grades, graders, names).start(token);
@@ -74,5 +82,43 @@ public final class BackendMain {
 			}
 			http.stop();
 		}));
+	}
+
+	/**
+	 * The bot token, from the environment or from a file beside the data.
+	 *
+	 * <p>The environment wins, so the systemd unit's {@code EnvironmentFile}
+	 * stays the way a server runs this. The file is for running it by hand,
+	 * where exporting a variable every time is a nuisance and it is easy to end
+	 * up pasting the token onto a command line instead -- which leaks it to
+	 * every user on the machine through {@code ps}.
+	 *
+	 * <p>A token is a password, not configuration: keep {@code token.txt} out of
+	 * version control, and prefer the environment anywhere it is shared.
+	 */
+	private static String resolveToken(Path dataDir) {
+		String fromEnv = System.getenv("DISCORD_TOKEN");
+		if (fromEnv != null && !fromEnv.isBlank()) {
+			return fromEnv.trim();
+		}
+		Path file = dataDir.resolve(TOKEN_FILE);
+		if (!Files.exists(file)) {
+			return null;
+		}
+		try {
+			// Only the first non-blank line, so a trailing newline or a comment
+			// underneath does not become part of the token.
+			for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+				String trimmed = line.trim();
+				if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+					LOG.info("read the Discord token from {}", file.getFileName());
+					return trimmed;
+				}
+			}
+			LOG.warn("{} is empty", file);
+		} catch (IOException e) {
+			LOG.error("could not read {} ({})", file, e.toString());
+		}
+		return null;
 	}
 }

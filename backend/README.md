@@ -69,9 +69,16 @@ DISCORD_TOKEN=... java -jar doorsmp-backend-all.jar --port 8081 --data-dir /opt/
 Flags: `--port` (default 8081), `--host` (default 0.0.0.0), `--data-dir` (default the working
 directory). Needs a Java 25 runtime.
 
-Without `DISCORD_TOKEN` the service starts **API-only** and logs a warning: the mod's lookups keep
-working, only the grading commands are missing. That is deliberate — a bad token should not take
-tier lookups down with it.
+The token is read from `DISCORD_TOKEN` first, then from `token.txt` in the data directory. The
+environment wins, so a server keeps using the systemd `EnvironmentFile`; the file is for running by
+hand, where exporting a variable each time invites pasting the token onto a command line instead —
+which leaks it to every user on the box through `ps`.
+
+**`token.txt` is a password.** It is gitignored, and it should be mode 600 wherever it lives.
+
+With neither set the service starts **API-only** and logs a warning: the mod's lookups keep
+working, only the tier commands are missing. That is deliberate — a bad token should not take tier
+lookups down with it.
 
 ### Data files
 
@@ -96,13 +103,17 @@ truncated file behind.
 
 | Command | Who | Does |
 |---|---|---|
-| `/setgrade <player> <grade>` | graders | Sets a grade; reports the previous one if it is a change |
-| `/removegrade <player>` | graders | Removes a grade |
-| `/grade <player>` | anyone | Embed with the grade, striped in its colour |
-| `/gradelist [grade]` | anyone | Every graded player, best first, optionally filtered |
+| `/settier <player> <tier>` | graders | Sets a tier; reports the previous one if it is a change |
+| `/removetier <player>` | graders | Removes a tier |
+| `/tier <player>` | anyone | Embed with the tier, striped in its colour |
+| `/tierlist [tier]` | anyone | The whole list, grouped by tier, best first |
 
-`grade` is a choice list, not free text, so an invalid grade is unrepresentable. Failures reply
+`tier` is a choice list, not free text, so an invalid tier is unrepresentable. Failures reply
 ephemerally so a mistyped name does not litter the channel.
+
+Commands are registered **per guild**, which publishes them immediately. Registering globally is
+the other option and takes up to an hour to propagate, which is indistinguishable from a broken
+bot.
 
 The bot needs the `applications.commands` scope and no privileged intents — it only reacts to its
 own slash commands.
