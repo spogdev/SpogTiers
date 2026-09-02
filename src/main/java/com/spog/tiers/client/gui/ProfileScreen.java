@@ -155,6 +155,8 @@ public class ProfileScreen extends Screen {
 	private int historyTop;
 	private int historyBottom;
 	private AnimatedSkinWidget skinWidget;
+	/** Embers around the model, in the player's Door SMP tier colour. */
+	private final TierAura aura = new TierAura();
 	/** The model's on-screen y, restored after a capture. */
 	private int skinScreenY;
 	/** Highest the model may sit: just below the name row. */
@@ -282,6 +284,7 @@ public class ProfileScreen extends Screen {
 
 		hover = null;
 		headerHover = null;
+		aura.tick(partialTick);
 		refitSkin();
 		layoutButtons();
 		// Cards first: the panel sizes itself against them when exporting, and
@@ -531,6 +534,14 @@ public class ProfileScreen extends Screen {
 		}
 
 		graphics.pose().popMatrix();
+
+		// Outside the panel transform, because the model is a widget in screen
+		// space rather than something drawn into the panel. Widgets render
+		// after this method, so the embers land behind the player.
+		if (skinWidget != null) {
+			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
+					skinWidget.getWidth(), skinWidget.getHeight());
+		}
 	}
 
 	/**
