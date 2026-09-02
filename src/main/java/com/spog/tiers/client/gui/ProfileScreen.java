@@ -342,6 +342,14 @@ public class ProfileScreen extends Screen {
 		// not painted over.
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
+		// The rest of the embers, over the model now that it has drawn, so the
+		// effect wraps the player rather than sitting flat behind them.
+		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
+			aura.draw(graphics, SpogTiersClient.service().grade(target),
+					skinWidget.getX(), skinWidget.getY(),
+					skinWidget.getWidth(), skinWidget.getHeight(), true);
+		}
+
 		// Tooltip last and outside the card transform, so it is never clipped
 		// or scaled with the grid.
 		// Tested against the pointer rather than the widget's own flag: the
@@ -525,7 +533,9 @@ public class ProfileScreen extends Screen {
 			tagX += drawTag(graphics, tagX, nameY - 3, region) + 4;
 		}
 
-		PlayerGrade grade = SpogTiersClient.service().grade(target);
+		PlayerGrade grade = SpogTiersClient.config().extraTierlists
+				? SpogTiersClient.service().grade(target)
+				: null;
 		gradeShown = grade != null && grade.isGraded();
 		if (gradeShown) {
 			drawGradeTag(graphics, tagX, nameY - 3, grade);
@@ -538,9 +548,9 @@ public class ProfileScreen extends Screen {
 		// Outside the panel transform, because the model is a widget in screen
 		// space rather than something drawn into the panel. Widgets render
 		// after this method, so the embers land behind the player.
-		if (skinWidget != null) {
+		if (skinWidget != null && SpogTiersClient.config().extraTierlists) {
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
-					skinWidget.getWidth(), skinWidget.getHeight());
+					skinWidget.getWidth(), skinWidget.getHeight(), false);
 		}
 	}
 

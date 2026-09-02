@@ -43,11 +43,25 @@ public final class TierAura {
 	/** Fixed seed: the drift pattern should be the same every time it opens. */
 	private static final long SEED = 0x5D0057;
 
+	/**
+	 * Share of motes drawn in front of the model rather than behind it.
+	 *
+	 * <p>A minority on purpose. The effect should wrap the player rather than
+	 * veil them, and anything in front competes with the skin for attention --
+	 * so the front layer is thinner, and drawn smaller and fainter besides.
+	 */
+	private static final float FRONT_SHARE = 0.38f;
+
+	/** How much the front layer is toned down, so it never hides the skin. */
+	private static final float FRONT_ALPHA_SCALE = 0.62f;
+
 	private final float[] phase = new float[MOTES];
 	private final float[] column = new float[MOTES];
 	private final float[] wobble = new float[MOTES];
 	private final float[] speed = new float[MOTES];
 	private final float[] size = new float[MOTES];
+	/** Which layer each mote belongs to, fixed at construction. */
+	private final boolean[] front = new boolean[MOTES];
 
 	private float elapsed;
 
@@ -61,6 +75,7 @@ public final class TierAura {
 			wobble[i] = random.nextFloat() * Mth.TWO_PI;
 			speed[i] = 0.75f + random.nextFloat() * 0.5f;
 			size[i] = random.nextFloat();
+			front[i] = random.nextFloat() < FRONT_SHARE;
 		}
 	}
 
@@ -70,19 +85,29 @@ public final class TierAura {
 	}
 
 	/**
-	 * Draws the aura in the given box, which should be the model's own bounds.
+	 * Draws one layer of the aura in the given box, which should be the
+	 * model's own bounds.
+	 *
+	 * <p>Called twice a frame: once before the model renders and once after,
+	 * so motes pass both behind and in front of the player and the effect
+	 * reads as surrounding them rather than sitting flat behind.
 	 *
 	 * <p>Does nothing for a player with no tier, so an ungraded profile looks
 	 * exactly as it did before.
+	 *
+	 * @param inFront which layer to draw
 	 */
 	public void draw(GuiGraphicsExtractor graphics, PlayerGrade grade,
-			int left, int top, int width, int height) {
+			int left, int top, int width, int height, boolean inFront) {
 		if (grade == null || !grade.isGraded() || width <= 0 || height <= 0) {
 			return;
 		}
 		int rgb = grade.foreground() & 0xFFFFFF;
 
 		for (int i = 0; i < MOTES; i++) {
+			if (front[i] != inFront) {
+				continue;
+			}
 			// Where this mote is through its rise, 0 at the feet and 1 at the
 			// top. Wrapping on 1 means it reappears at the bottom rather than
 			// needing to be respawned.
@@ -91,7 +116,8 @@ public final class TierAura {
 			// Fades in from nothing and back out, so nothing pops into or out
 			// of existence mid-air.
 			float fade = Mth.sin(life * Mth.PI);
-			int alpha = (int) (Math.sqrt(fade) * MAX_ALPHA * 255.0f);
+			float peak = inFront ? MAX_ALPHA * FRONT_ALPHA_SCALE : MAX_ALPHA;
+			int alpha = (int) (Math.sqrt(fade) * peak * 255.0f);
 			if (alpha <= 2) {
 				continue;
 			}
@@ -110,7 +136,8 @@ public final class TierAura {
 			int py = top + Math.round((1.0f - travel) * height);
 
 			// Larger near the bottom, thinning as they climb -- embers cooling.
-			int s = MIN_SIZE + Math.round(size[i] * (MAX_SIZE - MIN_SIZE) * (1.0f - life * 0.6f));
+			int span = inFront ? MAX_SIZE - 1 : MAX_SIZE;
+			int s = MIN_SIZE + Math.round(size[i] * (span - MIN_SIZE) * (1.0f - life * 0.6f));
 
 			graphics.fill(px, py, px + s, py + s, (alpha << 24) | rgb);
 		}
