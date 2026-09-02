@@ -38,8 +38,11 @@ public class LabelMixin {
 		}
 
 		matrices.push();
-		// Up one line, so it sits over the name rather than through it.
-		matrices.translate(0.0f, LINE_HEIGHT, 0.0f);
+		// Negative is up. Vanilla draws its own upper line at 0 and then
+		// translates by +LINE_HEIGHT to put the name underneath, so positive Y
+		// here is downward -- translating the other way put this tag below the
+		// name instead of above it.
+		matrices.translate(0.0f, -LINE_HEIGHT, 0.0f);
 		queue.submitLabel(matrices, state.nameLabelPos, 0, above,
 				!state.sneaking, state.light, state.squaredDistanceToCamera, camera);
 		matrices.pop();
