@@ -58,6 +58,16 @@ public class SpogTiersConfig {
 	public boolean showPlacements = true;
 
 	/**
+	 * Our own Door SMP tierlist: the badge beside the region tag and the embers
+	 * around the model.
+	 *
+	 * <p>One switch for all of it. It is a first-party addition on top of the
+	 * six read-only lists, so someone who only wants those can turn the whole
+	 * thing off without hunting through several options.
+	 */
+	public boolean extraTierlists = true;
+
+	/**
 	 * Per-list tag toggles, separate from {@link #enabledLists}.
 	 *
 	 * <p>A list can be worth reading on the profile screen without being worth
