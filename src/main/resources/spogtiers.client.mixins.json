@@ -5,6 +5,7 @@
 	"client": [
 		"PlayerListHudMixin",
 		"EntityRendererMixin",
+		"LabelMixin",
 		"TextDisplayMixin",
 		"ClientPlayNetworkHandlerMixin",
 		"ClientCommandsMixin",

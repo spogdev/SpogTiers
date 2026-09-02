@@ -29,15 +29,10 @@ public class EntityRendererMixin {
 		if (!(entity instanceof PlayerEntity player) || state.displayName == null) {
 			return;
 		}
-		Text tagged = TagRenderer.withTag(player.getUuid(), state.displayName);
-
-		// This version draws the nameplate as a single label with no second
-		// line of its own, so the above slot has to be a newline inside the
-		// name. 26.x has a separate field for it, and uses that instead.
-		Text above = TagRenderer.aboveTag(player.getUuid());
-		if (above != null) {
-			tagged = Text.empty().append(above).append("\n").append(tagged);
-		}
-		state.displayName = tagged;
+		state.displayName = TagRenderer.withTag(player.getUuid(), state.displayName);
+		// Stashed rather than folded into the name: this version has no second
+		// label line of its own, so LabelMixin submits one, and a newline in
+		// the name would share the name's single background.
+		AboveLabel.set(state, TagRenderer.aboveTag(player.getUuid()));
 	}
 }
