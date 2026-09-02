@@ -222,9 +222,10 @@ public final class TierlistImage {
 
 	/** One player's face, or null if it could not be fetched. */
 	private BufferedImage face(UUID id) {
-		// /cube/ is the isometric head with the hat layer on -- the 3D skin
-		// layer. /helm/ is the same head drawn flat.
-		String url = "https://minotar.net/cube/" + id.toString().replace("-", "")
+		// /helm/ is the face drawn flat, with the hat layer composited on top.
+		// The isometric /cube/ render turns the head to the side, which reads
+		// as a different thing entirely next to a row of flat faces.
+		String url = "https://minotar.net/helm/" + id.toString().replace("-", "")
 				+ "/" + FACE_SOURCE + ".png";
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(url))
