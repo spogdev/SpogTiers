@@ -15,9 +15,6 @@ import java.util.Locale;
  * not asked yet" is what stops the screen refetching every frame.
  */
 public record PlayerGrade(String grade, int color, long gradedAt, boolean retired) {
-	/** The tierlist's name, as it appears in the tooltip. */
-	public static final String LIST_NAME = "Door SMP";
-
 	/** How far a retired tier's colour is pulled towards grey. */
 	private static final float RETIRED_FADE = 0.55f;
 
@@ -37,6 +34,17 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 */
 	public String label() {
 		return retired ? "R" + grade : grade;
+	}
+
+	/**
+	 * The grade as the tooltip says it.
+	 *
+	 * <p>Retirement is written out rather than left as the badge's R: the badge
+	 * has one letter of room and the tooltip is where the abbreviation gets
+	 * explained.
+	 */
+	public String tooltipLabel() {
+		return retired ? "Retired " + grade : grade;
 	}
 
 	/**
