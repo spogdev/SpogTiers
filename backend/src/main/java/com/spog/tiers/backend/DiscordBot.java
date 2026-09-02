@@ -16,6 +16,7 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.utils.FileUpload;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,7 @@ public final class DiscordBot extends ListenerAdapter {
 	private final GradeStore grades;
 	private final GraderStore graders;
 	private final MojangNames names;
+	private final TierlistImage image = new TierlistImage();
 
 	public DiscordBot(GradeStore grades, GraderStore graders, MojangNames names) {
 		this.grades = grades;
@@ -275,13 +277,13 @@ public final class DiscordBot extends ListenerAdapter {
 
 		// all() is already sorted best tier first, then by name, so grouping is
 		// just a walk: a LinkedHashMap keeps the tiers in that same order.
-		Map<Grade, List<String>> byTier = new LinkedHashMap<>();
+		Map<Grade, List<GradeStore.Record>> byTier = new LinkedHashMap<>();
 		int total = 0;
 		for (GradeStore.Record record : grades.all()) {
 			if (filter != null && record.grade() != filter) {
 				continue;
 			}
-			byTier.computeIfAbsent(record.grade(), k -> new ArrayList<>()).add(record.name());
+			byTier.computeIfAbsent(record.grade(), k -> new ArrayList<>()).add(record);
 			total++;
 		}
 
@@ -292,25 +294,49 @@ public final class DiscordBot extends ListenerAdapter {
 			return;
 		}
 
-		// A tier heading followed by its players, one per line:
-		//
-		//   **S**
-		//   - Notch
-		//   - _Spog
-		//
-		// The description caps at 4096 characters, so this stops on the last
-		// whole tier that fits rather than cutting a list mid-way and leaving
-		// a heading with nobody under it.
+		// Every tier gets a row, even an empty one, so the picture shows the
+		// whole ladder rather than only the rungs that happen to be occupied.
+		// Filtered to one tier, only that row is drawn.
+		List<Map.Entry<Grade, List<GradeStore.Record>>> rows = new ArrayList<>();
+		for (Grade tier : Grade.values()) {
+			if (filter != null && tier != filter) {
+				continue;
+			}
+			rows.add(Map.entry(tier, byTier.getOrDefault(tier, List.of())));
+		}
+
+		// Faces are fetched over the network, so acknowledge first: rendering
+		// can outlast the three seconds Discord allows for a reply.
+		event.deferReply().queue();
+
+		byte[] png = image.render(rows);
+		if (png == null) {
+			// Rendering is a nicety; the standing itself is the point, so fall
+			// back to text rather than failing the command.
+			event.getHook().sendMessageEmbeds(textList(filter, rows, total)).queue();
+			return;
+		}
+		event.getHook()
+				.sendFiles(FileUpload.fromData(png, "tierlist.png"))
+				.queue();
+	}
+
+	/** The listing as text, for when the image cannot be drawn. */
+	private MessageEmbed textList(Grade filter,
+			List<Map.Entry<Grade, List<GradeStore.Record>>> rows, int total) {
 		StringBuilder body = new StringBuilder();
 		int shown = 0;
-		for (Map.Entry<Grade, List<String>> entry : byTier.entrySet()) {
+		for (Map.Entry<Grade, List<GradeStore.Record>> entry : rows) {
+			if (entry.getValue().isEmpty()) {
+				continue;
+			}
 			StringBuilder block = new StringBuilder();
 			if (body.length() > 0) {
 				block.append('\n');
 			}
 			block.append("**").append(entry.getKey().label()).append("**\n");
-			for (String name : entry.getValue()) {
-				block.append("- ").append(name).append('\n');
+			for (GradeStore.Record record : entry.getValue()) {
+				block.append("- ").append(record.name()).append('\n');
 			}
 			if (body.length() + block.length() > 3900) {
 				break;
@@ -322,14 +348,13 @@ public final class DiscordBot extends ListenerAdapter {
 			body.append("\n_...and ").append(total - shown).append(" more._");
 		}
 
-		MessageEmbed embed = new EmbedBuilder()
+		return new EmbedBuilder()
 				.setTitle(LIST_NAME + " Tierlist"
 						+ (filter == null ? "" : " -- " + filter.label()))
 				.setDescription(body.toString())
 				.setColor(filter == null ? NEUTRAL : new Color(filter.color()))
 				.setFooter(total + " player" + (total == 1 ? "" : "s"))
 				.build();
-		event.replyEmbeds(embed).queue();
 	}
 
 	/**
