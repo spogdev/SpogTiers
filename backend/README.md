@@ -103,10 +103,11 @@ truncated file behind.
 
 | Command | Who | Does |
 |---|---|---|
-| `/settier <player> <tier>` | graders | Sets a tier; reports the previous one if it is a change |
-| `/removetier <player>` | graders | Removes a tier |
+| `/assign <player> <tier>` | graders | Assigns a tier, or removes it with the **None** choice |
+| `/retire <player>` | graders | Toggles retirement; a retired player keeps their tier as R&lt;tier&gt; but leaves the rendered list |
+| `/bump <player> <places>` | graders | Moves a player within their tier; `1` is up one, `-1` down one |
 | `/tier <player>` | anyone | Embed with the tier, striped in its colour |
-| `/tierlist [tier]` | anyone | The whole list, grouped by tier, best first |
+| `/tierlist [tier]` | anyone | The tierlist drawn as an image, one row per tier |
 
 `tier` is a choice list, not free text, so an invalid tier is unrepresentable. Failures reply
 ephemerally so a mistyped name does not litter the channel.
