@@ -149,6 +149,16 @@ public final class TagRenderer {
 		}
 
 		Component tagged = withTag(best, text);
+
+		// A display renders one component, so unlike a nameplate there is no
+		// second label to submit -- the above tag has to be a line inside the
+		// text. Its background is the display's own and spans both lines,
+		// which is the server's styling rather than something we control.
+		Component above = aboveTag(best);
+		if (above != null) {
+			tagged = Component.empty().append(above)
+					.append(Component.literal("\n")).append(tagged);
+		}
 		return tagged == text ? null : tagged;
 	}
 
