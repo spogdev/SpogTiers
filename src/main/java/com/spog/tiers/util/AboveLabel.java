@@ -1,4 +1,4 @@
-package com.spog.tiers.mixin;
+package com.spog.tiers.util;
 
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.network.chat.Component;
@@ -18,13 +18,13 @@ import java.util.WeakHashMap;
  * Render states are pooled and reused, so entries are overwritten rather than
  * accumulating.
  */
-final class AboveLabel {
+public final class AboveLabel {
 	private static final Map<EntityRenderState, Component> LABELS = new WeakHashMap<>();
 
 	private AboveLabel() {
 	}
 
-	static void set(EntityRenderState state, Component label) {
+	public static void set(EntityRenderState state, Component label) {
 		if (label == null) {
 			LABELS.remove(state);
 		} else {
@@ -32,7 +32,7 @@ final class AboveLabel {
 		}
 	}
 
-	static Component get(EntityRenderState state) {
+	public static Component get(EntityRenderState state) {
 		return LABELS.get(state);
 	}
 }

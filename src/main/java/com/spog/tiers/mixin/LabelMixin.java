@@ -1,5 +1,6 @@
 package com.spog.tiers.mixin;
 
+import com.spog.tiers.util.AboveLabel;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
