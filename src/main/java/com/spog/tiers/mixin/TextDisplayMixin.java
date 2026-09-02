@@ -4,8 +4,10 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.DisplayRenderer;
 import net.minecraft.client.renderer.entity.state.TextDisplayEntityRenderState;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -23,7 +25,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * to the player it labels. See {@link TagRenderer#taggedDisplay}.
  */
 @Mixin(DisplayRenderer.TextDisplayRenderer.class)
-public class TextDisplayMixin {
+public abstract class TextDisplayMixin {
+	/**
+	 * The renderer's own line splitter.
+	 *
+	 * <p>Needed because the cached layout describes the old text: the renderer
+	 * dereferences it without a null check, so it has to be replaced rather
+	 * than cleared.
+	 */
+	@Shadow
+	private Display.TextDisplay.CachedInfo splitLines(Component text, int lineWidth) {
+		throw new AssertionError("shadow");
+	}
+
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
 	private void spogtiers$tagTextDisplay(Display.TextDisplay display,
 			TextDisplayEntityRenderState state, float partialTick, CallbackInfo ci) {
@@ -37,17 +51,18 @@ public class TextDisplayMixin {
 			return;
 		}
 
-		var tagged = TagRenderer.taggedDisplay(text.text());
+		Component tagged = TagRenderer.taggedDisplay(text.text());
 		if (tagged == null) {
 			return;
 		}
+
 		// The record is immutable, so the whole state is rebuilt with the new
 		// text and every other field carried across untouched.
 		state.textRenderState = new Display.TextDisplay.TextRenderState(
 				tagged, text.lineWidth(), text.textOpacity(),
 				text.backgroundColor(), text.flags());
-		// The cached info holds the laid-out lines from the old text, so it has
-		// to go or the display keeps drawing what it had.
-		state.cachedInfo = null;
+		// Re-laid out rather than cleared. submitInner reads width() straight
+		// off this, so a null here crashes the render thread on the next frame.
+		state.cachedInfo = splitLines(tagged, text.lineWidth());
 	}
 }
