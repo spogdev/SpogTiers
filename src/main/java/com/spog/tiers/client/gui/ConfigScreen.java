@@ -232,7 +232,7 @@ public class ConfigScreen extends Screen {
 	/** Every dropdown on the active tab. */
 	private List<Dropdown<?>> dropdowns() {
 		if (active == Tab.NAMETAG) {
-			return List.of(leftList, leftMode, rightList, rightMode);
+			return List.of(aboveList, aboveMode, leftList, leftMode, rightList, rightMode);
 		}
 		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
@@ -687,12 +687,12 @@ public class ConfigScreen extends Screen {
 			return true;
 		}
 		if (active == Tab.NAMETAG) {
-			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+			for (Dropdown<?> dropdown : dropdowns()) {
 				if (dropdown.isOpen() && dropdown.click(textRenderer, event.x(), event.y())) {
 					return true;
 				}
 			}
-			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+			for (Dropdown<?> dropdown : dropdowns()) {
 				if (dropdown.click(textRenderer, event.x(), event.y())) {
 					click();
 					return true;
@@ -715,7 +715,7 @@ public class ConfigScreen extends Screen {
 			return true;
 		}
 		if (active == Tab.NAMETAG) {
-			for (Dropdown<?> dropdown : List.of(leftList, leftMode, rightList, rightMode)) {
+			for (Dropdown<?> dropdown : dropdowns()) {
 				if (dropdown.scroll(deltaY)) {
 					return true;
 				}
