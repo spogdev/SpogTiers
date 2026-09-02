@@ -3,7 +3,9 @@ package com.spog.tiers.backend;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -12,7 +14,6 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
-import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +60,15 @@ public final class DiscordBot extends ListenerAdapter {
 	 * commands, so it needs neither message content nor member lists.
 	 */
 	public JDA start(String token) throws InterruptedException {
-		JDA jda = JDABuilder.createLight(token, List.of(GatewayIntent.GUILD_MESSAGES))
+		// No intents at all: the bot only ever reacts to its own slash commands,
+		// so it needs neither message content nor member lists. Guild caching is
+		// left on deliberately -- createLight() would disable it, and commands
+		// are registered per guild, which needs getGuilds() to be populated.
+		JDA jda = JDABuilder.createDefault(token)
+				.enableIntents(java.util.Collections.emptyList())
+				.setMemberCachePolicy(net.dv8tion.jda.api.utils.MemberCachePolicy.NONE)
+				.disableCache(java.util.EnumSet.allOf(
+						net.dv8tion.jda.api.utils.cache.CacheFlag.class))
 				.addEventListeners(this)
 				.build();
 		jda.awaitReady();
@@ -68,6 +77,31 @@ public final class DiscordBot extends ListenerAdapter {
 
 	@Override
 	public void onReady(@NotNull ReadyEvent event) {
+		LOG.info("logged in as {}", event.getJDA().getSelfUser().getName());
+
+		// Register per guild, not globally. Global commands take up to an hour
+		// to propagate, which looks exactly like a broken bot; a guild's appear
+		// at once. The bot is invited to a handful of servers at most, so there
+		// is nothing to gain from the global route.
+		List<Guild> guilds = event.getJDA().getGuilds();
+		if (guilds.isEmpty()) {
+			LOG.warn("not in any server yet -- invite the bot and it will "
+					+ "register its commands as soon as it is added");
+		}
+		for (Guild guild : guilds) {
+			register(guild);
+		}
+	}
+
+	/** A server that invited the bot while it was already running. */
+	@Override
+	public void onGuildJoin(@NotNull GuildJoinEvent event) {
+		LOG.info("joined {}", event.getGuild().getName());
+		register(event.getGuild());
+	}
+
+	/** Publish the command set to one guild. */
+	private void register(Guild guild) {
 		OptionData player = new OptionData(OptionType.STRING, "player",
 				"The Minecraft username", true);
 
@@ -96,10 +130,11 @@ public final class DiscordBot extends ListenerAdapter {
 				Commands.slash("gradelist", "List every graded player")
 						.addOptions(filter));
 
-		event.getJDA().updateCommands().addCommands(commands).queue(
-				ok -> LOG.info("registered {} command(s)", commands.size()),
-				error -> LOG.error("could not register commands", error));
-		LOG.info("logged in as {}", event.getJDA().getSelfUser().getAsTag());
+		guild.updateCommands().addCommands(commands).queue(
+				ok -> LOG.info("registered {} command(s) in {}",
+						commands.size(), guild.getName()),
+				error -> LOG.error("could not register commands in {}",
+						guild.getName(), error));
 	}
 
 	@Override
