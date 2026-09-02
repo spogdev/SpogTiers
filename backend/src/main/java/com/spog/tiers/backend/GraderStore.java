@@ -79,7 +79,7 @@ public final class GraderStore {
 			return new GraderStore(out);
 		}
 		try {
-			String json = Files.readString(file, StandardCharsets.UTF_8);
+			String json = stripBom(Files.readString(file, StandardCharsets.UTF_8));
 			Entry[] entries = GSON.fromJson(json, Entry[].class);
 			if (entries != null) {
 				for (Entry e : entries) {
@@ -103,5 +103,16 @@ public final class GraderStore {
 
 	public int size() {
 		return graders.size();
+	}
+
+	/**
+	 * Drops a UTF-8 byte order mark.
+	 *
+	 * <p>PowerShell's {@code Out-File -Encoding utf8} writes one, and it is
+	 * invisible in an editor -- so a file that looks perfectly correct fails to
+	 * parse. Cheaper to tolerate here than to explain.
+	 */
+	private static String stripBom(String json) {
+		return json.startsWith("﻿") ? json.substring(1) : json;
 	}
 }

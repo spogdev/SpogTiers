@@ -48,6 +48,11 @@ public final class BackendMain {
 			}
 		}
 
+		// Say where the data is being read from. Pointing --data-dir somewhere
+		// unintended looks exactly like "no permission" and "nobody on the
+		// tierlist", because both files are simply absent there.
+		LOG.info("data directory: {}", dataDir.toAbsolutePath().normalize());
+
 		GradeStore grades = GradeStore.load(dataDir.resolve("grades.json"));
 		GraderStore graders = GraderStore.load(dataDir.resolve("graders.json"));
 		MojangNames names = new MojangNames();
