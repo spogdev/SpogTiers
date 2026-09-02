@@ -816,7 +816,9 @@ public class ProfileScreen extends Screen {
 
 		// White so the glyph keeps its own colours: tinting it with the tag's
 		// foreground would flood the artwork with a single hue.
-		graphics.drawTextWithShadow(textRenderer, icon, x + 4, y + 3, 0xFFFFFFFF);
+		// Nudged up and left by a pixel: the door's artwork sits low and right
+		// in its cell, so drawn flush it reads as off-centre against the label.
+		graphics.drawTextWithShadow(textRenderer, icon, x + 3, y + 2, 0xFFFFFFFF);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}

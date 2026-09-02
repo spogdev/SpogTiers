@@ -64,7 +64,15 @@ public final class TagRenderer {
 			return original;
 		}
 
+		Resolved aboveSlot = resolve(uuid, config.aboveTag,
+				config.preventDuplicateTiers && leftSlot != null ? leftSlot.label() : null);
+
 		MutableText out = Text.empty();
+		// The above tag is its own line, so it sits over the name rather than
+		// beside it. Nameplates render multi-line text without extra work.
+		if (aboveSlot != null) {
+			out.append(aboveSlot.text()).append(Text.literal("\n"));
+		}
 		if (region != null) {
 			out.append(region).append(space());
 		}
@@ -86,6 +94,51 @@ public final class TagRenderer {
 		}
 		Resolved slot = resolve(uuid, config.leftTag, null);
 		return slot == null ? null : slot.text();
+	}
+
+	/**
+	 * The same decoration, for a nametag drawn as a text display.
+	 *
+	 * <p>A display carries no link to the player it labels, so the player is
+	 * found by matching the display's plain text against the tab list. That is
+	 * a guess, but a safe one: a display whose text contains nobody's name is
+	 * left alone, which is the common case for holograms and signs.
+	 *
+	 * @return the decorated text, or null to leave the display untouched
+	 */
+	public static Text taggedDisplay(Text text) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled) {
+			return null;
+		}
+		var client = net.minecraft.client.MinecraftClient.getInstance();
+		if (client.getNetworkHandler() == null) {
+			return null;
+		}
+
+		String plain = text.getString();
+		if (plain.isBlank()) {
+			return null;
+		}
+
+		// Longest name first, so "Spog" cannot claim a display belonging to
+		// "Spoginator".
+		UUID best = null;
+		int bestLength = 0;
+		for (var info : client.getNetworkHandler().getPlayerList()) {
+			String name = info.getProfile().name();
+			if (name == null || name.length() <= bestLength || !plain.contains(name)) {
+				continue;
+			}
+			best = info.getProfile().id();
+			bestLength = name.length();
+		}
+		if (best == null) {
+			return null;
+		}
+
+		Text tagged = withTag(best, text);
+		return tagged == text ? null : tagged;
 	}
 
 	/** What a slot settled on: the drawn text, and the tier label behind it. */
@@ -181,7 +234,7 @@ public final class TagRenderer {
 		}
 		MutableText out = Text.empty();
 		if (config.showTagIcons) {
-			out.append(ModeIcons.door()).append(Text.literal(" "));
+			out.append(ModeIcons.doorRaised()).append(Text.literal(" "));
 		}
 		out.append(Text.literal(grade.label())
 				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
