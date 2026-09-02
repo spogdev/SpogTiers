@@ -36,6 +36,9 @@ public final class ModeIcons {
 	 */
 	private static final int DOOR_CODEPOINT = 0xE03E;
 
+	/** The region globe, appended after the door for the same reason. */
+	private static final int GLOBE_CODEPOINT = 0xE03F;
+
 	/**
 	 * Modes per list, in the same sorted order the font generator walked, so
 	 * index arithmetic lands on the right glyph.
@@ -90,6 +93,12 @@ public final class ModeIcons {
 	 */
 	public static Component door() {
 		return Component.literal(Character.toString(DOOR_CODEPOINT))
+				.setStyle(Style.EMPTY.withFont(FONT));
+	}
+
+	/** A small globe, for the region tag. */
+	public static Component globe() {
+		return Component.literal(Character.toString(GLOBE_CODEPOINT))
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 

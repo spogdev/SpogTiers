@@ -3,6 +3,7 @@ package com.spog.tiers.client.gui;
 import com.mojang.authlib.GameProfile;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
@@ -751,7 +752,11 @@ public class ProfileScreen extends Screen {
 	 */
 	private int drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
 		Font font = this.font;
-		int boxWidth = font.width(text) + 8;
+		// A globe ahead of the code, so the tag reads as a place rather than an
+		// unexplained pair of letters.
+		Component icon = ModeIcons.globe();
+		int iconWidth = font.width(icon) + 2;
+		int boxWidth = iconWidth + font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
 
 		// The tag is drawn inside the panel's transform, so these are panel
@@ -773,7 +778,8 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+		graphics.text(font, icon, x + 4, y + 3, foreground);
+		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
 
@@ -788,7 +794,11 @@ public class ProfileScreen extends Screen {
 	private int drawGradeTag(GuiGraphicsExtractor graphics, int x, int y, PlayerGrade grade) {
 		Font font = this.font;
 		String text = grade.label();
-		int boxWidth = font.width(text) + 8;
+		// The door sits left of the label, as it does on a nametag, so our tag
+		// is recognisable as the same thing in both places.
+		Component icon = ModeIcons.door();
+		int iconWidth = font.width(icon) + 2;
+		int boxWidth = iconWidth + font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
 
 		// Same panel-to-screen conversion as the region tag: this is drawn
@@ -809,7 +819,8 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+		graphics.text(font, icon, x + 4, y + 3, foreground);
+		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
 
