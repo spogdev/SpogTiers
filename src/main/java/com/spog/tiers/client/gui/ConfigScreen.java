@@ -293,6 +293,12 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y = drawSwitch(graphics, "Extra Tierlists", config.extraTierlists, x, y,
+				() -> {
+					config.extraTierlists = !config.extraTierlists;
+					config.save();
+				});
+
 		return y + CARD_PADDING - top;
 	}
 
