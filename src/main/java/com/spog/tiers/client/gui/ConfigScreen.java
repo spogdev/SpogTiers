@@ -57,6 +57,8 @@ public class ConfigScreen extends Screen {
 	private int contentHeight;
 	/** Largest valid scroll offset, refreshed each frame for the input handler. */
 	private int maxScroll;
+	/** The label under the cursor this frame, if it has an explanation. */
+	private HoverLabel hoverLabel;
 
 	private Dropdown<TierList> leftList;
 	private Dropdown<Gamemode> leftMode;
@@ -125,6 +127,7 @@ public class ConfigScreen extends Screen {
 		// calls extractBackground immediately before this method.
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 		zones.clear();
+		hoverLabel = null;
 
 		int left = MARGIN;
 		int top = MARGIN;
@@ -158,6 +161,11 @@ public class ConfigScreen extends Screen {
 
 		if (contentHeight > viewHeight) {
 			drawScrollbar(graphics, right - 5, bodyTop + 4, viewHeight, contentHeight);
+		}
+
+		// Outside the scissor, so it is never clipped to the body.
+		if (hoverLabel != null && hoverLabel.contains(mouseX, mouseY)) {
+			drawHoverText(graphics, hoverLabel.text(), mouseX, mouseY);
 		}
 
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -404,6 +412,14 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y += 8;
+		y = drawSwitch(graphics, "Prevent Duplicate Tiers", config.preventDuplicateTiers, x, y,
+				() -> {
+					config.preventDuplicateTiers = !config.preventDuplicateTiers;
+					config.save();
+				},
+				"Prevents the same tier for appearing in both slots");
+
 		return y + font.lineHeight + CARD_PADDING - top;
 	}
 
@@ -524,6 +540,18 @@ public class ConfigScreen extends Screen {
 
 	private int drawSwitch(GuiGraphicsExtractor graphics, String title, boolean on,
 			int x, int y, Runnable onClick) {
+		return drawSwitch(graphics, title, on, x, y, onClick, null);
+	}
+
+	/**
+	 * A labelled on/off row, with an optional line explaining it on hover.
+	 *
+	 * <p>The label is what carries the explanation, not the toggle: the toggle
+	 * is what you click, and a tooltip appearing under the cursor as you go to
+	 * press it is in the way.
+	 */
+	private int drawSwitch(GuiGraphicsExtractor graphics, String title, boolean on,
+			int x, int y, Runnable onClick, String description) {
 		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
 		int toggleX = x + 118;
 		drawToggle(graphics, toggleX, y - 4, 44, on ? "ON" : "OFF", on);
@@ -531,6 +559,11 @@ public class ConfigScreen extends Screen {
 			onClick.run();
 			click();
 		}));
+		if (description != null) {
+			// Recorded rather than drawn here: the body is scissored, so a
+			// tooltip drawn now would be clipped to the panel.
+			hoverLabel = new HoverLabel(x, y - 2, x + font.width(title), y + 10, description);
+		}
 		return y + ROW_HEIGHT;
 	}
 
@@ -671,6 +704,29 @@ public class ConfigScreen extends Screen {
 	@Override
 	public void onClose() {
 		minecraft.setScreen(parent);
+	}
+
+	/** A label with an explanation, and the box that triggers it. */
+	private record HoverLabel(int left, int top, int right, int bottom, String text) {
+		boolean contains(int mouseX, int mouseY) {
+			return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
+		}
+	}
+
+	/**
+	 * The mod's tooltip: a bordered card in the same palette as the panels,
+	 * kept inside the window.
+	 */
+	private void drawHoverText(GuiGraphicsExtractor graphics, String text,
+			int mouseX, int mouseY) {
+		int boxWidth = font.width(text) + 12;
+		int boxHeight = font.lineHeight + 12;
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, CARD_BORDER);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.text(font, Component.literal(text), boxX + 6, boxY + 6, LABEL_COLOR);
 	}
 
 	private record Zone(int left, int top, int right, int bottom, Runnable action) {
