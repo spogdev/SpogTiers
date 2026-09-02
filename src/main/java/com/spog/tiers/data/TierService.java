@@ -57,6 +57,13 @@ public class TierService {
 	/** How deep a placement still earns a rank badge. */
 	public static final int TOP_RANK_LIMIT = 500;
 
+	/**
+	 * Our own grade service. Hardcoded like every other list's endpoint.
+	 *
+	 * <p>See the backend branch of this repository for what serves it.
+	 */
+	private static final String GRADE_ENDPOINT = "https://doorsmptl.spog.dev/api/v1/grade/";
+
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
 			"HT1", "LT1", "MT1", "HT2", "MT2", "LT2", "HT3", "MT3", "LT3",
@@ -104,6 +111,21 @@ public class TierService {
 
 	private long lastDispatchMillis;
 
+	/**
+	 * Door SMP grades, our own list.
+	 *
+	 * <p>Kept here rather than in {@link TierCache} because that is keyed by
+	 * {@code (uuid, list)} and a grade belongs to no {@link TierList} -- it has
+	 * no gamemodes and no card, so making it one would drag in the whole card,
+	 * icon and config apparatus for a single badge.
+	 *
+	 * <p>A cached {@link PlayerGrade#UNGRADED} is a definite "they have none",
+	 * which is the common case; absent means "not asked yet".
+	 */
+	private final Map<UUID, PlayerGrade> grades = new ConcurrentHashMap<>();
+	private final Map<UUID, Long> gradeFetchedAt = new ConcurrentHashMap<>();
+	private final Set<UUID> gradePending = ConcurrentHashMap.newKeySet();
+
 	public TierService(SpogTiersConfig config, TierCache cache) {
 		this.config = config;
 		this.cache = cache;
@@ -134,7 +156,81 @@ public class TierService {
 	/** Forces a re-fetch for one player, bypassing the cache (Update button). */
 	public void refresh(UUID uuid) {
 		cache.invalidate(uuid);
+		gradeFetchedAt.remove(uuid);
 		requestNow(uuid);
+	}
+
+	/**
+	 * This player's Door SMP grade, or null if it is not known yet.
+	 *
+	 * <p>Called from the render thread every frame, so it never blocks: it
+	 * answers from the map and kicks off a fetch in the background when the
+	 * answer is missing or stale. The next frame picks up the result.
+	 *
+	 * @return the grade, {@link PlayerGrade#UNGRADED} if they have none, or
+	 *     null while the answer is still unknown
+	 */
+	public PlayerGrade grade(UUID uuid) {
+		if (uuid == null) {
+			return null;
+		}
+		PlayerGrade known = grades.get(uuid);
+		Long fetchedAt = gradeFetchedAt.get(uuid);
+		boolean stale = fetchedAt == null
+				|| System.currentTimeMillis() - fetchedAt > config.cacheTtlSeconds * 1000L;
+		if (stale && gradePending.add(uuid)) {
+			priority.submit(() -> fetchGrade(uuid));
+		}
+		return known;
+	}
+
+	/**
+	 * Reads one grade from our own service.
+	 *
+	 * <p>Failure is deliberately quiet. A grade is a nice-to-have beside six
+	 * other lists, so an unreachable service means no badge -- never a stutter
+	 * on the render thread, and never an error in the player's face.
+	 */
+	private void fetchGrade(UUID uuid) {
+		try {
+			HttpRequest request = HttpRequest.newBuilder(
+							URI.create(GRADE_ENDPOINT + uuid))
+					.header("Accept", "application/json")
+					.header("User-Agent", "SpogTiers/1.0 (MinecraftClient mod)")
+					.timeout(Duration.ofSeconds(10))
+					.GET()
+					.build();
+			HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+
+			if (response.statusCode() == 404) {
+				// The normal answer for most players: they are simply not graded.
+				grades.put(uuid, PlayerGrade.UNGRADED);
+				gradeFetchedAt.put(uuid, System.currentTimeMillis());
+				return;
+			}
+			if (response.statusCode() != 200) {
+				// Leave it unfetched so the next look retries rather than
+				// caching a transient failure as "ungraded".
+				SpogTiers.LOGGER.debug("Door SMP returned HTTP {}", response.statusCode());
+				return;
+			}
+
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String label = string(root, "grade");
+			if (label.isEmpty()) {
+				grades.put(uuid, PlayerGrade.UNGRADED);
+			} else {
+				grades.put(uuid, new PlayerGrade(label, parseHexColor(string(root, "color")),
+						root.has("gradedAt") ? root.get("gradedAt").getAsLong() : 0L));
+			}
+			gradeFetchedAt.put(uuid, System.currentTimeMillis());
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Door SMP lookup failed for {}", uuid, e);
+		} finally {
+			// Always cleared, or a single failure would wedge this player's
+			// grade as un-fetchable for the rest of the session.
+			gradePending.remove(uuid);
+		}
 	}
 
 	/**
