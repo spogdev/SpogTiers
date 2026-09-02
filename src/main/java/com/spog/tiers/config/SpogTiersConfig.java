@@ -99,6 +99,19 @@ public class SpogTiersConfig {
 	 */
 	public boolean preventDuplicateTiers = true;
 
+	/** What the tag above the name shows, or null for none. */
+	public TagSlot aboveTag = new TagSlot(false, TierList.PVPTIERS, null);
+
+	/**
+	 * Whether to tag nametags a server draws with a text display.
+	 *
+	 * <p>Servers use those to colour or style a name, which vanilla does not
+	 * allow on a real nameplate. The display is a separate entity, so without
+	 * this the tag goes missing on exactly the servers that care most about
+	 * how names look.
+	 */
+	public boolean tagDisplays = true;
+
 	/**
 	 * Show the gamemode icon alongside the tier in tags.
 	 *

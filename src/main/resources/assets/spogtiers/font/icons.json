@@ -566,6 +566,15 @@
       "chars": [
         ""
       ]
+    },
+    {
+      "type": "bitmap",
+      "file": "spogtiers:gui/modes/doorsmp/door.png",
+      "ascent": 8,
+      "height": 9,
+      "chars": [
+        ""
+      ]
     }
   ]
 }
