@@ -64,15 +64,7 @@ public final class TagRenderer {
 			return original;
 		}
 
-		Resolved aboveSlot = resolve(uuid, config.aboveTag,
-				config.preventDuplicateTiers && leftSlot != null ? leftSlot.label() : null);
-
 		MutableComponent out = Component.empty();
-		// The above tag is its own line, so it sits over the name rather than
-		// beside it. Nameplates render multi-line text without extra work.
-		if (aboveSlot != null) {
-			out.append(aboveSlot.text()).append(Component.literal("\n"));
-		}
 		if (region != null) {
 			out.append(region).append(space());
 		}
@@ -94,6 +86,25 @@ public final class TagRenderer {
 		}
 		Resolved slot = resolve(uuid, config.leftTag, null);
 		return slot == null ? null : slot.text();
+	}
+
+	/**
+	 * The tag for the line above the name, or null when that slot is off.
+	 *
+	 * <p>Its own component rather than a line inside the name: vanilla draws
+	 * this from a separate field with its own background, so a newline in the
+	 * name is ignored on a real nameplate and stretches one wide background
+	 * across both lines on a text display.
+	 */
+	public static Component aboveTag(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled) {
+			return null;
+		}
+		Resolved left = resolve(uuid, config.leftTag, null);
+		Resolved above = resolve(uuid, config.aboveTag,
+				config.preventDuplicateTiers && left != null ? left.label() : null);
+		return above == null ? null : above.text();
 	}
 
 	/**

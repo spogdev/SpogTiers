@@ -3,6 +3,7 @@ package com.spog.tiers.mixin;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -30,5 +31,12 @@ public class EntityRendererMixin {
 			return;
 		}
 		state.nameTag = TagRenderer.withTag(player.getUUID(), state.nameTag);
+		// Vanilla already stacks a second line above the name and gives it its
+		// own background, which is exactly what the above slot wants. Only set
+		// when we have something, so a scoreboard line still shows through.
+		Component above = TagRenderer.aboveTag(player.getUUID());
+		if (above != null) {
+			state.scoreText = above;
+		}
 	}
 }
