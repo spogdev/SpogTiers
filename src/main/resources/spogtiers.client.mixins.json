@@ -5,6 +5,7 @@
 	"client": [
 		"PlayerTabOverlayMixin",
 		"EntityRendererMixin",
+		"TextDisplayMixin",
 		"ClientPacketListenerMixin",
 		"ClientCommandsMixin",
 		"ChatComponentMixin",

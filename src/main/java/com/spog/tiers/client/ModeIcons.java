@@ -36,6 +36,14 @@ public final class ModeIcons {
 	 */
 	private static final int DOOR_CODEPOINT = 0xE03E;
 
+	/**
+	 * The same door, raised a pixel, for nametags.
+	 *
+	 * <p>Vertical placement is a property of the font provider rather than the
+	 * draw call, so a glyph that needs a different offset needs its own entry.
+	 */
+	private static final int DOOR_RAISED_CODEPOINT = 0xE03F;
+
 
 	/**
 	 * Modes per list, in the same sorted order the font generator walked, so
@@ -91,6 +99,12 @@ public final class ModeIcons {
 	 */
 	public static Component door() {
 		return Component.literal(Character.toString(DOOR_CODEPOINT))
+				.setStyle(Style.EMPTY.withFont(FONT));
+	}
+
+	/** The door for a nametag, sitting a pixel higher than {@link #door()}. */
+	public static Component doorRaised() {
+		return Component.literal(Character.toString(DOOR_RAISED_CODEPOINT))
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 

@@ -60,6 +60,8 @@ public class ConfigScreen extends Screen {
 	/** The label under the cursor this frame, if it has an explanation. */
 	private HoverLabel hoverLabel;
 
+	private Dropdown<TierList> aboveList;
+	private Dropdown<Gamemode> aboveMode;
 	private Dropdown<TierList> leftList;
 	private Dropdown<Gamemode> leftMode;
 	private Dropdown<TierList> rightList;
@@ -98,6 +100,17 @@ public class ConfigScreen extends Screen {
 		});
 		rightMode = new Dropdown<>(value -> {
 			config.rightTag.gamemode = value;
+			config.save();
+			click();
+		});
+		aboveList = new Dropdown<>(value -> {
+			config.aboveTag.list = value;
+			config.aboveTag.gamemode = null;
+			config.save();
+			click();
+		});
+		aboveMode = new Dropdown<>(value -> {
+			config.aboveTag.gamemode = value;
 			config.save();
 			click();
 		});
@@ -178,6 +191,8 @@ public class ConfigScreen extends Screen {
 		// Open dropdowns paint last so they overlap the rows beneath them.
 		if (active == Tab.NAMETAG) {
 			SpogTiersConfig config = config();
+			aboveList.drawOverlay(graphics, font, config.aboveTag.list, mouseX, mouseY);
+			aboveMode.drawOverlay(graphics, font, config.aboveTag.gamemode, mouseX, mouseY);
 			leftList.drawOverlay(graphics, font, config.leftTag.list, mouseX, mouseY);
 			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
 			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
@@ -380,6 +395,8 @@ public class ConfigScreen extends Screen {
 		drawPreview(graphics, x, y, right);
 		y += 34;
 
+		y = drawSlot(graphics, "Above", config.aboveTag, aboveList, aboveMode,
+				x, y, mouseX, mouseY);
 		y = drawSlot(graphics, "Left", config.leftTag, leftList, leftMode,
 				x, y, mouseX, mouseY);
 		y = drawSlot(graphics, "Right", config.rightTag, rightList, rightMode,
@@ -419,6 +436,13 @@ public class ConfigScreen extends Screen {
 					config.save();
 				},
 				"Prevents the same tier for appearing in both slots");
+
+		y = drawSwitch(graphics, "Tag Displays", config.tagDisplays, x, y,
+				() -> {
+					config.tagDisplays = !config.tagDisplays;
+					config.save();
+				},
+				"Tags nametags that a server draws with a text display");
 
 		return y + font.lineHeight + CARD_PADDING - top;
 	}
