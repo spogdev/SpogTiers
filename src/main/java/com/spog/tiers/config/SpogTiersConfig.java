@@ -90,6 +90,16 @@ public class SpogTiersConfig {
 	public TagSlot rightTag = new TagSlot(false, TierList.PVPTIERS, null);
 
 	/**
+	 * Whether the two nametag slots may show the same tier.
+	 *
+	 * <p>With both set to Best they often resolve to the same ranking, which
+	 * says nothing twice and wastes the second slot. When this is on the right
+	 * slot falls back to the best tier it can find that is not already on the
+	 * left, and shows nothing if there is no such thing.
+	 */
+	public boolean preventDuplicateTiers = true;
+
+	/**
 	 * Show the gamemode icon alongside the tier in tags.
 	 *
 	 * <p>Always on: the icon is what makes a bare "HT1" legible at a glance,
