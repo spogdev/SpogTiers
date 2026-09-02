@@ -111,9 +111,18 @@ truncated file behind.
 `tier` is a choice list, not free text, so an invalid tier is unrepresentable. Failures reply
 ephemerally so a mistyped name does not litter the channel.
 
-Commands are registered **per guild**, which publishes them immediately. Registering globally is
-the other option and takes up to an hour to propagate, which is indistinguishable from a broken
-bot.
+Commands are **user-installable**: someone can add the app to their own Discord account and use
+`/tier` in any server they are in, in the bot's DMs, or in a group chat, whether or not the bot is
+a member there. Authorization is unchanged -- it is the caller's Discord user ID against
+`graders.json`, so installing the app grants nobody the ability to set tiers.
+
+That requires **global** registration, since a guild-scoped command belongs to its server and
+cannot travel with an account. Global commands take up to an hour to propagate, so servers the bot
+is actually in also get a guild-scoped copy, which appears at once. Discord shows the guild copy in
+place of the global one rather than both.
+
+To make the app user-installable, tick **User Install** under **Installation** in the Discord
+developer portal.
 
 The bot needs the `applications.commands` scope and no privileged intents — it only reacts to its
 own slash commands.

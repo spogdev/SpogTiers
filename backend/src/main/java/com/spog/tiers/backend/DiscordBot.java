@@ -9,6 +9,8 @@ import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.IntegrationType;
+import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -85,20 +87,21 @@ public final class DiscordBot extends ListenerAdapter {
 		// to propagate, which looks exactly like a broken bot; a guild's appear
 		// at once. The bot is invited to a handful of servers at most, so there
 		// is nothing to gain from the global route.
-		// Wipe the global set. An earlier build registered there, and Discord
-		// keeps showing those alongside the per-guild copies, so every command
-		// appears twice until the global ones are explicitly cleared. Harmless
-		// once they are gone -- it just publishes an empty list.
-		event.getJDA().updateCommands().queue(
-				ok -> LOG.debug("cleared global commands"),
-				error -> LOG.warn("could not clear global commands", error));
+		// Global registration is what makes the commands user-installable: a
+		// guild-scoped command belongs to that server and cannot travel with a
+		// person's account. The cost is propagation, which Discord takes up to
+		// an hour over.
+		event.getJDA().updateCommands().addCommands(commands()).queue(
+				ok -> LOG.info("registered {} command(s) globally; user installs "
+						+ "and new servers pick these up, which can take up to "
+						+ "an hour to propagate", ok.size()),
+				error -> LOG.error("could not register global commands", error));
 
-		List<Guild> guilds = event.getJDA().getGuilds();
-		if (guilds.isEmpty()) {
-			LOG.warn("not in any server yet -- invite the bot and it will "
-					+ "register its commands as soon as it is added");
-		}
-		for (Guild guild : guilds) {
+		// Servers the bot is actually in also get a guild-scoped copy, which
+		// appears at once. Discord shows a guild command in place of the global
+		// one of the same name rather than both, so this is a head start rather
+		// than a duplicate.
+		for (Guild guild : event.getJDA().getGuilds()) {
 			register(guild);
 		}
 	}
@@ -110,8 +113,18 @@ public final class DiscordBot extends ListenerAdapter {
 		register(event.getGuild());
 	}
 
-	/** Publish the command set to one guild. */
+	/** Publish the command set to one guild, for immediate availability. */
 	private void register(Guild guild) {
+		List<SlashCommandData> commands = commands();
+		guild.updateCommands().addCommands(commands).queue(
+				ok -> LOG.info("registered {} command(s) in {}",
+						commands.size(), guild.getName()),
+				error -> LOG.error("could not register commands in {}",
+						guild.getName(), error));
+	}
+
+	/** The command set. Built fresh each time; JDA's builders are not reusable. */
+	private List<SlashCommandData> commands() {
 		OptionData player = new OptionData(OptionType.STRING, "player",
 				"The Minecraft username", true);
 
@@ -130,6 +143,10 @@ public final class DiscordBot extends ListenerAdapter {
 			filter.addChoice(value.label(), value.label());
 		}
 
+		// Installable either to a server or to a person's own account, and
+		// usable in servers, the bot's DMs, and group chats. A user who adds
+		// the app carries these commands into any server they are in, whether
+		// or not the bot itself is there.
 		List<SlashCommandData> commands = List.of(
 				Commands.slash("settier", "Set a player's " + LIST_NAME + " tier")
 						.addOptions(player, grade),
@@ -140,11 +157,11 @@ public final class DiscordBot extends ListenerAdapter {
 				Commands.slash("tierlist", "Show the whole tierlist")
 						.addOptions(filter));
 
-		guild.updateCommands().addCommands(commands).queue(
-				ok -> LOG.info("registered {} command(s) in {}",
-						commands.size(), guild.getName()),
-				error -> LOG.error("could not register commands in {}",
-						guild.getName(), error));
+		for (SlashCommandData command : commands) {
+			command.setIntegrationTypes(IntegrationType.ALL)
+					.setContexts(InteractionContextType.ALL);
+		}
+		return commands;
 	}
 
 	@Override
