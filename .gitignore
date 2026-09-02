@@ -36,3 +36,6 @@ mappings/client-*.jar
 /graders.json
 /grades.json
 /token.txt
+
+# screenshots dropped in the project root while debugging
+/Screenshot*.png
