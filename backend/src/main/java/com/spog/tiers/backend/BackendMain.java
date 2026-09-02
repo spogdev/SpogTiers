@@ -82,10 +82,27 @@ public final class BackendMain {
 		JDA bot = jda;
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			LOG.info("shutting down");
-			if (bot != null) {
-				bot.shutdown();
+			// Each step is guarded so one failure cannot skip the next, and a
+			// throw here would only be logged by the JVM as an unhandled error
+			// in a shutdown thread -- alarming, and about a process that is
+			// ending anyway.
+			//
+			// NoClassDefFoundError is the case worth naming: replacing the jar
+			// under a running process leaves classes that had not been loaded
+			// yet unreachable, and shutdown is where the JVM first needs
+			// several of them. It says nothing about the new jar.
+			try {
+				if (bot != null) {
+					bot.shutdown();
+				}
+			} catch (Throwable e) {
+				LOG.debug("the Discord client did not shut down cleanly ({})", e.toString());
 			}
-			http.stop();
+			try {
+				http.stop();
+			} catch (Throwable e) {
+				LOG.debug("the HTTP server did not shut down cleanly ({})", e.toString());
+			}
 		}));
 	}
 
