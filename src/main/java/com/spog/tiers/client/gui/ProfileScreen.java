@@ -778,7 +778,9 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.text(font, icon, x + 4, y + 3, foreground);
+		// White so the glyph keeps its own colours: tinting it with the tag's
+		// foreground would flood the artwork with a single hue.
+		graphics.text(font, icon, x + 4, y + 3, 0xFFFFFFFF);
 		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
@@ -819,7 +821,9 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.text(font, icon, x + 4, y + 3, foreground);
+		// White so the glyph keeps its own colours: tinting it with the tag's
+		// foreground would flood the artwork with a single hue.
+		graphics.text(font, icon, x + 4, y + 3, 0xFFFFFFFF);
 		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
