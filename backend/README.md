@@ -50,10 +50,11 @@ Known limits, stated plainly:
 ## Build
 
 ```
-./gradlew :backend:shadowJar
+./gradlew :backend:build
 ```
 
-Produces `backend/build/libs/doorsmp-backend-all.jar` (self-contained, ~19 MB).
+Produces `dist/doorsmp-backend-all.jar` (self-contained, ~19 MB), the same folder the mod branches
+drop their jars into. `:backend:shadowJar` alone builds it but leaves it in `backend/build/libs/`.
 
 **Always test the fat jar, not `:backend:run`.** Jetty and JDA both ship `META-INF/services`
 entries; the build merges them with `mergeServiceFiles()`, and a mistake there only shows up when
@@ -142,7 +143,7 @@ Upload, staging through `/tmp` and re-chowning — scp-ing straight into `/opt` 
 the service user cannot read, and it fails on restart:
 
 ```bash
-scp backend/build/libs/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
+scp dist/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
 ssh root@YOUR.VPS.IP
 mv /tmp/doorsmp-backend-all.jar /opt/doorsmp/
 chown doorsmp:doorsmp /opt/doorsmp/doorsmp-backend-all.jar

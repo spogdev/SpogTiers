@@ -20,17 +20,20 @@ checkouts of the same repo:
 
 ```bash
 git checkout backend
-./gradlew :backend:shadowJar
+./gradlew :backend:build
 ```
 
-That produces `backend/build/libs/doorsmp-backend-all.jar` (~19 MB, self-contained).
+That produces `dist/doorsmp-backend-all.jar` (~19 MB, self-contained), alongside the mod jars.
+
+(`:backend:shadowJar` builds the same jar but leaves it in `backend/build/libs/` without copying it
+to `dist/`.)
 
 **A2. Run it.** Needs a **Java 25** runtime. If plain `java` says `UnsupportedClassVersionError`,
 your PATH points at an older Java — call JDK 25 directly (IntelliJ keeps its JDKs under
 `%USERPROFILE%\.jdks`):
 
 ```powershell
-& "$env:USERPROFILE\.jdks\openjdk-25.0.2\bin\java" -jar backend\build\libs\doorsmp-backend-all.jar --port 8081 --data-dir .
+& "$env:USERPROFILE\.jdks\openjdk-25.0.2\bin\java" -jar dist\doorsmp-backend-all.jar --port 8081 --data-dir .
 ```
 
 You want to see:
@@ -100,7 +103,7 @@ username. In Discord: **Settings → Advanced → Developer Mode: on**, then rig
 
 ```powershell
 $env:DISCORD_TOKEN = "your-token-here"
-& "$env:USERPROFILE\.jdks\openjdk-25.0.2\bin\java" -jar backend\build\libs\doorsmp-backend-all.jar --port 8081 --data-dir .
+& "$env:USERPROFILE\.jdks\openjdk-25.0.2\bin\java" -jar dist\doorsmp-backend-all.jar --port 8081 --data-dir .
 ```
 
 First run creates an empty `graders.json` (`[]`). Stop the service, add yourself, and **restart** —
@@ -159,7 +162,7 @@ apt update && apt install -y temurin-25-jre
 **C4. Upload the jar.** From your PC:
 
 ```bash
-scp backend/build/libs/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
+scp dist/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
 ```
 
 Then on the VPS, move it into place and hand it to the service user:
@@ -301,7 +304,7 @@ journalctl -u doorsmp-backend -f
 **Updating the jar later:**
 
 ```bash
-scp backend/build/libs/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
+scp dist/doorsmp-backend-all.jar root@YOUR.VPS.IP:/tmp/
 ssh root@YOUR.VPS.IP
 mv /tmp/doorsmp-backend-all.jar /opt/doorsmp/
 chown doorsmp:doorsmp /opt/doorsmp/doorsmp-backend-all.jar

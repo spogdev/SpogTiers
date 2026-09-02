@@ -16,6 +16,6 @@ cherry-picks it has nothing to do with.
 This branch is never merged into an `mc/*` branch, and they are never merged into it.
 
 ```
-./gradlew :backend:shadowJar    # -> backend/build/libs/doorsmp-backend-all.jar
+./gradlew :backend:build        # -> dist/doorsmp-backend-all.jar
 ./gradlew :backend:test
 ```
