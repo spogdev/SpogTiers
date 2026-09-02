@@ -108,6 +108,17 @@ public final class TagRenderer {
 	}
 
 	/**
+	 * The above-name tag for whoever a display's text names, or null.
+	 *
+	 * <p>Resolved from the display's text the same way {@link #taggedDisplay}
+	 * finds its player, so the two always agree about whose display it is.
+	 */
+	public static Text displayAboveTag(Text text) {
+		UUID player = displayOwner(text);
+		return player == null ? null : aboveTag(player);
+	}
+
+	/**
 	 * The same decoration, for a nametag drawn as a text display.
 	 *
 	 * <p>A display carries no link to the player it labels, so the player is
@@ -118,6 +129,26 @@ public final class TagRenderer {
 	 * @return the decorated text, or null to leave the display untouched
 	 */
 	public static Text taggedDisplay(Text text) {
+		UUID player = displayOwner(text);
+		if (player == null) {
+			return null;
+		}
+		Text tagged = withTag(player, text);
+		return tagged == text ? null : tagged;
+	}
+
+	/**
+	 * Whose nametag a text display is, or null if it is not one.
+	 *
+	 * <p>A display carries no link to the player it labels, so the player is
+	 * found by matching its plain text against the tab list. That is a guess,
+	 * but a safe one: a display whose text contains nobody's name is left
+	 * alone, which is the common case for holograms and signs.
+	 *
+	 * <p>Longest name wins, so "Spog" cannot claim a display belonging to
+	 * "Spoginator".
+	 */
+	private static UUID displayOwner(Text text) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
 			return null;
@@ -126,14 +157,11 @@ public final class TagRenderer {
 		if (client.getNetworkHandler() == null) {
 			return null;
 		}
-
 		String plain = text.getString();
 		if (plain.isBlank()) {
 			return null;
 		}
 
-		// Longest name first, so "Spog" cannot claim a display belonging to
-		// "Spoginator".
 		UUID best = null;
 		int bestLength = 0;
 		for (var info : client.getNetworkHandler().getPlayerList()) {
@@ -144,22 +172,7 @@ public final class TagRenderer {
 			best = info.getProfile().id();
 			bestLength = name.length();
 		}
-		if (best == null) {
-			return null;
-		}
-
-		Text tagged = withTag(best, text);
-
-		// A display renders one component, so unlike a nameplate there is no
-		// second label to submit -- the above tag has to be a line inside the
-		// text. Its background is the display's own and spans both lines,
-		// which is the server's styling rather than something we control.
-		Text above = aboveTag(best);
-		if (above != null) {
-			tagged = Text.empty().append(above)
-					.append(Text.literal("\n")).append(tagged);
-		}
-		return tagged == text ? null : tagged;
+		return best;
 	}
 
 	/** What a slot settled on: the drawn text, and the tier label behind it. */
