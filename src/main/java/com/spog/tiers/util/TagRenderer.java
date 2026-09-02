@@ -4,6 +4,7 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.PlayerGrade;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
@@ -36,8 +37,27 @@ public final class TagRenderer {
 			return original;
 		}
 
-		Text left = tagFor(uuid, config.leftTag);
-		Text right = tagFor(uuid, config.rightTag);
+		Resolved leftSlot = resolve(uuid, config.leftTag, null);
+		// The right slot is told what the left landed on, so it can avoid
+		// repeating it when the user has asked for that.
+		Resolved rightSlot = resolve(uuid, config.rightTag,
+				config.preventDuplicateTiers && leftSlot != null ? leftSlot.label() : null);
+
+		Text left = leftSlot == null ? null : leftSlot.text();
+		Text right = rightSlot == null ? null : rightSlot.text();
+
+		// Our own tierlist takes a slot when the one it would sit in is showing
+		// a Diamond SMP tier: that is the mode Door SMP is played at, so the
+		// two are saying the same thing and ours is the more specific.
+		Text door = doorTag(uuid);
+		if (door != null) {
+			if (isDiaSmp(leftSlot)) {
+				left = door;
+			} else if (isDiaSmp(rightSlot)) {
+				right = door;
+			}
+		}
+
 		Text region = config.showRegionOnNametag ? regionFor(uuid) : null;
 
 		if (left == null && right == null && region == null) {
@@ -64,11 +84,22 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		return tagFor(uuid, config.leftTag);
+		Resolved slot = resolve(uuid, config.leftTag, null);
+		return slot == null ? null : slot.text();
 	}
 
-	/** One configured side, or null when it is off or nothing is ranked. */
-	private static Text tagFor(UUID uuid, SpogTiersConfig.TagSlot slot) {
+	/** What a slot settled on: the drawn text, and the tier label behind it. */
+	private record Resolved(Text text, String label, Gamemode mode) {
+	}
+
+	/**
+	 * One configured side, or null when it is off or nothing is ranked.
+	 *
+	 * @param exclude a tier label the slot must not repeat, or null for no
+	 *     restriction. A Best slot searches past it for the next best thing; a
+	 *     slot pinned to one list has nowhere else to look and shows nothing.
+	 */
+	private static Resolved resolve(UUID uuid, SpogTiersConfig.TagSlot slot, String exclude) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (slot == null || !slot.enabled) {
 			return null;
@@ -88,7 +119,7 @@ public final class TagRenderer {
 		}
 
 		if (source == null) {
-			Best best = bestAcrossLists(uuid, slot.gamemode);
+			Best best = bestAcrossLists(uuid, slot.gamemode, exclude);
 			if (best == null) {
 				return null;
 			}
@@ -109,8 +140,14 @@ public final class TagRenderer {
 		if (tier == null || !tier.isRanked()) {
 			return null;
 		}
+		// A pinned slot has only one answer, so if that is the excluded one it
+		// simply has nothing to show.
+		if (exclude != null && exclude.equals(tier.label())) {
+			return null;
+		}
 
 		MutableText out = Text.empty();
+		Gamemode shown = slot.gamemode != null ? slot.gamemode : tiers.bestMode();
 		if (config.showTagIcons) {
 			Text icon = iconFor(source, slot.gamemode, tiers, tier);
 			if (icon != null) {
@@ -119,6 +156,35 @@ public final class TagRenderer {
 		}
 		out.append(Text.literal(tier.label())
 				.setStyle(Style.EMPTY.withColor(tier.color())));
+		return new Resolved(out, tier.label(), shown);
+	}
+
+	/** True when a slot settled on a Diamond SMP ranking. */
+	private static boolean isDiaSmp(Resolved slot) {
+		return slot != null && slot.mode() == Gamemode.DIA_SMP;
+	}
+
+	/**
+	 * Our own tierlist as a nametag tag: the door, then the tier.
+	 *
+	 * <p>Null unless the player is on it and Door SMP is switched on, so this
+	 * only ever displaces another tag when there is something to put there.
+	 */
+	private static Text doorTag(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.extraTierlists) {
+			return null;
+		}
+		PlayerGrade grade = SpogTiersClient.service().grade(uuid);
+		if (grade == null || !grade.isGraded()) {
+			return null;
+		}
+		MutableText out = Text.empty();
+		if (config.showTagIcons) {
+			out.append(ModeIcons.door()).append(Text.literal(" "));
+		}
+		out.append(Text.literal(grade.label())
+				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
 		return out;
 	}
 
@@ -129,7 +195,7 @@ public final class TagRenderer {
 	 * that mode, on the lists that rank it. The owning list comes back too, so
 	 * the caller can draw that list's own artwork for the mode.
 	 */
-	private static Best bestAcrossLists(UUID uuid, Gamemode mode) {
+	private static Best bestAcrossLists(UUID uuid, Gamemode mode, String exclude) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		Best best = null;
 
@@ -150,6 +216,11 @@ public final class TagRenderer {
 
 			Tier candidate = mode == null ? tiers.best() : tiers.get(mode);
 			if (candidate == null || !candidate.isRanked()) {
+				continue;
+			}
+			// Skipped rather than returned, so the search carries on to the
+			// next best thing instead of giving up on the slot entirely.
+			if (exclude != null && exclude.equals(candidate.label())) {
 				continue;
 			}
 			if (best == null || outranks(candidate, best.tier())) {

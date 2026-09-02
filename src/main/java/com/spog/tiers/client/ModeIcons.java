@@ -28,7 +28,16 @@ public final class ModeIcons {
 	private static final int FIRST_CODEPOINT = 0xE000;
 
 	/**
-	 * Modes per list, in the same sorted order the textRenderer generator walked, so
+	 * The door, one past the last generated glyph.
+	 *
+	 * <p>Hard-coded on purpose: it belongs to no TierList, so the index
+	 * arithmetic below cannot reach it. If a list ever gains a mode, this must
+	 * move up with it -- there are 62 generated glyphs, E000 through E03D.
+	 */
+	private static final int DOOR_CODEPOINT = 0xE03E;
+
+	/**
+	 * Modes per list, in the same sorted order the font generator walked, so
 	 * index arithmetic lands on the right glyph.
 	 */
 	private static final Map<TierList, List<String>> MODES = Map.of(
@@ -68,6 +77,19 @@ public final class ModeIcons {
 			return null;
 		}
 		return Text.literal(Character.toString(codepoint))
+				.setStyle(Style.EMPTY.withFont(FONT));
+	}
+
+	/**
+	 * The Door SMP door, for our own tierlist's tag.
+	 *
+	 * <p>Appended after every list's glyphs rather than slotted in
+	 * alphabetically: the codepoints are index arithmetic over {@link #ORDER},
+	 * so inserting one in the middle would shift every glyph after it and mean
+	 * renumbering the whole font by hand. Adding at the end shifts nothing.
+	 */
+	public static Text door() {
+		return Text.literal(Character.toString(DOOR_CODEPOINT))
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 

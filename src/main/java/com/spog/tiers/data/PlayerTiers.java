@@ -101,6 +101,31 @@ public final class PlayerTiers {
 				|| unknownModes.values().stream().anyMatch(Tier::isRanked);
 	}
 
+	/**
+	 * The gamemode {@link #best()} came from, or null if nothing is ranked.
+	 *
+	 * <p>Lets a caller tell which mode a Best tag actually settled on, which a
+	 * bare {@link Tier} does not carry.
+	 */
+	public Gamemode bestMode() {
+		Gamemode bestMode = null;
+		Tier best = null;
+		for (var entry : tiers.entrySet()) {
+			Tier tier = entry.getValue();
+			if (!tier.isRanked()) {
+				continue;
+			}
+			if (best == null
+					|| tier.tier() < best.tier()
+					|| (tier.tier() == best.tier()
+							&& tier.position().ordinal() < best.position().ordinal())) {
+				best = tier;
+				bestMode = entry.getKey();
+			}
+		}
+		return bestMode;
+	}
+
 	/** Best (numerically lowest) ranked tier, HT beating MT beating LT. */
 	public Tier best() {
 		Tier best = null;
