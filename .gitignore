@@ -31,3 +31,8 @@ dist/
 
 # cached vanilla jar used to synthesise identity mappings (26.x+)
 mappings/client-*.jar
+
+# local backend test data; the service lives on the backend branch
+/graders.json
+/grades.json
+/token.txt
