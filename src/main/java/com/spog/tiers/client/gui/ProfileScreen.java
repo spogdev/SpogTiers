@@ -7,6 +7,7 @@ import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
+import com.spog.tiers.data.PlayerGrade;
 import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
@@ -120,6 +121,15 @@ public class ProfileScreen extends Screen {
 	private int tagRight;
 	private int tagBottom;
 	private String tagRegion = "";
+
+	/** Door SMP grade tag bounds, for the same reason. */
+	private int gradeLeft;
+	private int gradeTop;
+	private int gradeRight;
+	private int gradeBottom;
+	private boolean gradeShown;
+	private String gradeLabel = "";
+	private int gradeColor;
 	private PanelButton closeButton;
 	private IconButton refreshButton;
 	private IconButton copyButton;
@@ -342,6 +352,10 @@ public class ProfileScreen extends Screen {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
 		} else if (headerHover != null) {
 			drawResponseTooltip(graphics, headerHover, mouseX, mouseY);
+		} else if (gradeShown
+				&& mouseX >= gradeLeft && mouseX <= gradeRight
+				&& mouseY >= gradeTop && mouseY <= gradeBottom) {
+			drawGradeTooltip(graphics, mouseX, mouseY);
 		} else if (!tagRegion.isEmpty()
 				&& mouseX >= tagLeft && mouseX <= tagRight
 				&& mouseY >= tagTop && mouseY <= tagBottom) {
@@ -497,11 +511,23 @@ public class ProfileScreen extends Screen {
 		int nameY = y + (FACE_SIZE - font.lineHeight) / 2 + 1;
 		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
 
-		// Region reads as a small boxed tag beside the name.
+		// Region reads as a small boxed tag beside the name, with our own grade
+		// after it. tagX only advances when a tag was actually drawn, so a
+		// player with no region gets the grade right after their name rather
+		// than a gap where the region would have been.
+		int tagX = nameX + font.width(playerName) + 5;
 		String region = region();
 		tagRegion = region;
 		if (!region.isEmpty()) {
-			drawTag(graphics, nameX + font.width(playerName) + 5, nameY - 3, region);
+			tagX += drawTag(graphics, tagX, nameY - 3, region) + 4;
+		}
+
+		PlayerGrade grade = SpogTiersClient.service().grade(target);
+		gradeShown = grade != null && grade.isGraded();
+		if (gradeShown) {
+			drawGradeTag(graphics, tagX, nameY - 3, grade);
+			gradeLabel = grade.grade();
+			gradeColor = grade.foreground();
 		}
 
 		graphics.pose().popMatrix();
@@ -702,7 +728,7 @@ public class ProfileScreen extends Screen {
 	/** A boxed region label, coloured with MCTiers' region palette (its
 	 * {@code --<region>} / {@code --<region>-foreground} CSS variables).
 	 */
-	private void drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
+	private int drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
 		Font font = this.font;
 		int boxWidth = font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
@@ -727,6 +753,43 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
 		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+		return boxWidth;
+	}
+
+	/**
+	 * The player's Door SMP grade, in the region tag's style.
+	 *
+	 * <p>Our own list, so it sits next to the region rather than in a card of
+	 * its own: it is one letter with no gamemodes behind it.
+	 *
+	 * @return the width drawn, or 0 when there is no grade to show
+	 */
+	private int drawGradeTag(GuiGraphicsExtractor graphics, int x, int y, PlayerGrade grade) {
+		Font font = this.font;
+		String text = grade.grade();
+		int boxWidth = font.width(text) + 8;
+		int boxHeight = font.lineHeight + 5;
+
+		// Same panel-to-screen conversion as the region tag: this is drawn
+		// inside the panel transform, but the hover test runs outside it.
+		float scale = panelScale();
+		gradeLeft = MARGIN + Math.round(x * scale);
+		gradeTop = MARGIN + Math.round(y * scale);
+		gradeRight = MARGIN + Math.round((x + boxWidth) * scale);
+		gradeBottom = MARGIN + Math.round((y + boxHeight) * scale);
+
+		int foreground = grade.foreground();
+		int background = grade.background();
+		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
+
+		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
+		graphics.fill(x, y, x + boxWidth, y + 1, border);
+		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
+		graphics.fill(x, y, x + 1, y + boxHeight, border);
+		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+
+		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
+		return boxWidth;
 	}
 
 	private static int regionForeground(String region) {
@@ -1645,6 +1708,22 @@ public class ProfileScreen extends Screen {
 		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
 		graphics.text(font, Component.literal(name),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, color);
+	}
+
+	/** Names the list and the grade, in the grade's own colour. */
+	private void drawGradeTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+		Font font = this.font;
+		String text = PlayerGrade.LIST_NAME + " Tierlist: " + gradeLabel;
+
+		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
+		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
+		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		graphics.text(font, Component.literal(text),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, gradeColor);
 	}
 
 	private static String regionName(String region) {
