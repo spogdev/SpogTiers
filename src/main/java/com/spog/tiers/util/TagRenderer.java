@@ -65,6 +65,12 @@ public final class TagRenderer {
 		}
 
 		MutableComponent out = Component.empty();
+		// A leading space so another mod's tag cannot butt straight against
+		// ours -- Essential puts its badge immediately to the left. Added
+		// whatever comes first, since the region is optional.
+		if (region != null || left != null) {
+			out.append(space());
+		}
 		if (region != null) {
 			out.append(region).append(space());
 		}
@@ -73,7 +79,7 @@ public final class TagRenderer {
 		}
 		out.append(original);
 		if (right != null) {
-			out.append(separator()).append(right);
+			out.append(separator()).append(right).append(space());
 		}
 		return out;
 	}
@@ -238,7 +244,7 @@ public final class TagRenderer {
 		if (config.showTagIcons) {
 			Component icon = iconFor(source, slot.gamemode, tiers, tier);
 			if (icon != null) {
-				out.append(icon).append(Component.literal(" "));
+				out.append(icon).append(glyphGap());
 			}
 		}
 		out.append(Component.literal(tier.label())
@@ -268,7 +274,7 @@ public final class TagRenderer {
 		}
 		MutableComponent out = Component.empty();
 		if (config.showTagIcons) {
-			out.append(ModeIcons.doorRaised()).append(Component.literal(" "));
+			out.append(ModeIcons.doorRaised()).append(glyphGap());
 		}
 		out.append(Component.literal(grade.label())
 				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
@@ -381,5 +387,16 @@ public final class TagRenderer {
 
 	private static Component space() {
 		return Component.literal(" ");
+	}
+
+	/**
+	 * The gap after a bitmap glyph.
+	 *
+	 * <p>Wider than a plain space because these glyphs are eight to ten pixels
+	 * tall in a font built for seven, so they render wider than their advance
+	 * suggests and a single space leaves them touching the next character.
+	 */
+	private static Component glyphGap() {
+		return Component.literal("  ");
 	}
 }
