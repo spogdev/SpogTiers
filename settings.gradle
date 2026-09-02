@@ -1,12 +1,12 @@
 pluginManagement {
 	repositories {
-		maven {
-			name = 'Fabric'
-			url = 'https://maven.fabricmc.net/'
-		}
 		mavenCentral()
 		gradlePluginPortal()
 	}
 }
 
+// This branch carries the backend service only -- no mod source, and so no Fabric
+// repository. The mod itself lives on the mc/* branches; see README.md.
 rootProject.name = 'SpogTiers'
+
+include 'backend'
