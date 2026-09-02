@@ -752,11 +752,7 @@ public class ProfileScreen extends Screen {
 	 */
 	private int drawTag(GuiGraphicsExtractor graphics, int x, int y, String text) {
 		Font font = this.font;
-		// A globe ahead of the code, so the tag reads as a place rather than an
-		// unexplained pair of letters.
-		Component icon = ModeIcons.globe();
-		int iconWidth = font.width(icon) + 2;
-		int boxWidth = iconWidth + font.width(text) + 8;
+		int boxWidth = font.width(text) + 8;
 		int boxHeight = font.lineHeight + 5;
 
 		// The tag is drawn inside the panel's transform, so these are panel
@@ -778,10 +774,7 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		// White so the glyph keeps its own colours: tinting it with the tag's
-		// foreground would flood the artwork with a single hue.
-		graphics.text(font, icon, x + 4, y + 3, 0xFFFFFFFF);
-		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
+		graphics.text(font, Component.literal(text), x + 4, y + 3, foreground);
 		return boxWidth;
 	}
 
