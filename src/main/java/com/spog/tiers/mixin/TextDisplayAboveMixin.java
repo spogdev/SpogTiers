@@ -71,7 +71,7 @@ public abstract class TextDisplayAboveMixin {
 
 		int opacity = text.textOpacity().get(partialTick);
 		int background = defaultBackground
-				? (int) (Minecraft.getInstance().gameRenderer.getGameRenderState()
+				? (int) (Minecraft.getInstance().gameRenderer.gameRenderState()
 						.optionsRenderState.getBackgroundOpacity(0.25f) * 255.0f) << 24
 				: text.backgroundColor().get(partialTick);
 
