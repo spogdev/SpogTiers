@@ -13,7 +13,6 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
-import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -76,15 +75,16 @@ public abstract class TextDisplayAboveMixin {
 				: text.backgroundColor().get(partialTick);
 
 		int ourHeight = info.lines().size() * LINE_HEIGHT - 1;
-		int theirHeight = state.cachedInfo.lines().size() * LINE_HEIGHT - 1;
 
+		// Vanilla never pushes here, so at TAIL the matrix is already rotated,
+		// scaled and translated into the display's text space -- rotating and
+		// scaling again would put this strip somewhere else entirely. It only
+		// needs moving up, in the units that space already uses.
 		poseStack.pushPose();
-		Matrix4f pose = poseStack.last().pose();
-		pose.rotate((float) Math.PI, 0.0f, 1.0f, 0.0f);
-		pose.scale(SCALE, SCALE, SCALE);
-		// Up by the display's own height, so the strip sits directly on top of
-		// it with no gap and no overlap.
-		pose.translate(1.0f - info.width() / 2.0f, -(ourHeight + theirHeight), 0.0f);
+		poseStack.last().pose().translate(
+				(state.cachedInfo.width() - info.width()) / 2.0f,
+				-(ourHeight + 1),
+				0.0f);
 
 		if ((background & 0xFC000000) != 0) {
 			int width = info.width();
