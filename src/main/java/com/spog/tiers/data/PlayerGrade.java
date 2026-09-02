@@ -18,6 +18,9 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	/** The tierlist's name, as it appears in the tooltip. */
 	public static final String LIST_NAME = "Door SMP";
 
+	/** How far a retired tier's colour is pulled towards grey. */
+	private static final float RETIRED_FADE = 0.55f;
+
 	/** A definite answer that this player has no grade. */
 	public static final PlayerGrade UNGRADED = new PlayerGrade("", 0, 0L, false);
 
@@ -43,8 +46,35 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 * unreadable, so a bad colour is a wrong shade rather than black on black.
 	 */
 	public int foreground() {
+		return 0xFF000000 | tint();
+	}
+
+	/**
+	 * The tier's colour, washed out when the player is retired.
+	 *
+	 * <p>Retirement keeps the tier's identity -- an RS still reads as an S --
+	 * so the colour is desaturated rather than replaced. It is pulled towards a
+	 * mid grey rather than towards white: these are already light pastels, and
+	 * lightening them further would run them all together.
+	 */
+	private int tint() {
 		int rgb = color != 0 ? color : fallbackColor(grade);
-		return 0xFF000000 | rgb;
+		if (!retired) {
+			return rgb;
+		}
+		return blend(rgb, 0x8A8A8A, RETIRED_FADE);
+	}
+
+	/** Mixes {@code towards} into {@code rgb} by the given fraction. */
+	private static int blend(int rgb, int towards, float amount) {
+		int r = channel((rgb >> 16) & 0xFF, (towards >> 16) & 0xFF, amount);
+		int g = channel((rgb >> 8) & 0xFF, (towards >> 8) & 0xFF, amount);
+		int b = channel(rgb & 0xFF, towards & 0xFF, amount);
+		return (r << 16) | (g << 8) | b;
+	}
+
+	private static int channel(int from, int to, float amount) {
+		return Math.round(from + (to - from) * amount);
 	}
 
 	/**
@@ -55,7 +85,7 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 * grade sits at the same visual weight as the region tag beside it.
 	 */
 	public int background() {
-		int rgb = color != 0 ? color : fallbackColor(grade);
+		int rgb = tint();
 		int r = ((rgb >> 16) & 0xFF) * 3 / 10;
 		int g = ((rgb >> 8) & 0xFF) * 3 / 10;
 		int b = (rgb & 0xFF) * 3 / 10;
