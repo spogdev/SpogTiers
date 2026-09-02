@@ -48,6 +48,9 @@ public final class DiscordBot extends ListenerAdapter {
 	/** Shown when a lookup finds nobody. Neutral, not alarming: most players are ungraded. */
 	private static final Color NEUTRAL = new Color(0x9AA5B1);
 
+	/** The choice that clears a player's tier, rather than setting one. */
+	private static final String NONE_CHOICE = "None";
+
 	private final GradeStore grades;
 	private final GraderStore graders;
 	private final MojangNames names;
@@ -134,19 +137,18 @@ public final class DiscordBot extends ListenerAdapter {
 		// unrepresentable, and graders get a picker instead of having to
 		// remember the ladder.
 		OptionData grade = new OptionData(OptionType.STRING, "grade",
-				"The tier to assign", true);
+				"The tier to assign, or None to remove it", true);
 		for (Grade value : Grade.values()) {
 			grade.addChoice(value.label(), value.label());
 		}
+		// Removing a tier is the same act as assigning one -- deciding where a
+		// player sits -- so it is a choice here rather than a second command.
+		grade.addChoice(NONE_CHOICE, NONE_CHOICE);
 
 		// Positive is up, negative is down, matching how the move reads aloud:
 		// "bump them up two" is 2.
 		OptionData places = new OptionData(OptionType.INTEGER, "places",
 				"Places to move: 1 is up one, -1 is down one", true);
-
-		// Optional so the bare command retires; pass false to bring someone back.
-		OptionData retired = new OptionData(OptionType.BOOLEAN, "retired",
-				"False brings them out of retirement", false);
 
 		OptionData filter = new OptionData(OptionType.STRING, "grade",
 				"Only show this tier", false);
@@ -159,18 +161,16 @@ public final class DiscordBot extends ListenerAdapter {
 		// the app carries these commands into any server they are in, whether
 		// or not the bot itself is there.
 		List<SlashCommandData> commands = List.of(
-				Commands.slash("settier", "Set a player's " + LIST_NAME + " tier")
+				Commands.slash("assign", "Assign a tier to a player or remove it")
 						.addOptions(player, grade),
-				Commands.slash("removetier", "Remove a player's " + LIST_NAME + " tier")
+				Commands.slash("tier", "Search for a player on the tierlist")
 						.addOptions(player),
-				Commands.slash("tier", "Look up a player's " + LIST_NAME + " tier")
-						.addOptions(player),
-				Commands.slash("tierlist", "Show the whole tierlist")
+				Commands.slash("tierlist", "Show current tierlist")
 						.addOptions(filter),
 				Commands.slash("bump", "Move a player within their tier")
 						.addOptions(player, places),
-				Commands.slash("retire", "Retire a player, or bring them back")
-						.addOptions(player, retired));
+				Commands.slash("retire", "Toggle retirement of a player")
+						.addOptions(player));
 
 		for (SlashCommandData command : commands) {
 			command.setIntegrationTypes(IntegrationType.ALL)
@@ -182,8 +182,7 @@ public final class DiscordBot extends ListenerAdapter {
 	@Override
 	public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
 		switch (event.getName()) {
-			case "settier" -> setTier(event);
-			case "removetier" -> removeTier(event);
+			case "assign" -> assign(event);
 			case "tier" -> lookup(event);
 			case "tierlist" -> list(event);
 			case "bump" -> bump(event);
@@ -192,13 +191,16 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 	}
 
-	private void setTier(SlashCommandInteractionEvent event) {
+	private void assign(SlashCommandInteractionEvent event) {
 		if (!authorised(event)) {
 			return;
 		}
 		String name = event.getOption("player", "", OptionMapping::getAsString);
-		Grade grade = Grade.parse(event.getOption("grade", "", OptionMapping::getAsString));
-		if (grade == null) {
+		String choice = event.getOption("grade", "", OptionMapping::getAsString);
+		boolean removing = NONE_CHOICE.equalsIgnoreCase(choice.trim());
+
+		Grade grade = removing ? null : Grade.parse(choice);
+		if (grade == null && !removing) {
 			event.reply("That is not a valid tier").setEphemeral(true).queue();
 			return;
 		}
@@ -210,30 +212,24 @@ public final class DiscordBot extends ListenerAdapter {
 			return;
 		}
 
-		String current = names.nameFor(id);
-		GradeStore.Record previous = grades.set(id, current == null ? name : current, grade,
-				event.getUser().getName(), event.getUser().getId());
+		if (removing) {
+			remove(event, id, name);
+			return;
+		}
 
+		String current = names.nameFor(id);
 		String shown = current == null ? name : current;
-		String message = "Set **" + shown + "** tier to **" + grade.label() + "**";
+		grades.set(id, shown, grade, event.getUser().getName(), event.getUser().getId());
+
 		LOG.info("{} set {} ({}) to {}", event.getUser().getName(), shown, id, grade.label());
 		event.getHook().sendMessageEmbeds(new EmbedBuilder()
-				.setDescription(message)
+				.setDescription("Set **" + shown + "** tier to **" + grade.label() + "**")
 				.setColor(new Color(grade.color()))
 				.build()).queue();
 	}
 
-	private void removeTier(SlashCommandInteractionEvent event) {
-		if (!authorised(event)) {
-			return;
-		}
-		String name = event.getOption("player", "", OptionMapping::getAsString);
-		event.deferReply().queue();
-		UUID id = resolve(event, name);
-		if (id == null) {
-			return;
-		}
-
+	/** The None choice: take the player off the tierlist entirely. */
+	private void remove(SlashCommandInteractionEvent event, UUID id, String name) {
 		GradeStore.Record previous = grades.remove(id);
 		if (previous == null) {
 			event.getHook().sendMessage("**" + name + "** is not on the tierlist")
@@ -249,6 +245,7 @@ public final class DiscordBot extends ListenerAdapter {
 				.setColor(new Color(previous.grade().color()))
 				.build()).queue();
 	}
+
 
 	private void lookup(SlashCommandInteractionEvent event) {
 		String name = event.getOption("player", "", OptionMapping::getAsString);
@@ -428,7 +425,6 @@ public final class DiscordBot extends ListenerAdapter {
 			return;
 		}
 		String name = event.getOption("player", "", OptionMapping::getAsString);
-		boolean retired = event.getOption("retired", true, OptionMapping::getAsBoolean);
 
 		event.deferReply().queue();
 		UUID id = resolve(event, name);
@@ -444,19 +440,19 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 		String shown = record.name().isEmpty() ? name : record.name();
 
-		if (!grades.retire(id, retired)) {
-			event.getHook().sendMessage("**" + shown + "** is already "
-					+ (retired ? "retired" : "active")).setEphemeral(true).queue();
-			return;
-		}
+		// A toggle: whichever way they are, flip them. One command covers both
+		// directions, and there is no way to ask for the state they already
+		// have and get an unhelpful "already retired" back.
+		boolean retiring = !record.retired();
+		grades.retire(id, retiring);
 
 		LOG.info("{} {} {}", event.getUser().getName(),
-				retired ? "retired" : "un-retired", shown);
+				retiring ? "retired" : "un-retired", shown);
+		// The tier is named plainly in both messages: the R prefix belongs on
+		// the badge in game, not in a sentence that already says "Retired".
 		event.getHook().sendMessageEmbeds(new EmbedBuilder()
-				.setDescription(retired
-						? "Retired **" + shown + "** at **R" + record.grade().label() + "**"
-						: "Brought **" + shown + "** back at **"
-								+ record.grade().label() + "**")
+				.setDescription((retiring ? "Retired **" : "Unretired **") + shown
+						+ "** at **" + record.grade().label() + "**")
 				.setColor(new Color(record.grade().color()))
 				.build()).queue();
 	}
