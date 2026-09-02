@@ -40,8 +40,13 @@ import java.util.concurrent.CompletableFuture;
 public final class TierlistImage {
 	private static final Logger LOG = LoggerFactory.getLogger(TierlistImage.class);
 
-	/** Each face cell, matching the source image's proportions. */
-	private static final int FACE = 64;
+	/**
+	 * Each face cell. 20% smaller than the 64px source render, which leaves the
+	 * heads legible while fitting more of a tier on one line.
+	 */
+	private static final int FACE = 51;
+	/** What is fetched: the source render, scaled down when drawn. */
+	private static final int FACE_SOURCE = 64;
 	private static final int GAP = 4;
 	/** Width of the coloured tier label down the left. */
 	private static final int LABEL_WIDTH = 88;
@@ -217,8 +222,10 @@ public final class TierlistImage {
 
 	/** One player's face, or null if it could not be fetched. */
 	private BufferedImage face(UUID id) {
-		String url = "https://minotar.net/helm/" + id.toString().replace("-", "")
-				+ "/" + FACE + ".png";
+		// /cube/ is the isometric head with the hat layer on -- the 3D skin
+		// layer. /helm/ is the same head drawn flat.
+		String url = "https://minotar.net/cube/" + id.toString().replace("-", "")
+				+ "/" + FACE_SOURCE + ".png";
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(url))
 					.header("User-Agent", "DoorSMP-Backend/1.0")

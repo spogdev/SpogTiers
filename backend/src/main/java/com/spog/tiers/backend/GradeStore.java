@@ -47,14 +47,23 @@ public final class GradeStore {
 		String gradedBy;
 		String gradedByDiscordId;
 		long gradedAt;
+		/** Position within the tier; lower sorts first. See Record.order(). */
+		int order;
 
 		Entry() {
 		}
 	}
 
-	/** One entry in memory, with the grade already resolved. */
+	/**
+	 * One entry in memory, with the grade already resolved.
+	 *
+	 * <p>{@code order} places the player within their tier on the rendered
+	 * tierlist: lower sorts first, ties fall back to the name. It is presentation
+	 * only -- it is never served over the API, because the mod draws a single
+	 * badge and has no notion of anyone's neighbours.
+	 */
 	public record Record(UUID uuid, String name, Grade grade, String gradedBy,
-			String gradedByDiscordId, long gradedAt) {
+			String gradedByDiscordId, long gradedAt, int order) {
 	}
 
 	private final Path file;
@@ -97,7 +106,7 @@ public final class GradeStore {
 					try {
 						UUID id = UUID.fromString(e.uuid.trim());
 						out.put(id, new Record(id, e.name == null ? "" : e.name, grade,
-								e.gradedBy, e.gradedByDiscordId, e.gradedAt));
+								e.gradedBy, e.gradedByDiscordId, e.gradedAt, e.order));
 					} catch (IllegalArgumentException ex) {
 						LOG.warn("skipping malformed uuid '{}' in {}", e.uuid, file.getFileName());
 					}
@@ -132,8 +141,21 @@ public final class GradeStore {
 		Record previous;
 		lock.writeLock().lock();
 		try {
+			// A player already placed keeps their position; a new one goes to
+			// the back of the tier rather than jumping into the middle of it.
+			int order = 0;
+			Record existing = grades.get(player);
+			if (existing != null && existing.grade() == grade) {
+				order = existing.order();
+			} else {
+				for (Record other : grades.values()) {
+					if (other.grade() == grade) {
+						order = Math.max(order, other.order() + 1);
+					}
+				}
+			}
 			previous = grades.put(player, new Record(player, name == null ? "" : name, grade,
-					gradedBy, discordId, System.currentTimeMillis() / 1000L));
+					gradedBy, discordId, System.currentTimeMillis() / 1000L, order));
 		} finally {
 			lock.writeLock().unlock();
 		}
@@ -178,11 +200,75 @@ public final class GradeStore {
 				return;
 			}
 			grades.put(player, new Record(player, name, existing.grade(), existing.gradedBy(),
-					existing.gradedByDiscordId(), existing.gradedAt()));
+					existing.gradedByDiscordId(), existing.gradedAt(), existing.order()));
 		} finally {
 			lock.writeLock().unlock();
 		}
 		save();
+	}
+
+	/**
+	 * Move a player within their own tier.
+	 *
+	 * <p>Positive moves them earlier in the row, negative later, by that many
+	 * places -- so {@code 1} is up one and {@code -1} is down one. Clamped at
+	 * the ends of the tier rather than refused, so bumping someone already at
+	 * the top is a no-op instead of an error.
+	 *
+	 * <p>Ordering is display only. It never reaches the mod: the API serves one
+	 * badge per player, which has no notion of who stands beside them.
+	 *
+	 * @return how many places they actually moved, 0 if already at the end, or
+	 *     -1 if they are not on the tierlist at all
+	 */
+	public int bump(UUID player, int places) {
+		lock.writeLock().lock();
+		try {
+			Record target = grades.get(player);
+			if (target == null) {
+				return -1;
+			}
+
+			// The tier as it is drawn, so a move is against what was on screen.
+			List<Record> tier = new ArrayList<>();
+			for (Record record : grades.values()) {
+				if (record.grade() == target.grade()) {
+					tier.add(record);
+				}
+			}
+			tier.sort(Comparator.comparingInt(Record::order)
+					.thenComparing(r -> r.name().toLowerCase(Locale.ROOT)));
+
+			int from = -1;
+			for (int i = 0; i < tier.size(); i++) {
+				if (tier.get(i).uuid().equals(player)) {
+					from = i;
+					break;
+				}
+			}
+			if (from < 0) {
+				return -1;
+			}
+			// Positive is "up", which is towards the front of the row.
+			int to = Math.clamp(from - places, 0, tier.size() - 1);
+			if (to == from) {
+				return 0;
+			}
+
+			tier.add(to, tier.remove(from));
+			// Renumber the whole tier from zero: leaving gaps would let orders
+			// drift apart until a later insert lands somewhere unexpected.
+			for (int i = 0; i < tier.size(); i++) {
+				Record record = tier.get(i);
+				grades.put(record.uuid(), new Record(record.uuid(), record.name(),
+						record.grade(), record.gradedBy(), record.gradedByDiscordId(),
+						record.gradedAt(), i));
+			}
+			save();
+			return from - to;
+		} finally {
+			lock.writeLock().unlock();
+		}
 	}
 
 	/** Every grade, best first then alphabetical, for a listing. */
@@ -191,6 +277,7 @@ public final class GradeStore {
 		try {
 			List<Record> out = new ArrayList<>(grades.values());
 			out.sort(Comparator.<Record, Integer>comparing(r -> r.grade().ordinal())
+					.thenComparing(Record::order)
 					.thenComparing(r -> r.name().toLowerCase(Locale.ROOT)));
 			return out;
 		} finally {
@@ -227,6 +314,7 @@ public final class GradeStore {
 				e.gradedBy = record.gradedBy();
 				e.gradedByDiscordId = record.gradedByDiscordId();
 				e.gradedAt = record.gradedAt();
+				e.order = record.order();
 				entries.add(e);
 			}
 		} finally {

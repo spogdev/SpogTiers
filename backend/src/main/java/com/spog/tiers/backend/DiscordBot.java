@@ -139,6 +139,11 @@ public final class DiscordBot extends ListenerAdapter {
 			grade.addChoice(value.label(), value.label());
 		}
 
+		// Positive is up, negative is down, matching how the move reads aloud:
+		// "bump them up two" is 2.
+		OptionData places = new OptionData(OptionType.INTEGER, "places",
+				"Places to move: 1 is up one, -1 is down one", true);
+
 		OptionData filter = new OptionData(OptionType.STRING, "grade",
 				"Only show this tier", false);
 		for (Grade value : Grade.values()) {
@@ -157,7 +162,9 @@ public final class DiscordBot extends ListenerAdapter {
 				Commands.slash("tier", "Look up a player's " + LIST_NAME + " tier")
 						.addOptions(player),
 				Commands.slash("tierlist", "Show the whole tierlist")
-						.addOptions(filter));
+						.addOptions(filter),
+				Commands.slash("bump", "Move a player within their tier")
+						.addOptions(player, places));
 
 		for (SlashCommandData command : commands) {
 			command.setIntegrationTypes(IntegrationType.ALL)
@@ -173,6 +180,7 @@ public final class DiscordBot extends ListenerAdapter {
 			case "removetier" -> removeTier(event);
 			case "tier" -> lookup(event);
 			case "tierlist" -> list(event);
+			case "bump" -> bump(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
 	}
@@ -355,6 +363,51 @@ public final class DiscordBot extends ListenerAdapter {
 				.setColor(filter == null ? NEUTRAL : new Color(filter.color()))
 				.setFooter(total + " player" + (total == 1 ? "" : "s"))
 				.build();
+	}
+
+	private void bump(SlashCommandInteractionEvent event) {
+		if (!authorised(event)) {
+			return;
+		}
+		String name = event.getOption("player", "", OptionMapping::getAsString);
+		int places = event.getOption("places", 0L, OptionMapping::getAsLong).intValue();
+		if (places == 0) {
+			event.reply("Give a number of places: 1 moves up one, -1 moves down one.")
+					.setEphemeral(true).queue();
+			return;
+		}
+
+		event.deferReply().queue();
+		UUID id = resolve(event, name);
+		if (id == null) {
+			return;
+		}
+
+		int moved = grades.bump(id, places);
+		if (moved < 0) {
+			event.getHook().sendMessage("**" + name + "** is not on the tierlist.")
+					.setEphemeral(true).queue();
+			return;
+		}
+
+		GradeStore.Record record = grades.get(id);
+		String shown = record.name().isEmpty() ? name : record.name();
+		if (moved == 0) {
+			event.getHook().sendMessage("**" + shown + "** is already at the "
+					+ (places > 0 ? "top" : "bottom") + " of **"
+					+ record.grade().label() + "**.").queue();
+			return;
+		}
+
+		LOG.info("{} bumped {} by {} in {}", event.getUser().getName(), shown, moved,
+				record.grade().label());
+		event.getHook().sendMessageEmbeds(new EmbedBuilder()
+				.setDescription("Moved **" + shown + "** "
+						+ (moved > 0 ? "up " : "down ") + Math.abs(moved)
+						+ (Math.abs(moved) == 1 ? " place" : " places")
+						+ " in **" + record.grade().label() + "**.")
+				.setColor(new Color(record.grade().color()))
+				.build()).queue();
 	}
 
 	/**
