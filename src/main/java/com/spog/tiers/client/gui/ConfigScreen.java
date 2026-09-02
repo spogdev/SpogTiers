@@ -413,7 +413,7 @@ public class ConfigScreen extends Screen {
 				});
 
 		y += 8;
-		y = drawSwitch(graphics, "Prevent Duplicate Tiers", config.preventDuplicateTiers, x, y,
+		y = drawSwitch(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				() -> {
 					config.preventDuplicateTiers = !config.preventDuplicateTiers;
 					config.save();
