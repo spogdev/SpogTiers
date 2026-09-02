@@ -144,6 +144,10 @@ public final class DiscordBot extends ListenerAdapter {
 		OptionData places = new OptionData(OptionType.INTEGER, "places",
 				"Places to move: 1 is up one, -1 is down one", true);
 
+		// Optional so the bare command retires; pass false to bring someone back.
+		OptionData retired = new OptionData(OptionType.BOOLEAN, "retired",
+				"False brings them out of retirement", false);
+
 		OptionData filter = new OptionData(OptionType.STRING, "grade",
 				"Only show this tier", false);
 		for (Grade value : Grade.values()) {
@@ -164,7 +168,9 @@ public final class DiscordBot extends ListenerAdapter {
 				Commands.slash("tierlist", "Show the whole tierlist")
 						.addOptions(filter),
 				Commands.slash("bump", "Move a player within their tier")
-						.addOptions(player, places));
+						.addOptions(player, places),
+				Commands.slash("retire", "Retire a player, or bring them back")
+						.addOptions(player, retired));
 
 		for (SlashCommandData command : commands) {
 			command.setIntegrationTypes(IntegrationType.ALL)
@@ -181,6 +187,7 @@ public final class DiscordBot extends ListenerAdapter {
 			case "tier" -> lookup(event);
 			case "tierlist" -> list(event);
 			case "bump" -> bump(event);
+			case "retire" -> retire(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
 	}
@@ -192,7 +199,7 @@ public final class DiscordBot extends ListenerAdapter {
 		String name = event.getOption("player", "", OptionMapping::getAsString);
 		Grade grade = Grade.parse(event.getOption("grade", "", OptionMapping::getAsString));
 		if (grade == null) {
-			event.reply("That is not a valid tier.").setEphemeral(true).queue();
+			event.reply("That is not a valid tier").setEphemeral(true).queue();
 			return;
 		}
 
@@ -208,10 +215,7 @@ public final class DiscordBot extends ListenerAdapter {
 				event.getUser().getName(), event.getUser().getId());
 
 		String shown = current == null ? name : current;
-		String message = previous == null
-				? "**" + shown + "** is now **" + grade.label() + "**."
-				: "**" + shown + "** moved from **" + previous.grade().label()
-						+ "** to **" + grade.label() + "**.";
+		String message = "Set **" + shown + "** tier to **" + grade.label() + "**";
 		LOG.info("{} set {} ({}) to {}", event.getUser().getName(), shown, id, grade.label());
 		event.getHook().sendMessageEmbeds(new EmbedBuilder()
 				.setDescription(message)
@@ -232,13 +236,18 @@ public final class DiscordBot extends ListenerAdapter {
 
 		GradeStore.Record previous = grades.remove(id);
 		if (previous == null) {
-			event.getHook().sendMessage("**" + name + "** had no grade to remove.").queue();
+			event.getHook().sendMessage("**" + name + "** is not on the tierlist")
+					.setEphemeral(true).queue();
 			return;
 		}
-		LOG.info("{} removed {}'s grade ({})", event.getUser().getName(), name,
-				previous.grade().label());
-		event.getHook().sendMessage("Removed **" + name + "**'s grade of **"
-				+ previous.grade().label() + "**.").queue();
+		String shown = previous.name().isEmpty() ? name : previous.name();
+		LOG.info("{} removed {} from the tierlist (was {})", event.getUser().getName(),
+				shown, previous.grade().label());
+		// Coloured with the tier they held, so the message still says which.
+		event.getHook().sendMessageEmbeds(new EmbedBuilder()
+				.setDescription("Removed **" + shown + "** from tierlist")
+				.setColor(new Color(previous.grade().color()))
+				.build()).queue();
 	}
 
 	private void lookup(SlashCommandInteractionEvent event) {
@@ -261,7 +270,7 @@ public final class DiscordBot extends ListenerAdapter {
 			event.getHook().sendMessageEmbeds(new EmbedBuilder()
 					.setTitle(shown)
 					.setThumbnail(head(id))
-					.setDescription("Not graded on " + LIST_NAME + " yet.")
+					.setDescription("Not on the " + LIST_NAME + " tierlist yet")
 					.setColor(NEUTRAL)
 					.build()).queue();
 			return;
@@ -271,7 +280,9 @@ public final class DiscordBot extends ListenerAdapter {
 				.setTitle(shown)
 				.setThumbnail(head(id))
 				.setColor(new Color(record.grade().color()))
-				.addField(LIST_NAME + " Tierlist", "**" + record.grade().label() + "**", false);
+				.addField(LIST_NAME + " Tierlist",
+						"**" + (record.retired() ? "R" : "") + record.grade().label() + "**"
+								+ (record.retired() ? "  *(retired)*" : ""), false);
 		if (record.gradedBy() != null && !record.gradedBy().isBlank()) {
 			// <t:unix:R> renders as "3 days ago" in each reader's own locale.
 			embed.setFooter("Graded by " + record.gradedBy());
@@ -288,7 +299,9 @@ public final class DiscordBot extends ListenerAdapter {
 		Map<Grade, List<GradeStore.Record>> byTier = new LinkedHashMap<>();
 		int total = 0;
 		for (GradeStore.Record record : grades.all()) {
-			if (filter != null && record.grade() != filter) {
+			// Retired players keep their tier and can still be looked up one by
+			// one, but the picture is about who is currently ranked.
+			if (record.retired() || (filter != null && record.grade() != filter)) {
 				continue;
 			}
 			byTier.computeIfAbsent(record.grade(), k -> new ArrayList<>()).add(record);
@@ -297,8 +310,8 @@ public final class DiscordBot extends ListenerAdapter {
 
 		if (total == 0) {
 			event.reply(filter == null
-					? "Nobody is on the tierlist yet."
-					: "Nobody is **" + filter.label() + "**.").queue();
+					? "Nobody is on the tierlist yet"
+					: "Nobody is **" + filter.label() + "**").queue();
 			return;
 		}
 
@@ -372,7 +385,7 @@ public final class DiscordBot extends ListenerAdapter {
 		String name = event.getOption("player", "", OptionMapping::getAsString);
 		int places = event.getOption("places", 0L, OptionMapping::getAsLong).intValue();
 		if (places == 0) {
-			event.reply("Give a number of places: 1 moves up one, -1 moves down one.")
+			event.reply("Give a number of places: 1 moves up one, -1 moves down one")
 					.setEphemeral(true).queue();
 			return;
 		}
@@ -385,7 +398,7 @@ public final class DiscordBot extends ListenerAdapter {
 
 		int moved = grades.bump(id, places);
 		if (moved < 0) {
-			event.getHook().sendMessage("**" + name + "** is not on the tierlist.")
+			event.getHook().sendMessage("**" + name + "** is not on the tierlist")
 					.setEphemeral(true).queue();
 			return;
 		}
@@ -395,7 +408,7 @@ public final class DiscordBot extends ListenerAdapter {
 		if (moved == 0) {
 			event.getHook().sendMessage("**" + shown + "** is already at the "
 					+ (places > 0 ? "top" : "bottom") + " of **"
-					+ record.grade().label() + "**.").queue();
+					+ record.grade().label() + "**").queue();
 			return;
 		}
 
@@ -405,7 +418,45 @@ public final class DiscordBot extends ListenerAdapter {
 				.setDescription("Moved **" + shown + "** "
 						+ (moved > 0 ? "up " : "down ") + Math.abs(moved)
 						+ (Math.abs(moved) == 1 ? " place" : " places")
-						+ " in **" + record.grade().label() + "**.")
+						+ " in **" + record.grade().label() + "**")
+				.setColor(new Color(record.grade().color()))
+				.build()).queue();
+	}
+
+	private void retire(SlashCommandInteractionEvent event) {
+		if (!authorised(event)) {
+			return;
+		}
+		String name = event.getOption("player", "", OptionMapping::getAsString);
+		boolean retired = event.getOption("retired", true, OptionMapping::getAsBoolean);
+
+		event.deferReply().queue();
+		UUID id = resolve(event, name);
+		if (id == null) {
+			return;
+		}
+
+		GradeStore.Record record = grades.get(id);
+		if (record == null) {
+			event.getHook().sendMessage("**" + name + "** is not on the tierlist")
+					.setEphemeral(true).queue();
+			return;
+		}
+		String shown = record.name().isEmpty() ? name : record.name();
+
+		if (!grades.retire(id, retired)) {
+			event.getHook().sendMessage("**" + shown + "** is already "
+					+ (retired ? "retired" : "active")).setEphemeral(true).queue();
+			return;
+		}
+
+		LOG.info("{} {} {}", event.getUser().getName(),
+				retired ? "retired" : "un-retired", shown);
+		event.getHook().sendMessageEmbeds(new EmbedBuilder()
+				.setDescription(retired
+						? "Retired **" + shown + "** at **R" + record.grade().label() + "**"
+						: "Brought **" + shown + "** back at **"
+								+ record.grade().label() + "**")
 				.setColor(new Color(record.grade().color()))
 				.build()).queue();
 	}
@@ -421,7 +472,7 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 		// Identical whether or not graders are configured: a caller learns
 		// nothing about the setup from being refused.
-		event.reply("You do not have permission to set tiers.").setEphemeral(true).queue();
+		event.reply("You do not have permission to set tiers").setEphemeral(true).queue();
 		return false;
 	}
 
@@ -434,7 +485,7 @@ public final class DiscordBot extends ListenerAdapter {
 		try {
 			UUID id = names.idFor(name);
 			if (id == null) {
-				event.getHook().sendMessage("No Minecraft account called **" + name + "**.")
+				event.getHook().sendMessage("No Minecraft account called **" + name + "**")
 						.setEphemeral(true).queue();
 				return null;
 			}

@@ -114,6 +114,10 @@ public final class HttpApi {
 		out.addProperty("grade", record.grade().label());
 		out.addProperty("color", record.grade().hex());
 		out.addProperty("gradedAt", record.gradedAt());
+		// Retirement is published: the mod draws a retired tier as R<tier>.
+		// Display order is not -- that is the tierlist picture's business, and
+		// a single badge has no notion of who stands beside it.
+		out.addProperty("retired", record.retired());
 
 		ctx.header("Cache-Control", CACHE_CONTROL);
 		ctx.contentType("application/json").result(out.toString());

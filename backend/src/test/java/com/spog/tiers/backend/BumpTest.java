@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BumpTest {
 	private static final UUID A = UUID.fromString("00000000-0000-0000-0000-00000000000a");
@@ -130,6 +132,50 @@ class BumpTest {
 
 		assertEquals(List.of("Dee", "Ana"), order(store, Grade.B));
 		assertEquals(List.of("Bo", "Cy"), order(store, Grade.S));
+	}
+
+	@Test
+	void retiredPlayersKeepTheirTierAndPlace(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(B, true));
+
+		GradeStore.Record record = store.get(B);
+		assertTrue(record.retired());
+		assertEquals(Grade.S, record.grade(), "retirement does not clear the tier");
+		// Still in all(); it is the renderer that filters them out, so a
+		// lookup can still find them.
+		assertEquals(List.of("Ana", "Bo", "Cy"), order(store, Grade.S));
+	}
+
+	@Test
+	void retiringTwiceReportsNoChange(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(A, true));
+		assertFalse(store.retire(A, true), "already retired");
+		assertTrue(store.retire(A, false), "brought back");
+		assertFalse(store.get(A).retired());
+	}
+
+	@Test
+	void retiringSomeoneUnlistedReportsNothing(@TempDir Path dir) {
+		assertFalse(seeded(dir).retire(D, true));
+	}
+
+	@Test
+	void retirementSurvivesAReload(@TempDir Path dir) {
+		Path file = dir.resolve("grades.json");
+		GradeStore store = seeded(dir);
+		store.retire(B, true);
+		assertTrue(GradeStore.load(file).get(B).retired());
+	}
+
+	@Test
+	void settingATierBringsThemBack(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		store.retire(B, true);
+		// An explicit new tier is a clearer statement than the stale flag.
+		store.set(B, "Bo", Grade.A, "t", "1");
+		assertFalse(store.get(B).retired());
 	}
 
 	@Test

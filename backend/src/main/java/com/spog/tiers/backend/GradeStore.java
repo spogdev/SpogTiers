@@ -49,6 +49,8 @@ public final class GradeStore {
 		long gradedAt;
 		/** Position within the tier; lower sorts first. See Record.order(). */
 		int order;
+		/** Retired players keep their tier but leave the rendered list. */
+		boolean retired;
 
 		Entry() {
 		}
@@ -63,7 +65,7 @@ public final class GradeStore {
 	 * badge and has no notion of anyone's neighbours.
 	 */
 	public record Record(UUID uuid, String name, Grade grade, String gradedBy,
-			String gradedByDiscordId, long gradedAt, int order) {
+			String gradedByDiscordId, long gradedAt, int order, boolean retired) {
 	}
 
 	private final Path file;
@@ -106,7 +108,8 @@ public final class GradeStore {
 					try {
 						UUID id = UUID.fromString(e.uuid.trim());
 						out.put(id, new Record(id, e.name == null ? "" : e.name, grade,
-								e.gradedBy, e.gradedByDiscordId, e.gradedAt, e.order));
+								e.gradedBy, e.gradedByDiscordId, e.gradedAt, e.order,
+								e.retired));
 					} catch (IllegalArgumentException ex) {
 						LOG.warn("skipping malformed uuid '{}' in {}", e.uuid, file.getFileName());
 					}
@@ -154,8 +157,10 @@ public final class GradeStore {
 					}
 				}
 			}
+			// Setting a tier brings a retired player back: an explicit new tier
+			// is a clearer statement of intent than the old retirement flag.
 			previous = grades.put(player, new Record(player, name == null ? "" : name, grade,
-					gradedBy, discordId, System.currentTimeMillis() / 1000L, order));
+					gradedBy, discordId, System.currentTimeMillis() / 1000L, order, false));
 		} finally {
 			lock.writeLock().unlock();
 		}
@@ -200,7 +205,8 @@ public final class GradeStore {
 				return;
 			}
 			grades.put(player, new Record(player, name, existing.grade(), existing.gradedBy(),
-					existing.gradedByDiscordId(), existing.gradedAt(), existing.order()));
+					existing.gradedByDiscordId(), existing.gradedAt(), existing.order(),
+					existing.retired()));
 		} finally {
 			lock.writeLock().unlock();
 		}
@@ -262,13 +268,40 @@ public final class GradeStore {
 				Record record = tier.get(i);
 				grades.put(record.uuid(), new Record(record.uuid(), record.name(),
 						record.grade(), record.gradedBy(), record.gradedByDiscordId(),
-						record.gradedAt(), i));
+						record.gradedAt(), i, record.retired()));
 			}
 			save();
 			return from - to;
 		} finally {
 			lock.writeLock().unlock();
 		}
+	}
+
+	/**
+	 * Mark a player retired, or bring them back.
+	 *
+	 * <p>A retired player keeps their tier and can still be looked up, but drops
+	 * out of the rendered list -- the picture is about who is currently ranked.
+	 * The mod shows their tier prefixed with R.
+	 *
+	 * @return true if the flag changed, false if they were already that way or
+	 *     are not on the tierlist
+	 */
+	public boolean retire(UUID player, boolean retired) {
+		lock.writeLock().lock();
+		try {
+			Record existing = grades.get(player);
+			if (existing == null || existing.retired() == retired) {
+				return false;
+			}
+			grades.put(player, new Record(existing.uuid(), existing.name(), existing.grade(),
+					existing.gradedBy(), existing.gradedByDiscordId(), existing.gradedAt(),
+					existing.order(), retired));
+		} finally {
+			lock.writeLock().unlock();
+		}
+		save();
+		return true;
 	}
 
 	/** Every grade, best first then alphabetical, for a listing. */
@@ -315,6 +348,7 @@ public final class GradeStore {
 				e.gradedByDiscordId = record.gradedByDiscordId();
 				e.gradedAt = record.gradedAt();
 				e.order = record.order();
+				e.retired = record.retired();
 				entries.add(e);
 			}
 		} finally {
