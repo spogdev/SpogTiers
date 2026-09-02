@@ -1,6 +1,7 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;

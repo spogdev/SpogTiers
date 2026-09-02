@@ -1,5 +1,6 @@
 package com.spog.tiers.mixin;
 
+import com.spog.tiers.util.AboveLabel;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
@@ -17,9 +18,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>Submitted through the same {@code submitLabel} vanilla uses for the name,
  * so the background, scale and fade are the game's own and wrap this line's
  * text rather than the wider of two lines.
- *
- * <p>26.x has a second label line built in and needs none of this; only this
- * version does, because its render state has nowhere to put one.
  */
 @Mixin(EntityRenderer.class)
 public class LabelMixin {
