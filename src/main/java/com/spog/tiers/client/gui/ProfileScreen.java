@@ -540,7 +540,7 @@ public class ProfileScreen extends Screen {
 		gradeShown = grade != null && grade.isGraded();
 		if (gradeShown) {
 			drawGradeTag(graphics, tagX, nameY - 3, grade);
-			gradeLabel = grade.label();
+			gradeLabel = grade.tooltipLabel();
 			gradeColor = grade.foreground();
 		}
 
@@ -1744,7 +1744,7 @@ public class ProfileScreen extends Screen {
 	/** Names the list and the grade, in the grade's own colour. */
 	private void drawGradeTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		Font font = this.font;
-		String text = PlayerGrade.LIST_NAME + " Tierlist: " + gradeLabel;
+		String text = "DoorSMP: " + gradeLabel;
 
 		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
 		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
