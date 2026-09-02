@@ -1,6 +1,7 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.util.DisplayAbove;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.DisplayRenderer;
 import net.minecraft.client.renderer.entity.state.TextDisplayEntityRenderState;
@@ -50,6 +51,11 @@ public abstract class TextDisplayMixin {
 		if (text == null || text.text() == null) {
 			return;
 		}
+
+		// The above tag is stashed for TextDisplayAboveMixin rather than folded
+		// into the text: vanilla sizes one background to the widest line, so a
+		// second line here leaves empty colour beside the shorter one.
+		DisplayAbove.set(state, TagRenderer.displayAboveTag(text.text()));
 
 		Component tagged = TagRenderer.taggedDisplay(text.text());
 		if (tagged == null) {
