@@ -14,16 +14,26 @@ import java.util.Locale;
  * grade, and the difference between "we asked and they have none" and "we have
  * not asked yet" is what stops the screen refetching every frame.
  */
-public record PlayerGrade(String grade, int color, long gradedAt) {
+public record PlayerGrade(String grade, int color, long gradedAt, boolean retired) {
 	/** The tierlist's name, as it appears in the tooltip. */
 	public static final String LIST_NAME = "Door SMP";
 
 	/** A definite answer that this player has no grade. */
-	public static final PlayerGrade UNGRADED = new PlayerGrade("", 0, 0L);
+	public static final PlayerGrade UNGRADED = new PlayerGrade("", 0, 0L, false);
 
 	/** Whether there is a grade to draw. */
 	public boolean isGraded() {
 		return !grade.isEmpty();
+	}
+
+	/**
+	 * The label on the badge.
+	 *
+	 * <p>A retired player keeps their tier, prefixed with R, so the tag says
+	 * both what they reached and that they are no longer active.
+	 */
+	public String label() {
+		return retired ? "R" + grade : grade;
 	}
 
 	/**

@@ -526,7 +526,7 @@ public class ProfileScreen extends Screen {
 		gradeShown = grade != null && grade.isGraded();
 		if (gradeShown) {
 			drawGradeTag(graphics, tagX, nameY - 3, grade);
-			gradeLabel = grade.grade();
+			gradeLabel = grade.label();
 			gradeColor = grade.foreground();
 		}
 
@@ -766,7 +766,7 @@ public class ProfileScreen extends Screen {
 	 */
 	private int drawGradeTag(DrawContext graphics, int x, int y, PlayerGrade grade) {
 		TextRenderer textRenderer = this.textRenderer;
-		String text = grade.grade();
+		String text = grade.label();
 		int boxWidth = textRenderer.getWidth(text) + 8;
 		int boxHeight = textRenderer.fontHeight + 5;
 
