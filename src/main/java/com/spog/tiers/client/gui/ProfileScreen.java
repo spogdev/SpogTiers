@@ -3,6 +3,7 @@ package com.spog.tiers.client.gui;
 import com.mojang.authlib.GameProfile;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
@@ -751,7 +752,11 @@ public class ProfileScreen extends Screen {
 	 */
 	private int drawTag(DrawContext graphics, int x, int y, String text) {
 		TextRenderer textRenderer = this.textRenderer;
-		int boxWidth = textRenderer.getWidth(text) + 8;
+		// A globe ahead of the code, so the tag reads as a place rather than an
+		// unexplained pair of letters.
+		Text icon = ModeIcons.globe();
+		int iconWidth = textRenderer.getWidth(icon) + 2;
+		int boxWidth = iconWidth + textRenderer.getWidth(text) + 8;
 		int boxHeight = textRenderer.fontHeight + 5;
 
 		// The tag is drawn inside the panel's transform, so these are panel
@@ -773,7 +778,8 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4, y + 3, foreground);
+		graphics.drawTextWithShadow(textRenderer, icon, x + 4, y + 3, foreground);
+		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
 
@@ -788,7 +794,11 @@ public class ProfileScreen extends Screen {
 	private int drawGradeTag(DrawContext graphics, int x, int y, PlayerGrade grade) {
 		TextRenderer textRenderer = this.textRenderer;
 		String text = grade.label();
-		int boxWidth = textRenderer.getWidth(text) + 8;
+		// The door sits left of the label, as it does on a nametag, so our tag
+		// is recognisable as the same thing in both places.
+		Text icon = ModeIcons.door();
+		int iconWidth = textRenderer.getWidth(icon) + 2;
+		int boxWidth = iconWidth + textRenderer.getWidth(text) + 8;
 		int boxHeight = textRenderer.fontHeight + 5;
 
 		// Same panel-to-screen conversion as the region tag: this is drawn
@@ -809,7 +819,8 @@ public class ProfileScreen extends Screen {
 		graphics.fill(x, y, x + 1, y + boxHeight, border);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
 
-		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4, y + 3, foreground);
+		graphics.drawTextWithShadow(textRenderer, icon, x + 4, y + 3, foreground);
+		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4 + iconWidth, y + 3, foreground);
 		return boxWidth;
 	}
 
