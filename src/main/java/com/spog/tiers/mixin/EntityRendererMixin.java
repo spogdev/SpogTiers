@@ -31,12 +31,8 @@ public class EntityRendererMixin {
 			return;
 		}
 		state.nameTag = TagRenderer.withTag(player.getUUID(), state.nameTag);
-		// Vanilla already stacks a second line above the name and gives it its
-		// own background, which is exactly what the above slot wants. Only set
-		// when we have something, so a scoreboard line still shows through.
-		Component above = TagRenderer.aboveTag(player.getUUID());
-		if (above != null) {
-			state.scoreText = above;
-		}
+		// Stashed for LabelMixin rather than put in scoreText: vanilla draws
+		// that field under the name, since it is the scoreboard line.
+		AboveLabel.set(state, TagRenderer.aboveTag(player.getUUID()));
 	}
 }

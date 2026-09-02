@@ -5,6 +5,7 @@
 	"client": [
 		"PlayerTabOverlayMixin",
 		"EntityRendererMixin",
+		"LabelMixin",
 		"TextDisplayMixin",
 		"ClientPacketListenerMixin",
 		"ClientCommandsMixin",
