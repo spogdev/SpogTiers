@@ -6,6 +6,7 @@ import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -28,6 +29,15 @@ public class EntityRendererMixin {
 		if (!(entity instanceof PlayerEntity player) || state.displayName == null) {
 			return;
 		}
-		state.displayName = TagRenderer.withTag(player.getUuid(), state.displayName);
+		Text tagged = TagRenderer.withTag(player.getUuid(), state.displayName);
+
+		// This version draws the nameplate as a single label with no second
+		// line of its own, so the above slot has to be a newline inside the
+		// name. 26.x has a separate field for it, and uses that instead.
+		Text above = TagRenderer.aboveTag(player.getUuid());
+		if (above != null) {
+			tagged = Text.empty().append(above).append("\n").append(tagged);
+		}
+		state.displayName = tagged;
 	}
 }
