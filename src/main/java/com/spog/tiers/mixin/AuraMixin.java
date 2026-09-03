@@ -12,6 +12,7 @@ import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -54,9 +55,15 @@ public class AuraMixin {
 	/** Full brightness: these are embers, so they do not sit in shadow. */
 	private static final int LIGHT = 0xF000F0;
 
-	// render rather than renderLabelIfPresent: that one is only reached for an
-	// entity that has a nameplate to draw, and the aura is not a nameplate.
-	@Inject(method = "render", at = @At("HEAD"))
+	// The same injection the above-name label uses, and for the same reason:
+	// it is the one that demonstrably reaches the screen. The custom geometry
+	// submitted from the generic render() never appeared with Sodium
+	// installed, which replaces the level renderer wholesale.
+	//
+	// The cost is that the aura now needs a nameplate to hang off, which is
+	// why the guard below only checks our own switches: vanilla has already
+	// decided the plate is worth drawing by the time this runs.
+	@Inject(method = "renderLabelIfPresent", at = @At("HEAD"))
 	private void spogtiers$submitAura(EntityRenderState state, MatrixStack matrices,
 			OrderedRenderCommandQueue queue, CameraRenderState camera,
 			CallbackInfo ci) {
@@ -76,6 +83,14 @@ public class AuraMixin {
 		float height = state.height;
 		float width = state.width;
 		if (height <= 0.0f || width <= 0.0f) {
+			return;
+		}
+
+		// This matrix is in world space, like the label's, so the motes have to
+		// be walked back down to the feet: the attachment point sits above the
+		// head, and its y is the height of the plate above the entity origin.
+		Vec3d anchor = state.nameLabelPos;
+		if (anchor == null) {
 			return;
 		}
 
@@ -113,7 +128,7 @@ public class AuraMixin {
 			// z through -- and only then turned to face the camera. Rotating
 			// before the offset would have applied x and z in camera space, so
 			// the two layers would slide across the body as you walked round.
-			matrices.translate(x, y, z);
+			matrices.translate(anchor.x + x, anchor.y - height + y, anchor.z + z);
 			matrices.multiply(camera.orientation);
 
 			float size = half;
