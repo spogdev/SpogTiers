@@ -57,7 +57,7 @@ public class LabelMixin {
 	}
 
 	/**
-	 * Pads {@code label} with spaces until it is at least as wide as the name.
+	 * Pads {@code label} with spaces until its backdrop covers the name's.
 	 *
 	 * <p>Each label carries its own backdrop, sized to its own text and centred
 	 * on it, so two lines of different widths draw two concentric rectangles.
@@ -66,29 +66,29 @@ public class LabelMixin {
 	 * lines, which no vertical offset can remove because the mismatch is
 	 * horizontal.
 	 *
-	 * <p>Padding both sides keeps the text centred while making the two
-	 * backdrops the same width, so their edges coincide instead of stacking.
-	 * Space is the only lever available here: the backdrop is drawn inside
-	 * {@code Font.drawInBatch} from the component alone, with no width to pass.
+	 * <p>Padding to strictly wider than the name, by a whole space on each
+	 * side, is what actually hides them. Matching the width exactly is not
+	 * enough: the name is asymmetric -- {@code TagRenderer} appends a leading
+	 * space only when something sits left of the name and a trailing one only
+	 * when something sits right -- so two equally wide backdrops still centre
+	 * differently, and whichever edge falls short leaves its bar behind. Going
+	 * over on both sides puts our edges outside the name's entirely, where they
+	 * sit against the sky and cannot double.
 	 */
 	private static Component matchWidth(Component label, Component name) {
 		if (name == null) {
 			return label;
 		}
 		Font font = Minecraft.getInstance().font;
-		int target = font.width(name);
 		int space = font.width(" ");
 		if (space <= 0) {
 			return label;
 		}
 
-		// Round outwards: a backdrop a shade wider than the name hides its edge
-		// behind the name's own, while a shade narrower would leave the bar.
-		int missing = target - font.width(label);
-		if (missing <= 0) {
-			return label;
-		}
-		int each = (missing + space * 2 - 1) / (space * 2);
+		// The name's own asymmetry is unknown here, so cover the worst case: it
+		// could be offset by a full space either way.
+		int missing = font.width(name) - font.width(label) + space * 2;
+		int each = Math.max(1, (missing + space * 2 - 1) / (space * 2));
 
 		StringBuilder pad = new StringBuilder(each);
 		for (int i = 0; i < each; i++) {
