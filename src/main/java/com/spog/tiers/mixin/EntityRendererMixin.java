@@ -3,7 +3,6 @@ package com.spog.tiers.mixin;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.TagRenderer;
-import com.spog.tiers.util.Tagged;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
@@ -32,14 +31,7 @@ public class EntityRendererMixin {
 		if (!(entity instanceof Player player) || state.nameTag == null) {
 			return;
 		}
-		// Skip a name this mixin already tagged: extractRenderState can run
-		// more than once for the same state, and tagging twice would stack a
-		// second translucent backdrop on the first.
-		if (Tagged.isTagged(state, state.nameTag)) {
-			return;
-		}
 		state.nameTag = TagRenderer.withTag(player.getUUID(), state.nameTag);
-		Tagged.remember(state, state.nameTag);
 		// Stashed for LabelMixin rather than put in scoreText: vanilla draws
 		// that field under the name, since it is the scoreboard line.
 		AboveLabel.set(state, TagRenderer.aboveTag(player.getUUID()));
