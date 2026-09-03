@@ -24,14 +24,15 @@ public class LabelMixin {
 	/**
 	 * One line of vertical space, at the label's scale.
 	 *
-	 * <p>Eleven pixels, not nine. Nine is the text's own line height, but the
-	 * backdrop a label draws is a pixel taller than the text on each side, so a
-	 * label occupies eleven. At nine the two backdrops overlapped by four
-	 * screen pixels of a thirty-nine pixel label, and where two translucent
-	 * backdrops overlap the alpha doubles and shows as a dark band across the
-	 * whole width.
+	 * <p>Ten pixels, and the margin either side is thin. A label is nine
+	 * pixels of text plus a pixel of backdrop above and below, which measures
+	 * 10.03 in these units -- so nine leaves the two backdrops overlapping by
+	 * four screen pixels, which shows as a dark band where the translucent
+	 * alpha doubles, and eleven pulls them four screen pixels apart, which
+	 * shows as a stripe of sky between them. Ten lands within a tenth of a
+	 * pixel.
 	 */
-	private static final float LINE_HEIGHT = 11.0f * 1.15f * 0.025f;
+	private static final float LINE_HEIGHT = 10.0f * 1.15f * 0.025f;
 
 	@Inject(method = "renderLabelIfPresent", at = @At("TAIL"))
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
