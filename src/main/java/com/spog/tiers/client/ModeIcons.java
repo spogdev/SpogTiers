@@ -108,6 +108,20 @@ public final class ModeIcons {
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 
+	/**
+	 * A two-pixel gap, for after the door.
+	 *
+	 * <p>Lives in the default font rather than ours, alongside the icon widths
+	 * the mod already publishes there, so it measures the same for anything
+	 * else reading the label.
+	 */
+	private static final int NARROW_SPACE_CODEPOINT = 0xE0FF;
+
+	/** Two pixels of blank space. */
+	public static Component narrowSpace() {
+		return Component.literal(Character.toString(NARROW_SPACE_CODEPOINT));
+	}
+
 	private static int codepointOf(TierList list, String modeKey) {
 		int offset = 0;
 		for (TierList candidate : ORDER) {
