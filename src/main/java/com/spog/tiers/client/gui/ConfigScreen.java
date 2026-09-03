@@ -4,6 +4,7 @@ import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
 import net.minecraft.client.Minecraft;
@@ -18,6 +19,7 @@ import net.minecraft.sounds.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Full-screen settings, styled to match the tier viewer: a dimmed backdrop, a
@@ -59,6 +61,16 @@ public class ConfigScreen extends Screen {
 	private int maxScroll;
 	/** The label under the cursor this frame, if it has an explanation. */
 	private HoverLabel hoverLabel;
+
+	/**
+	 * Where the cursor is this frame.
+	 *
+	 * <p>Kept so a row can tell whether the cursor is over it while the panel
+	 * is being laid out, which is what lets two explained rows sitting next to
+	 * each other each keep their own line.
+	 */
+	private int hoverMouseX;
+	private int hoverMouseY;
 
 	private Dropdown<TierList> aboveList;
 	private Dropdown<Gamemode> aboveMode;
@@ -141,6 +153,8 @@ public class ConfigScreen extends Screen {
 		graphics.fill(0, 0, width, height, 0xC00B0E13);
 		zones.clear();
 		hoverLabel = null;
+		hoverMouseX = mouseX;
+		hoverMouseY = mouseY;
 
 		int left = MARGIN;
 		int top = MARGIN;
@@ -392,8 +406,7 @@ public class ConfigScreen extends Screen {
 		graphics.text(font, Component.literal("Nametag"), x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 10;
 
-		drawPreview(graphics, x, y, right);
-		y += 34;
+		y += drawPreview(graphics, x, y, right) + 8;
 
 		y = drawSlot(graphics, "Above", config.aboveTag, aboveList, aboveMode,
 				x, y, mouseX, mouseY);
@@ -408,6 +421,18 @@ public class ConfigScreen extends Screen {
 					config.showRegionOnNametag = !config.showRegionOnNametag;
 					config.save();
 				});
+		y = drawSwitch(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
+				() -> {
+					config.preventDuplicateTiers = !config.preventDuplicateTiers;
+					config.save();
+				},
+				"Prevent the same tier from being shown multiple times");
+		y = drawSwitch(graphics, "Tag Displays", config.tagDisplays, x, y,
+				() -> {
+					config.tagDisplays = !config.tagDisplays;
+					config.save();
+				},
+				"Tags nametags that a server draws with a text display");
 		y += font.lineHeight + 10;
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);
@@ -429,59 +454,129 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
-		y += 8;
-		y = drawSwitch(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
-				() -> {
-					config.preventDuplicateTiers = !config.preventDuplicateTiers;
-					config.save();
-				},
-				"Prevents the same tier for appearing in both slots");
-
-		y = drawSwitch(graphics, "Tag Displays", config.tagDisplays, x, y,
-				() -> {
-					config.tagDisplays = !config.tagDisplays;
-					config.save();
-				},
-				"Tags nametags that a server draws with a text display");
-
 		return y + font.lineHeight + CARD_PADDING - top;
 	}
 
 	/** A sample nametag built from the current settings. */
-	private void drawPreview(GuiGraphicsExtractor graphics, int x, int y, int right) {
+	/**
+	 * The player the preview is built around.
+	 *
+	 * <p>A real account rather than a made-up one, so the preview shows the
+	 * tags he actually holds once his tiers are in the cache. Nothing is
+	 * fetched from here: this runs on the render thread, so it reads whatever
+	 * the cache already has and falls back to a sample tier otherwise.
+	 */
+	private static final UUID PREVIEW_PLAYER =
+			UUID.fromString("ebd7af32-759e-41e2-b227-9eeb8576d609");
+
+	private static final String PREVIEW_NAME = "Swight";
+
+	private int drawPreview(GuiGraphicsExtractor graphics, int x, int y, int right) {
 		SpogTiersConfig config = config();
+		boolean above = config.aboveTag != null && config.aboveTag.enabled;
 
 		int boxWidth = Math.min(380, right - CARD_PADDING - x);
-		int boxHeight = 26;
+		// Room for a second line when the above slot is on, so its tag sits
+		// over the name the way it does in the world.
+		int boxHeight = above ? 26 + ROW_HEIGHT : 26;
 		graphics.fill(x, y, x + boxWidth, y + boxHeight, 0x60101720);
 		graphics.fill(x, y, x + boxWidth, y + 1, CARD_BORDER);
 		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, CARD_BORDER);
 		graphics.fill(x, y, x + 1, y + boxHeight, CARD_BORDER);
 		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, CARD_BORDER);
 
-		// Sample values, so the preview works with nobody looked up.
+		// Whatever is known about him, or a stand-in so the preview still
+		// reads before anything has been looked up.
 		Tier sample = new Tier(1, Tier.Position.HIGH, false);
-		int cursor = x + 8;
-		int textY = y + (boxHeight - font.lineHeight) / 2;
+		int nameWidth = font.width(PREVIEW_NAME);
+		int textY = y + (26 - font.lineHeight) / 2 + (above ? ROW_HEIGHT : 0);
 
-		if (config.showRegionOnNametag) {
-			graphics.text(font, Component.literal("EU"), cursor, textY, 0xFF89F19C);
-			cursor += font.width("EU") + 5;
+		if (above) {
+			// Centred over the name, matching how the line is drawn in game.
+			int aboveWidth = previewTagWidth(config.aboveTag, previewTier(config.aboveTag, sample));
+			int aboveX = x + 8 + regionWidth(config)
+					+ previewTagWidth(config.leftTag, previewTier(config.leftTag, sample))
+					+ (nameWidth - aboveWidth) / 2;
+			drawPreviewTag(graphics, config.aboveTag, previewTier(config.aboveTag, sample),
+					Math.max(x + 8, aboveX), textY - ROW_HEIGHT, true, true);
 		}
-		cursor = drawPreviewTag(graphics, config.leftTag, sample, cursor, textY, true);
-		graphics.text(font, Component.literal("Notch"), cursor, textY, 0xFFFFFFFF);
-		cursor += font.width("Notch");
-		drawPreviewTag(graphics, config.rightTag, sample, cursor, textY, false);
+
+		int cursor = x + 8;
+		if (config.showRegionOnNametag) {
+			String region = previewRegion();
+			graphics.text(font, Component.literal(region), cursor, textY, 0xFF89F19C);
+			cursor += font.width(region) + 5;
+		}
+		cursor = drawPreviewTag(graphics, config.leftTag, previewTier(config.leftTag, sample), cursor, textY, true, false);
+		graphics.text(font, Component.literal(PREVIEW_NAME), cursor, textY, 0xFFFFFFFF);
+		cursor += nameWidth;
+		drawPreviewTag(graphics, config.rightTag, previewTier(config.rightTag, sample), cursor, textY, false, false);
+		return boxHeight;
+	}
+
+	/** His region where it is known, else a stand-in so the row still reads. */
+	private String previewRegion() {
+		String code = Regions.resolve(SpogTiersClient.cache().allLists(PREVIEW_PLAYER));
+		return code.isEmpty() ? "EU" : code;
+	}
+
+	/** The region prefix's width, or nothing when it is switched off. */
+	private int regionWidth(SpogTiersConfig config) {
+		return config.showRegionOnNametag ? font.width(previewRegion()) + 5 : 0;
+	}
+
+	/**
+	 * The tier to show for a slot: his own where it is known, else a stand-in.
+	 *
+	 * <p>Read straight from the cache and never fetched, since this runs on
+	 * the render thread. Before anything has been looked up the preview still
+	 * reads correctly, it just shows a sample tier.
+	 */
+	private Tier previewTier(SpogTiersConfig.TagSlot slot, Tier fallback) {
+		if (slot == null) {
+			return fallback;
+		}
+		TierList source = slot.list != null ? slot.list
+				: (slot.gamemode != null ? firstListWith(slot.gamemode) : firstEnabledList());
+		if (source == null) {
+			return fallback;
+		}
+		var tiers = SpogTiersClient.cache().get(PREVIEW_PLAYER, source);
+		if (tiers == null) {
+			return fallback;
+		}
+		Tier tier = slot.gamemode == null ? tiers.best() : tiers.get(slot.gamemode);
+		return tier != null && tier.isRanked() ? tier : fallback;
+	}
+
+	/** What {@link #drawPreviewTag} will advance by, without drawing it. */
+	private int previewTagWidth(SpogTiersConfig.TagSlot slot, Tier sample) {
+		if (slot == null || !slot.enabled) {
+			return 0;
+		}
+		int width = font.width(sample.label());
+		TierList source = slot.list != null ? slot.list
+				: (slot.gamemode != null ? firstListWith(slot.gamemode) : firstEnabledList());
+		Gamemode mode = slot.gamemode;
+		if (mode == null && source != null) {
+			mode = source.gamemodes().stream().findFirst().orElse(null);
+		}
+		if (source != null && mode != null && source.gamemodes().contains(mode)) {
+			width += 13;
+		}
+		return width;
 	}
 
 	private int drawPreviewTag(GuiGraphicsExtractor graphics, SpogTiersConfig.TagSlot slot,
-			Tier sample, int cursor, int textY, boolean before) {
+			Tier sample, int cursor, int textY, boolean before, boolean alone) {
 		// A null list is the Best option, which still previews.
 		if (slot == null || !slot.enabled) {
 			return cursor;
 		}
 
-		if (!before) {
+		// The above line carries no separator: it is its own label in game,
+		// not something sitting beside the name.
+		if (!before && !alone) {
 			graphics.text(font, Component.literal(" | "), cursor, textY, 0xFF555F6B);
 			cursor += font.width(" | ");
 		}
@@ -506,7 +601,7 @@ public class ConfigScreen extends Screen {
 		graphics.text(font, Component.literal(label), cursor, textY, sample.color());
 		cursor += font.width(label);
 
-		if (before) {
+		if (before && !alone) {
 			graphics.text(font, Component.literal(" | "), cursor, textY, 0xFF555F6B);
 			cursor += font.width(" | ");
 		}
@@ -586,7 +681,15 @@ public class ConfigScreen extends Screen {
 		if (description != null) {
 			// Recorded rather than drawn here: the body is scissored, so a
 			// tooltip drawn now would be clipped to the panel.
-			hoverLabel = new HoverLabel(x, y - 2, x + font.width(title), y + 10, description);
+			//
+			// Kept only when nothing else has already claimed the cursor, so
+			// that two explained rows next to each other each show their own
+			// line rather than the later one overwriting the earlier.
+			HoverLabel candidate =
+					new HoverLabel(x, y - 2, x + font.width(title), y + 10, description);
+			if (hoverLabel == null || candidate.contains(hoverMouseX, hoverMouseY)) {
+				hoverLabel = candidate;
+			}
 		}
 		return y + ROW_HEIGHT;
 	}
