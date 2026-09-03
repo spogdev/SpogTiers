@@ -86,6 +86,31 @@ public final class TagRenderer {
 		return out;
 	}
 
+	/**
+	 * Widens {@code label} by {@code missing} pixels, split across both ends.
+	 *
+	 * <p>For lining up the two lines of a nameplate. Each line draws its own
+	 * backdrop, sized to its own text and centred on it, so a narrower line's
+	 * backdrop ends inside the wider one's -- and where the two translucent
+	 * quads overlap, the alpha doubles and shows as a dark bar at each end of
+	 * the narrower line. Making the two the same width puts both pairs of
+	 * edges on the same pixels, and the bars go.
+	 *
+	 * <p>Padded with one-pixel blanks rather than spaces, so the match is
+	 * exact: a space is four pixels, and the leftover of up to three showed
+	 * as a thinner bar in exactly the same place.
+	 */
+	public static Component padTo(Component label, int missing) {
+		if (missing <= 0) {
+			return label;
+		}
+		int left = missing / 2;
+		return Component.empty()
+				.append(ModeIcons.hairSpace(left))
+				.append(label)
+				.append(ModeIcons.hairSpace(missing - left));
+	}
+
 	/** The badge for the left-hand slot, for compact contexts. */
 	public static Component badgeFor(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
