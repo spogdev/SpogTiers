@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -51,11 +52,20 @@ public class AuraMixin {
 	/** Below this alpha a mote is not worth a draw call. */
 	private static final float MIN_ALPHA = 0.01f;
 
-	// submit rather than submitNameDisplay: that one is only reached for an
-	// entity that has a nameplate to draw, and the aura is not a nameplate.
-	@Inject(method = "submit", at = @At("HEAD"))
+	// The same injection the above-name label uses, and for the same reason:
+	// it is the one that demonstrably reaches the screen. The custom geometry
+	// submitted from the generic submit() never appeared with Sodium
+	// installed, which replaces the level renderer wholesale.
+	//
+	// The cost is that the aura now needs a nameplate to hang off, which is
+	// why the guard below only checks our own switches: vanilla has already
+	// decided the plate is worth drawing by the time this runs.
+	@Inject(method = "submitNameDisplay(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"
+			+ "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;"
+			+ "Lnet/minecraft/client/renderer/state/level/CameraRenderState;I)V",
+			at = @At("HEAD"))
 	private void spogtiers$submitAura(EntityRenderState state, PoseStack poseStack,
-			SubmitNodeCollector collector, CameraRenderState camera,
+			SubmitNodeCollector collector, CameraRenderState camera, int offset,
 			CallbackInfo ci) {
 		var config = SpogTiersClient.config();
 		// The switch that already governs the door tag and the profile aura:
@@ -73,6 +83,14 @@ public class AuraMixin {
 		float height = state.boundingBoxHeight;
 		float width = state.boundingBoxWidth;
 		if (height <= 0.0f || width <= 0.0f) {
+			return;
+		}
+
+		// This matrix is in world space, like the label's, so the motes have to
+		// be walked back down to the feet: the attachment point sits above the
+		// head, and its y is the height of the plate above the entity origin.
+		Vec3 anchor = state.nameTagAttachment;
+		if (anchor == null) {
 			return;
 		}
 
@@ -107,7 +125,7 @@ public class AuraMixin {
 			// z through -- and only then turned to face the camera. Rotating
 			// before the offset would have applied x and z in camera space, so
 			// the two layers would slide across the body as you walked round.
-			poseStack.translate(x, y, z);
+			poseStack.translate(anchor.x + x, anchor.y - height + y, anchor.z + z);
 			poseStack.mulPose(camera.orientation);
 
 			float size = half;
