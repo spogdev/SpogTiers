@@ -3,6 +3,7 @@ package com.spog.tiers.mixin;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.TagRenderer;
+import com.spog.tiers.util.Tagged;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.entity.Entity;
@@ -30,7 +31,14 @@ public class EntityRendererMixin {
 		if (!(entity instanceof PlayerEntity player) || state.displayName == null) {
 			return;
 		}
+		// Skip a name this mixin already tagged: updateRenderState can run
+		// more than once for the same state, and tagging twice would stack a
+		// second translucent backdrop on the first.
+		if (Tagged.isTagged(state, state.displayName)) {
+			return;
+		}
 		state.displayName = TagRenderer.withTag(player.getUuid(), state.displayName);
+		Tagged.remember(state, state.displayName);
 		// Stashed rather than folded into the name: this version has no second
 		// label line of its own, so LabelMixin submits one, and a newline in
 		// the name would share the name's single background.

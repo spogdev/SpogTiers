@@ -394,9 +394,10 @@ public final class TagRenderer {
 	/**
 	 * The gap after a bitmap glyph.
 	 *
-	 * <p>A plain space is enough now the glyph boxes are seven pixels rather
-	 * than eight to ten: the overlap was the glyphs standing taller than the
-	 * line, not running into what came after them.
+	 * <p>One space. These glyphs are eight to ten pixels tall in a font built
+	 * for seven, so they render wider than their advance suggests and butt
+	 * against the next character with no gap at all -- but two spaces pushed
+	 * the tier noticeably away from its own icon, so a single one it is.
 	 */
 	private static Text glyphGap() {
 		return Text.literal(" ");
