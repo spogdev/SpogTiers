@@ -65,12 +65,11 @@ public final class TagRenderer {
 		}
 
 		MutableText out = Text.empty();
-		// A leading space so another mod's tag cannot butt straight against
-		// ours -- Essential puts its badge immediately to the left. Added
-		// whatever comes first, since the region is optional.
-		if (region != null || left != null) {
-			out.append(space());
-		}
+		// No leading space: the backdrop already extends a couple of pixels
+		// past the text on its own, which is enough to keep another mod's
+		// badge from butting against ours -- Essential puts its badge
+		// immediately to the left, and a space on top of the backdrop's own
+		// margin left a visibly wide gap.
 		if (region != null) {
 			out.append(region).append(space());
 		}
@@ -78,8 +77,11 @@ public final class TagRenderer {
 			out.append(left).append(separator());
 		}
 		out.append(original);
+		// No trailing space either, for the same reason, and because an odd
+		// space on one end only makes the name asymmetric -- which offsets its
+		// backdrop from the above tag's and leaves a bar down one side.
 		if (right != null) {
-			out.append(separator()).append(right).append(space());
+			out.append(separator()).append(right);
 		}
 		return out;
 	}
