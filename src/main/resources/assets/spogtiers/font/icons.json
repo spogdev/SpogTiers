@@ -569,7 +569,7 @@
     },
     {
       "type": "bitmap",
-      "file": "spogtiers:gui/modes/doorsmp/door.png",
+      "file": "spogtiers:gui/modes/doorsmp/door_nametag.png",
       "ascent": 8,
       "height": 8,
       "chars": [
