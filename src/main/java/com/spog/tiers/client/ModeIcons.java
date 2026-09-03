@@ -108,25 +108,6 @@ public final class ModeIcons {
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 
-	/**
-	 * A blank glyph one pixel wide, for padding a label to an exact width.
-	 *
-	 * <p>Well past the last bitmap glyph, so the index arithmetic can never
-	 * reach it however many modes the lists gain. A {@code space} provider
-	 * rather than a bitmap: it has an advance and nothing else, and vanilla
-	 * still counts it into the label's backdrop, which is the whole point.
-	 */
-	private static final int HAIR_CODEPOINT = 0xE0FF;
-
-	/** {@code px} pixels of blank space, in the icon font. */
-	public static Text hairSpace(int px) {
-		if (px <= 0) {
-			return Text.empty();
-		}
-		return Text.literal(Character.toString(HAIR_CODEPOINT).repeat(px))
-				.setStyle(Style.EMPTY.withFont(FONT));
-	}
-
 	private static int codepointOf(TierList list, String modeKey) {
 		int offset = 0;
 		for (TierList candidate : ORDER) {

@@ -1,55 +1,118 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.util.AboveLabel;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.render.LightmapTextureManager;
+import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Draws the above-name tag as its own label, stacked over the nameplate.
+ * Draws the above-name tag as its own line, stacked over the nameplate.
  *
- * <p>Submitted through the same {@code submitLabel} vanilla uses for the name,
- * so the background, scale and fade are the game's own and wrap this line's
- * text rather than the wider of two lines.
+ * <p>Drawn by hand rather than through {@code submitLabel}. A vanilla label
+ * always paints its backdrop across the full width of its text, so the only
+ * way to control that box was to pad the text -- and padding it out to the
+ * name's width, which stopped the two lines' backdrops fighting, left a box
+ * far wider than the tag inside it. Drawing our own quad sizes the box to the
+ * icon and text exactly, and keeps it clear of the name's box by construction:
+ * its bottom edge is the name's top edge, sharing pixels with nothing.
+ *
+ * <p>Everything else copies vanilla's nameplate so the line looks like part
+ * of it: the same anchor, camera billboarding and scale, the same backdrop
+ * opacity option, and the same two text passes -- faint through walls, solid
+ * when in view -- with the same colours and emissive light.
  */
 @Mixin(EntityRenderer.class)
 public class LabelMixin {
 	/**
-	 * One line of vertical space, at the label's scale.
-	 *
-	 * <p>Ten pixels, and the margin either side is thin. A label is nine
-	 * pixels of text plus a pixel of backdrop above and below, which measures
-	 * 10.03 in these units -- so nine leaves the two backdrops overlapping by
-	 * four screen pixels, which shows as a dark band where the translucent
-	 * alpha doubles, and eleven pulls them four screen pixels apart, which
-	 * shows as a stripe of sky between them. Ten lands within a tenth of a
-	 * pixel.
+	 * One line up, in font pixels: nine of text plus the backdrop's pixel of
+	 * margin, so this line's box ends exactly where the name's begins.
 	 */
-	private static final float LINE_HEIGHT = 10.0f * 1.15f * 0.025f;
+	private static final int LINE_OFFSET = -10;
+
+	/** Vanilla's nameplate scale: one font pixel is this many blocks. */
+	private static final float SCALE = 0.025f;
+
+	/** Vanilla's text colour for the pass that shows through walls. */
+	private static final int FAINT = 0x80FFFFFF;
+
+	/** Vanilla's text colour for the pass that shows when in view. */
+	private static final int SOLID = 0xFFFFFFFF;
+
+	/** Vanilla's emission for the in-view pass, so text never sits in shadow. */
+	private static final int EMISSION = 2;
 
 	@Inject(method = "renderLabelIfPresent", at = @At("TAIL"))
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
 			OrderedRenderCommandQueue queue, CameraRenderState camera, CallbackInfo ci) {
 		Text above = AboveLabel.get(state);
-		if (above == null || state.nameLabelPos == null) {
+		Vec3d attachment = state.nameLabelPos;
+		if (above == null || attachment == null) {
 			return;
 		}
 
+		MinecraftClient client = MinecraftClient.getInstance();
+		TextRenderer font = client.textRenderer;
+		int width = font.getWidth(above);
+		float x = -width / 2.0f;
+		float y = LINE_OFFSET;
+		boolean seeThrough = !state.sneaking;
+		int light = state.light;
+		int background = (int) (client.options.getTextBackgroundOpacity(0.25f) * 255.0f) << 24;
+
+		// The same frame vanilla builds for the name: anchored at the label
+		// point, turned to face the camera, and scaled so that one unit is one
+		// font pixel with y running downwards.
 		matrices.push();
-		// Negative is up. Vanilla draws its own upper line at 0 and then
-		// translates by +LINE_HEIGHT to put the name underneath, so positive Y
-		// here is downward -- translating the other way put this tag below the
-		// name instead of above it.
-		matrices.translate(0.0f, -LINE_HEIGHT, 0.0f);
-		queue.submitLabel(matrices, state.nameLabelPos, 0, above,
-				!state.sneaking, state.light, state.squaredDistanceToCamera, camera);
+		matrices.translate(attachment.x, attachment.y + 0.5, attachment.z);
+		matrices.multiply(camera.orientation);
+		matrices.scale(SCALE, -SCALE, SCALE);
+
+		if ((background & 0xFF000000) != 0) {
+			// The box vanilla would draw for this text: a pixel of margin on
+			// the left and above, none on the right, nine rows of text below.
+			float left = x - 1.0f;
+			float top = y - 1.0f;
+			float right = x + width;
+			float bottom = y + 9.0f;
+			queue.getBatchingQueue(0).submitCustom(matrices,
+					seeThrough ? RenderLayers.textBackgroundSeeThrough() : RenderLayers.textBackground(),
+					(matrix, buffer) -> quad(matrix, buffer, background, light, left, top, right, bottom));
+		}
+
+		OrderedText text = above.asOrderedText();
+		var ordered = queue.getBatchingQueue(1);
+		if (seeThrough) {
+			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.SEE_THROUGH,
+					light, FAINT, 0, 0);
+			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.NORMAL,
+					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, 0, 0);
+		} else {
+			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.NORMAL,
+					light, FAINT, 0, 0);
+		}
 		matrices.pop();
+	}
+
+	/** One backdrop quad, wound the way vanilla winds its own. */
+	private static void quad(MatrixStack.Entry matrix, VertexConsumer buffer, int colour, int light,
+			float left, float top, float right, float bottom) {
+		buffer.vertex(matrix, left, top, 0.0f).color(colour).light(light);
+		buffer.vertex(matrix, left, bottom, 0.0f).color(colour).light(light);
+		buffer.vertex(matrix, right, bottom, 0.0f).color(colour).light(light);
+		buffer.vertex(matrix, right, top, 0.0f).color(colour).light(light);
 	}
 }
