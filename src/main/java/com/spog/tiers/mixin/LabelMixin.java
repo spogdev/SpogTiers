@@ -29,14 +29,14 @@ public class LabelMixin {
 	 *
 	 * <p>Negative is up: the offset becomes the label's y coordinate directly.
 	 *
-	 * <p>Eleven, not nine. Nine is the text's own line height, but the backdrop
-	 * a label draws is a pixel taller than the text on each side, so a label
-	 * occupies eleven. Measured off a screenshot: at nine the two backdrops
-	 * overlapped by four screen pixels of a thirty-nine pixel label, and where
-	 * two translucent backdrops overlap the alpha doubles and shows as a dark
-	 * band -- three of them where a third quad joined in.
+	 * <p>Ten, and the margin either side is thin. A label is nine pixels of
+	 * text plus a pixel of backdrop above and below, which measures 10.03 in
+	 * these units -- so nine leaves the two backdrops overlapping by four
+	 * screen pixels, which shows as a dark band where the translucent alpha
+	 * doubles, and eleven pulls them four screen pixels apart, which shows as
+	 * a stripe of sky between them. Ten lands within a tenth of a pixel.
 	 */
-	private static final int LINE_OFFSET = -11;
+	private static final int LINE_OFFSET = -10;
 
 	@Inject(method = "submitNameDisplay(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"
 			+ "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;"
