@@ -6,6 +6,7 @@
 		"PlayerTabOverlayMixin",
 		"EntityRendererMixin",
 		"LabelMixin",
+		"AuraMixin",
 		"TextDisplayMixin",
 		"TextDisplayAboveMixin",
 		"ClientPacketListenerMixin",

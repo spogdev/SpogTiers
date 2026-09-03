@@ -20,7 +20,6 @@ public class SpogTiersClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			service.tick();
 			com.spog.tiers.client.QuickTiers.tick(client);
-			com.spog.tiers.client.TierParticles.tick(client);
 		});
 
 		SpogTiers.LOGGER.info("SpogTiers initialised");

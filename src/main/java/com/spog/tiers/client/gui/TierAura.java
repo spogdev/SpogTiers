@@ -1,10 +1,8 @@
 package com.spog.tiers.client.gui;
 
+import com.spog.tiers.client.WorldAura;
 import com.spog.tiers.data.PlayerGrade;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.util.Mth;
-
-import java.util.Random;
 
 /**
  * Embers drifting up around the skin model, in the colour of the player's Door
@@ -12,72 +10,19 @@ import java.util.Random;
  *
  * <p>Drawn as small translucent quads rather than real particles: the model is
  * a GUI widget, not a world entity, so there is no particle system to hand.
- * They are laid out behind the model, which keeps the player readable -- an
- * effect in front of the skin would obscure the thing it is decorating.
  *
- * <p>Motion is a pure function of elapsed time and each mote's own seed, so no
- * per-frame state is kept and nothing accumulates or drifts out of sync when
- * the screen is resized or the panel re-laid out.
+ * <p>The motion itself lives in {@link WorldAura}, shared with the copy drawn
+ * around the player in the world, so the two are the same effect rather than
+ * two that merely resemble each other. This class only maps it onto the panel.
  */
 public final class TierAura {
-	/** Enough to read as a haze; few enough to stay cheap on the GUI path. */
-	private static final int MOTES = 46;
-
-	/** Seconds for a mote to travel its full rise. */
-	private static final float RISE_SECONDS = 3.4f;
-
-	/** How far a mote wanders sideways over that rise, in model widths. */
-	private static final float DRIFT = 0.20f;
-
 	/** Mote size in pixels, before the per-mote variation. */
 	private static final int MIN_SIZE = 1;
 	private static final int MAX_SIZE = 4;
 
-	/** How far below the feet motes appear, and above the head they fade out. */
-	private static final float BELOW = 0.06f;
-	private static final float ABOVE = 0.18f;
-
-	/** Peak opacity. Low on purpose -- this sits behind a player model. */
-	private static final float MAX_ALPHA = 0.78f;
-
-	/** Fixed seed: the drift pattern should be the same every time it opens. */
-	private static final long SEED = 0x5D0057;
-
-	/**
-	 * Share of motes drawn in front of the model rather than behind it.
-	 *
-	 * <p>A minority on purpose. The effect should wrap the player rather than
-	 * veil them, and anything in front competes with the skin for attention --
-	 * so the front layer is thinner, and drawn smaller and fainter besides.
-	 */
-	private static final float FRONT_SHARE = 0.38f;
-
-	/** How much the front layer is toned down, so it never hides the skin. */
-	private static final float FRONT_ALPHA_SCALE = 0.62f;
-
-	private final float[] phase = new float[MOTES];
-	private final float[] column = new float[MOTES];
-	private final float[] wobble = new float[MOTES];
-	private final float[] speed = new float[MOTES];
-	private final float[] size = new float[MOTES];
-	/** Which layer each mote belongs to, fixed at construction. */
-	private final boolean[] front = new boolean[MOTES];
+	private final WorldAura aura = new WorldAura();
 
 	private float elapsed;
-
-	public TierAura() {
-		Random random = new Random(SEED);
-		for (int i = 0; i < MOTES; i++) {
-			// Phases are spread evenly and then jittered, so motes never leave
-			// in a visible pulse the way pure randomness sometimes does.
-			phase[i] = (i / (float) MOTES) + (random.nextFloat() - 0.5f) * 0.05f;
-			column[i] = random.nextFloat();
-			wobble[i] = random.nextFloat() * Mth.TWO_PI;
-			speed[i] = 0.75f + random.nextFloat() * 0.5f;
-			size[i] = random.nextFloat();
-			front[i] = random.nextFloat() < FRONT_SHARE;
-		}
-	}
 
 	/** Advances the animation. Call once per frame before drawing. */
 	public void tick(float partialTick) {
@@ -104,40 +49,26 @@ public final class TierAura {
 		}
 		int rgb = grade.foreground() & 0xFFFFFF;
 
-		for (int i = 0; i < MOTES; i++) {
-			if (front[i] != inFront) {
+		for (int i = 0; i < WorldAura.MOTES; i++) {
+			if (aura.isFront(i) != inFront) {
 				continue;
 			}
-			// Where this mote is through its rise, 0 at the feet and 1 at the
-			// top. Wrapping on 1 means it reappears at the bottom rather than
-			// needing to be respawned.
-			float life = (elapsed / (RISE_SECONDS * speed[i]) + phase[i]) % 1.0f;
-
-			// Fades in from nothing and back out, so nothing pops into or out
-			// of existence mid-air.
-			float fade = Mth.sin(life * Mth.PI);
-			float peak = inFront ? MAX_ALPHA * FRONT_ALPHA_SCALE : MAX_ALPHA;
-			int alpha = (int) (Math.sqrt(fade) * peak * 255.0f);
+			int alpha = (int) (aura.alpha(i, elapsed) * 255.0f);
 			if (alpha <= 2) {
 				continue;
 			}
-
-			// Sideways wander, widening as it rises the way smoke spreads.
-			float sway = Mth.sin(elapsed * 0.9f * speed[i] + wobble[i]) * DRIFT * (0.35f + life);
-			float x = column[i] + sway;
-			if (x < 0.0f || x > 1.0f) {
+			float x = aura.across(i, elapsed);
+			if (x < 0.0f) {
 				continue;
 			}
 
 			int px = left + Math.round(x * width);
-			// life 0 is just below the feet, life 1 just above the head, so a
-			// mote crosses the whole model instead of expiring beneath it.
-			float travel = (1.0f + BELOW + ABOVE) * life - BELOW;
-			int py = top + Math.round((1.0f - travel) * height);
+			int py = top + Math.round((1.0f - aura.up(i, elapsed)) * height);
 
-			// Larger near the bottom, thinning as they climb -- embers cooling.
+			// The front layer is drawn a size smaller, so it never competes
+			// with the skin it is decorating.
 			int span = inFront ? MAX_SIZE - 1 : MAX_SIZE;
-			int s = MIN_SIZE + Math.round(size[i] * (span - MIN_SIZE) * (1.0f - life * 0.6f));
+			int s = MIN_SIZE + Math.round(aura.size(i, elapsed) * (span - MIN_SIZE));
 
 			graphics.fill(px, py, px + s, py + s, (alpha << 24) | rgb);
 		}

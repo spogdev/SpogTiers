@@ -2,6 +2,7 @@ package com.spog.tiers.mixin;
 
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
+import com.spog.tiers.util.AuraTarget;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.network.chat.Component;
@@ -25,10 +26,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class EntityRendererMixin {
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
 	private void spogtiers$tagNameplate(Entity entity, EntityRenderState state, float partialTick, CallbackInfo ci) {
-		if (SpogTiersClient.config() == null || !SpogTiersClient.config().showNametags) {
+		if (SpogTiersClient.config() == null || !(entity instanceof Player player)) {
 			return;
 		}
-		if (!(entity instanceof Player player) || state.nameTag == null) {
+
+		// Parked for AuraMixin before the nametag work, and outside its guards:
+		// the aura is its own feature, so it must not depend on nametags being
+		// switched on or on this player having a nameplate at all.
+		AuraTarget.set(state, SpogTiersClient.service() == null
+				? null : SpogTiersClient.service().grade(player.getUUID()));
+
+		if (!SpogTiersClient.config().showNametags || state.nameTag == null) {
 			return;
 		}
 		state.nameTag = TagRenderer.withTag(player.getUUID(), state.nameTag);
