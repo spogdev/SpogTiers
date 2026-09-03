@@ -1,8 +1,6 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.util.AboveLabel;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
@@ -24,10 +22,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(EntityRenderer.class)
 public class LabelMixin {
 	/**
-	 * One line of vertical space, matching what 26.x puts between its own two
-	 * label lines: nine pixels at the label's scale.
+	 * One line of vertical space, at the label's scale.
+	 *
+	 * <p>Eleven pixels, not nine. Nine is the text's own line height, but the
+	 * backdrop a label draws is a pixel taller than the text on each side, so a
+	 * label occupies eleven. At nine the two backdrops overlapped by four
+	 * screen pixels of a thirty-nine pixel label, and where two translucent
+	 * backdrops overlap the alpha doubles and shows as a dark band across the
+	 * whole width.
 	 */
-	private static final float LINE_HEIGHT = 9.0f * 1.15f * 0.025f;
+	private static final float LINE_HEIGHT = 11.0f * 1.15f * 0.025f;
 
 	@Inject(method = "renderLabelIfPresent", at = @At("TAIL"))
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
@@ -43,52 +47,8 @@ public class LabelMixin {
 		// here is downward -- translating the other way put this tag below the
 		// name instead of above it.
 		matrices.translate(0.0f, -LINE_HEIGHT, 0.0f);
-		queue.submitLabel(matrices, state.nameLabelPos, 0,
-				matchWidth(above, state.displayName), !state.sneaking,
-				state.light, state.squaredDistanceToCamera, camera);
+		queue.submitLabel(matrices, state.nameLabelPos, 0, above,
+				!state.sneaking, state.light, state.squaredDistanceToCamera, camera);
 		matrices.pop();
-	}
-
-	/**
-	 * Pads {@code label} with spaces until its backdrop covers the name's.
-	 *
-	 * <p>Each label carries its own backdrop, sized to its own text and centred
-	 * on it, so two lines of different widths draw two concentric rectangles.
-	 * The narrower one's left and right edges then fall *inside* the wider one,
-	 * and each edge shows as a full-height bar of doubled alpha -- the grey
-	 * lines, which no vertical offset can remove because the mismatch is
-	 * horizontal.
-	 *
-	 * <p>Padding to strictly wider than the name, by a whole space on each
-	 * side, is what actually hides them. Matching the width exactly is not
-	 * enough: the name is asymmetric -- {@code TagRenderer} appends a leading
-	 * space only when something sits left of the name and a trailing one only
-	 * when something sits right -- so two equally wide backdrops still centre
-	 * differently, and whichever edge falls short leaves its bar behind. Going
-	 * over on both sides puts our edges outside the name's entirely, where they
-	 * sit against the sky and cannot double.
-	 */
-	private static Text matchWidth(Text label, Text name) {
-		if (name == null) {
-			return label;
-		}
-		TextRenderer font = MinecraftClient.getInstance().textRenderer;
-		int space = font.getWidth(" ");
-		if (space <= 0) {
-			return label;
-		}
-
-		// The name's own asymmetry is unknown here, so cover the worst case: it
-		// could be offset by a full space either way.
-		int missing = font.getWidth(name) - font.getWidth(label) + space * 2;
-		int each = Math.max(1, (missing + space * 2 - 1) / (space * 2));
-
-		StringBuilder pad = new StringBuilder(each);
-		for (int i = 0; i < each; i++) {
-			pad.append(' ');
-		}
-		return Text.literal(pad.toString())
-				.append(label)
-				.append(Text.literal(pad.toString()));
 	}
 }

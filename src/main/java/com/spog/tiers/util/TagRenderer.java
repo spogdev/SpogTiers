@@ -109,9 +109,12 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		Resolved left = resolve(uuid, config.leftTag, null);
-		Resolved above = resolve(uuid, config.aboveTag,
-				config.preventDuplicateTiers && left != null ? left.label() : null);
+		// No exclusion here. Prevent Duplicates is about the left and right
+		// slots that sit on the same line -- "the same tier appearing in both
+		// slots" -- and applying it to this one as well meant the above tag
+		// silently vanished whenever it agreed with the left tag, which is
+		// most of the time: both default to the player's best tier.
+		Resolved above = resolve(uuid, config.aboveTag, null);
 		return above == null ? null : above.text();
 	}
 
