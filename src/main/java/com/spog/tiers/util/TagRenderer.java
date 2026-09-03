@@ -279,7 +279,10 @@ public final class TagRenderer {
 		}
 		MutableComponent out = Component.empty();
 		if (config.showTagIcons) {
-			out.append(ModeIcons.doorRaised()).append(glyphGap());
+			// A narrower gap than the other icons take: this glyph was shifted
+			// right inside its cell, which widened its advance, so a full space
+			// after it left the tier sitting noticeably away from the door.
+			out.append(ModeIcons.doorRaised()).append(ModeIcons.narrowSpace());
 		}
 		out.append(Component.literal(grade.label())
 				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
