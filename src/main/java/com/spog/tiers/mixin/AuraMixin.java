@@ -103,11 +103,12 @@ public class AuraMixin {
 			int colour = ((int) (alpha * 255.0f) << 24) | rgb;
 
 			poseStack.pushPose();
-			// Anchored at the player's feet, then turned to face the camera so
-			// each mote reads as a flat speck however you walk around them.
-			poseStack.translate(0.0, y, 0.0);
+			// Placed around the player in WORLD space first -- x across, y up,
+			// z through -- and only then turned to face the camera. Rotating
+			// before the offset would have applied x and z in camera space, so
+			// the two layers would slide across the body as you walked round.
+			poseStack.translate(x, y, z);
 			poseStack.mulPose(camera.orientation);
-			poseStack.translate(x, 0.0f, z);
 
 			float size = half;
 			collector.submitCustomGeometry(poseStack, RenderTypes.textBackground(),
