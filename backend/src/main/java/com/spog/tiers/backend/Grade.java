@@ -15,14 +15,14 @@ import java.util.Locale;
  * {@link #values()} is already the right order for a Discord choice list.
  */
 public enum Grade {
-	S("S", 0xFF7FFF),
-	A_PLUS("A+", 0xFFBF7F),
-	A("A", 0xFFDF7F),
-	B_PLUS("B+", 0xFFFF7F),
-	B("B", 0xBFFF7F),
-	C("C", 0x7FFF7F),
-	D("D", 0x7FFFFF),
-	F("F", 0x7F7FFF);
+	S("S", 0xFFFFFF),
+	A_PLUS("A+", 0xA034C7),
+	A("A", 0xD42626),
+	B_PLUS("B+", 0xEB8526),
+	B("B", 0x7FFF7F),
+	C("C", 0xEDE04E),
+	D("D", 0x5F9448),
+	F("F", 0x824B27);
 
 	private final String label;
 	private final int color;

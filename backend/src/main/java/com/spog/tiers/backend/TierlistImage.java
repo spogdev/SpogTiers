@@ -58,7 +58,15 @@ public final class TierlistImage {
 	private static final Color ROW_FILL = new Color(0x1E, 0x21, 0x26);
 	private static final Color GRID = new Color(0x2C, 0x31, 0x38);
 	/** Tier labels are dark text on the tier's own colour, as in a tier maker. */
+	/**
+	 * The two inks a tier label can be written in.
+	 *
+	 * <p>Which one is used depends on the tier: see {@link #labelInk}. The
+	 * colours are the tierlist's own and range from white to a dark brown, so
+	 * no single ink stays readable across all of them.
+	 */
 	private static final Color LABEL_TEXT = new Color(0x11, 0x11, 0x11);
+	private static final Color LABEL_TEXT_LIGHT = new Color(0xFF, 0xFF, 0xFF);
 
 	/** How long a fetched face is reused. Skins change rarely. */
 	private static final long FACE_TTL_MILLIS = 60 * 60 * 1000L;
@@ -148,8 +156,8 @@ public final class TierlistImage {
 		g.drawRect(x, y, width - 1, height - 1);
 		g.drawLine(x + LABEL_WIDTH, y, x + LABEL_WIDTH, y + height - 1);
 
-		// The tier's name, centred in its block.
-		g.setColor(LABEL_TEXT);
+		// The tier's name, centred in its block, in whichever ink reads on it.
+		g.setColor(labelInk(tier));
 		g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 26));
 		FontMetrics metrics = g.getFontMetrics();
 		String label = tier.label();
@@ -248,5 +256,27 @@ public final class TierlistImage {
 			LOG.debug("face fetch failed for {}", id, e);
 			return null;
 		}
+	}
+
+	/**
+	 * The ink a tier's label is written in: dark on light tiers, light on dark
+	 * ones.
+	 *
+	 * <p>Chosen by relative luminance rather than by listing which tiers are
+	 * dark, so it stays right when the tierlist's colours change. The
+	 * threshold is where the two inks contrast equally against the tier.
+	 */
+	private static Color labelInk(Grade tier) {
+		int rgb = tier.color();
+		double luminance = 0.2126 * channel((rgb >> 16) & 0xFF)
+				+ 0.7152 * channel((rgb >> 8) & 0xFF)
+				+ 0.0722 * channel(rgb & 0xFF);
+		return luminance > 0.18 ? LABEL_TEXT : LABEL_TEXT_LIGHT;
+	}
+
+	/** One sRGB channel, 0-255, linearised for the luminance sum. */
+	private static double channel(int value) {
+		double v = value / 255.0;
+		return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
 	}
 }

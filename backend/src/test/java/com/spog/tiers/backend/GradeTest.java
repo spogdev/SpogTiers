@@ -37,14 +37,14 @@ class GradeTest {
 	void publishesTheColoursTheTierlistUses() {
 		// These are the tierlist's own colours and are what the mod draws, so
 		// they are pinned rather than left to drift.
-		assertEquals("FF7FFF", Grade.S.hex());
-		assertEquals("FFBF7F", Grade.A_PLUS.hex());
-		assertEquals("FFDF7F", Grade.A.hex());
-		assertEquals("FFFF7F", Grade.B_PLUS.hex());
-		assertEquals("BFFF7F", Grade.B.hex());
-		assertEquals("7FFF7F", Grade.C.hex());
-		assertEquals("7FFFFF", Grade.D.hex());
-		assertEquals("7F7FFF", Grade.F.hex());
+		assertEquals("FFFFFF", Grade.S.hex());
+		assertEquals("A034C7", Grade.A_PLUS.hex());
+		assertEquals("D42626", Grade.A.hex());
+		assertEquals("EB8526", Grade.B_PLUS.hex());
+		assertEquals("7FFF7F", Grade.B.hex());
+		assertEquals("EDE04E", Grade.C.hex());
+		assertEquals("5F9448", Grade.D.hex());
+		assertEquals("824B27", Grade.F.hex());
 	}
 
 	@Test
