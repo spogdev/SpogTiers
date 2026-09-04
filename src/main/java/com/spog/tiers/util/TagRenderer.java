@@ -76,7 +76,10 @@ public final class TagRenderer {
 			}
 		}
 
-		Text region = config.showRegionOnNametag ? regionFor(uuid) : null;
+		// Only when it belongs on this row: the top slots are drawn by the
+		// above tag instead.
+		SpogTiersConfig.RegionSlot slot = config.regionSlot;
+		Text region = slot.shown() && !slot.top() ? regionFor(uuid) : null;
 
 		if (left == null && right == null && region == null) {
 			return original;
@@ -88,7 +91,7 @@ public final class TagRenderer {
 		// badge from butting against ours -- Essential puts its badge
 		// immediately to the left, and a space on top of the backdrop's own
 		// margin left a visibly wide gap.
-		if (region != null) {
+		if (region != null && slot.before()) {
 			out.append(region).append(space());
 		}
 		if (left != null) {
@@ -100,6 +103,9 @@ public final class TagRenderer {
 		// backdrop from the above tag's and leaves a bar down one side.
 		if (right != null) {
 			out.append(separator()).append(right);
+		}
+		if (region != null && !slot.before()) {
+			out.append(space()).append(region);
 		}
 		return out;
 	}
@@ -137,7 +143,21 @@ public final class TagRenderer {
 		Set<String> exclude = config.preventDuplicateTiers
 				? lineLabels(uuid) : Set.<String>of();
 		Resolved above = resolve(uuid, config.aboveTag, exclude);
-		return above == null ? null : above.text();
+
+		SpogTiersConfig.RegionSlot slot = config.regionSlot;
+		Text region = slot.shown() && slot.top() ? regionFor(uuid) : null;
+		if (region == null) {
+			return above == null ? null : above.text();
+		}
+		// The region can hold this row on its own: someone who wants only a
+		// region above the name should get one, not nothing because no tier
+		// resolved beside it.
+		if (above == null) {
+			return region;
+		}
+		return slot.before()
+				? Text.empty().append(region).append(space()).append(above.text())
+				: Text.empty().append(above.text()).append(space()).append(region);
 	}
 
 	/**
