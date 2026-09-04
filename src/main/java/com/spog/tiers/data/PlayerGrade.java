@@ -15,6 +15,14 @@ import java.util.Locale;
  * not asked yet" is what stops the screen refetching every frame.
  */
 public record PlayerGrade(String grade, int color, long gradedAt, boolean retired) {
+	/** The plate a badge is drawn on: the nameplate backdrop. */
+	private static final int PLATE = 0x1E2126;
+
+	/** The contrast a badge must reach against it, and how it gets there. */
+	private static final double MIN_CONTRAST = 4.5;
+	private static final float LIFT_STEP = 0.02f;
+	private static final int MAX_LIFT_STEPS = 50;
+
 	/** How far a retired tier's colour is pulled towards grey. */
 	private static final float RETIRED_FADE = 0.55f;
 
@@ -54,7 +62,56 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 * unreadable, so a bad colour is a wrong shade rather than black on black.
 	 */
 	public int foreground() {
-		return 0xFF000000 | tint();
+		return 0xFF000000 | readable(tint());
+	}
+
+	/**
+	 * The colour lightened just enough to read on the tag.
+	 *
+	 * <p>The tierlist picks its colours to look right as blocks on the
+	 * rendered tierlist, where they are filled areas with dark text on them.
+	 * The mod draws them the other way round -- as small text on a dark plate
+	 * -- and the darkest of them (F, A, A+) land near 2.5:1 that way, which is
+	 * not readable at nameplate size.
+	 *
+	 * <p>So a colour is blended towards white only until it clears the 4.5:1
+	 * the guidelines ask for, and colours that already pass are left exactly
+	 * as the tierlist set them. The hue is kept: an F still reads as the same
+	 * brown, just light enough to see.
+	 */
+	private static int readable(int rgb) {
+		int lifted = rgb;
+		// A bounded walk rather than solving for the blend: the steps are
+		// small, it stops at the first that passes, and it cannot loop.
+		for (int step = 0; step <= MAX_LIFT_STEPS; step++) {
+			if (contrast(lifted, PLATE) >= MIN_CONTRAST) {
+				return lifted;
+			}
+			lifted = blend(rgb, 0xFFFFFF, step * LIFT_STEP);
+		}
+		return lifted;
+	}
+
+	/** WCAG relative luminance, for {@link #contrast}. */
+	private static double luminance(int rgb) {
+		return 0.2126 * linear((rgb >> 16) & 0xFF)
+				+ 0.7152 * linear((rgb >> 8) & 0xFF)
+				+ 0.0722 * linear(rgb & 0xFF);
+	}
+
+	/** One sRGB channel, 0-255, linearised for the luminance sum. */
+	private static double linear(int value) {
+		double v = value / 255.0;
+		return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+	}
+
+	/** The WCAG contrast ratio between two opaque colours. */
+	private static double contrast(int a, int b) {
+		double first = luminance(a);
+		double second = luminance(b);
+		double lighter = Math.max(first, second);
+		double darker = Math.min(first, second);
+		return (lighter + 0.05) / (darker + 0.05);
 	}
 
 	/**
@@ -108,14 +165,14 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 */
 	private static int fallbackColor(String grade) {
 		return switch (grade.toUpperCase(Locale.ROOT)) {
-			case "S" -> 0xFF7FFF;
-			case "A+" -> 0xFFBF7F;
-			case "A" -> 0xFFDF7F;
-			case "B+" -> 0xFFFF7F;
-			case "B" -> 0xBFFF7F;
-			case "C" -> 0x7FFF7F;
-			case "D" -> 0x7FFFFF;
-			case "F" -> 0x7F7FFF;
+			case "S" -> 0xFFFFFF;
+			case "A+" -> 0xA034C7;
+			case "A" -> 0xD42626;
+			case "B+" -> 0xEB8526;
+			case "B" -> 0x7FFF7F;
+			case "C" -> 0xEDE04E;
+			case "D" -> 0x5F9448;
+			case "F" -> 0x824B27;
 			default -> 0xB9C4D0;
 		};
 	}
