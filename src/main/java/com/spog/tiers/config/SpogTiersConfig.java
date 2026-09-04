@@ -108,8 +108,27 @@ public class SpogTiersConfig {
 	 */
 	public boolean showSeparators = true;
 
-	/** Show the region code before the name. */
-	public boolean showRegionOnNametag = false;
+	/**
+	 * Where the region code sits, or {@link RegionSlot#OFF} to hide it.
+	 *
+	 * <p>Null in a config written before this was a dropdown; see
+	 * {@link #showRegionOnNametag}, which it replaces.
+	 */
+	public RegionSlot regionSlot = null;
+
+	/**
+	 * The old on/off switch, kept only so an existing config can be read.
+	 *
+	 * <p>It has to keep its own field rather than being reused as the enum:
+	 * Gson throws on a boolean where it wants a string, and the load catches
+	 * that and falls back to a fresh config -- so reusing the name would have
+	 * quietly reset every other setting the user had. {@link #normalise}
+	 * carries the value across and nothing reads it afterwards.
+	 *
+	 * @deprecated superseded by {@link #regionSlot}
+	 */
+	@Deprecated
+	public Boolean showRegionOnNametag = null;
 
 	/** Where tier tags appear. */
 	public boolean showInChat = false;
@@ -178,6 +197,46 @@ public class SpogTiersConfig {
 	 * the same mode in the same place across every card and makes the grid easy
 	 * to scan. The other two sort by the data instead.
 	 */
+	/**
+	 * Where the region code is drawn.
+	 *
+	 * <p>Two rows and two sides. The top row is the line above the name, drawn
+	 * beside the above tag; the bottom row is the nameplate itself, drawn
+	 * outside the tier tags on that side.
+	 */
+	public enum RegionSlot {
+		OFF("Off"),
+		TOP_LEFT("Top Left"),
+		TOP_RIGHT("Top Right"),
+		BOTTOM_LEFT("Bottom Left"),
+		BOTTOM_RIGHT("Bottom Right");
+
+		private final String title;
+
+		RegionSlot(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
+		}
+
+		/** Whether this slot is drawn at all. */
+		public boolean shown() {
+			return this != OFF;
+		}
+
+		/** Whether it belongs on the line above the name rather than the name itself. */
+		public boolean top() {
+			return this == TOP_LEFT || this == TOP_RIGHT;
+		}
+
+		/** Whether it goes before what is on that row rather than after it. */
+		public boolean before() {
+			return this == TOP_LEFT || this == BOTTOM_LEFT;
+		}
+	}
+
 	public enum SortOrder {
 		/** Whatever order the provider sent, which is its own default. */
 		DEFAULT("Received"),
@@ -282,6 +341,15 @@ public class SpogTiersConfig {
 		if (displayList == null) {
 			displayList = TierList.PVPTIERS;
 		}
+		// Carried across from the old switch, which only knew "before the
+		// name": that is the bottom-left slot now. A config that predates
+		// either setting has neither, and gets the same default as a new one.
+		if (regionSlot == null) {
+			regionSlot = Boolean.TRUE.equals(showRegionOnNametag)
+					? RegionSlot.BOTTOM_LEFT
+					: RegionSlot.OFF;
+		}
+		showRegionOnNametag = null;
 		if (displayMode == null) {
 			displayMode = Gamemode.VANILLA;
 		}
