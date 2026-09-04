@@ -39,7 +39,17 @@ public abstract class TextDisplayMixin {
 		throw new AssertionError("shadow");
 	}
 
-	@Inject(method = "updateRenderState", at = @At("TAIL"))
+	// Qualified by descriptor. The class carries two synthetic bridge
+	// overloads of this name -- one taking DisplayEntity, one taking Entity --
+	// which both cast their arguments and call straight through to the real
+	// method. A bare name matched all three, so every display was tagged up
+	// to three times over: the second pass saw the text the first had already
+	// tagged, matched the player's name inside it again, and appended another
+	// badge, and the resulting text no longer matched anything the renderer
+	// could lay out.
+	@Inject(method = "updateRenderState(Lnet/minecraft/entity/decoration/DisplayEntity$TextDisplayEntity;"
+			+ "Lnet/minecraft/client/render/entity/state/TextDisplayEntityRenderState;F)V",
+			at = @At("TAIL"))
 	private void spogtiers$tagTextDisplay(DisplayEntity.TextDisplayEntity display,
 			TextDisplayEntityRenderState state, float tickDelta, CallbackInfo ci) {
 		if (SpogTiersClient.config() == null
