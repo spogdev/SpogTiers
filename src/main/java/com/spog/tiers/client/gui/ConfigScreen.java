@@ -330,6 +330,13 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y = drawSwitch(graphics, "Show Retired", config.showRetired, x, y,
+				() -> {
+					config.showRetired = !config.showRetired;
+					config.save();
+				},
+				"Show retired ranks as retired, rather than as the plain tier");
+
 		y = drawSwitch(graphics, "Extra Tierlists", config.extraTierlists, x, y,
 				() -> {
 					config.extraTierlists = !config.extraTierlists;
@@ -433,6 +440,12 @@ public class ConfigScreen extends Screen {
 					config.save();
 				},
 				"Tags nametags that a server draws with a text display");
+		y = drawSwitch(graphics, "Separators", config.showSeparators, x, y,
+				() -> {
+					config.showSeparators = !config.showSeparators;
+					config.save();
+				},
+				"Draw a line between each part of the nametag");
 		y += font.lineHeight + 10;
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, 0xFFFFFFFF);

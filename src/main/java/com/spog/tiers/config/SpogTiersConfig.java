@@ -50,6 +50,18 @@ public class SpogTiersConfig {
 	public SortOrder sortOrder = SortOrder.RANKING;
 
 	/**
+	 * Show retirement, rather than presenting a retired rank as an active one.
+	 *
+	 * <p>Off, an RHT1 reads and colours exactly as an HT1 everywhere: the R
+	 * goes, and the washed-out retired colour with it. Two exceptions. Our own
+	 * Door SMP tierlist still shows its R, because retirement there is the
+	 * point of the list rather than an annotation on someone else's. And the
+	 * profile tooltip still says so, because a tooltip is where someone asks
+	 * for the detail the label left out.
+	 */
+	public boolean showRetired = true;
+
+	/**
 	 * Show gamemodes a player is still placing into.
 	 *
 	 * <p>Only PVPHQ reports these. They carry no tier yet, so hiding them
@@ -76,6 +88,15 @@ public class SpogTiersConfig {
 	 * quoting it where another list is the fairer read.
 	 */
 	public Map<TierList, Boolean> taggedLists = defaultLists();
+
+	/**
+	 * Draw the {@code |} between a nametag's parts.
+	 *
+	 * <p>Off, the parts are spaced instead. The separators read as structure
+	 * on a busy server where several mods write into the same plate, and as
+	 * clutter on a quiet one, so it is left to taste.
+	 */
+	public boolean showSeparators = true;
 
 	/** Show the region code before the name. */
 	public boolean showRegionOnNametag = false;
