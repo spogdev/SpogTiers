@@ -8,6 +8,7 @@ import com.spog.tiers.SpogTiers;
 import com.spog.tiers.config.SpogTiersConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.AbstractClientPlayer;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -20,6 +21,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
@@ -310,11 +312,42 @@ public class TierService {
 		}
 	}
 
+	/**
+	 * Queues everyone who still needs looking up, nearest first.
+	 *
+	 * <p>Order is the whole point. The tab list arrives in whatever order the
+	 * server sends it, so queueing straight from it left the player standing
+	 * in front of you waiting behind everyone who happened to be listed
+	 * earlier -- on a full server, most of a minute at the polite background
+	 * rate. The players who are actually loaded around you go first, sorted by
+	 * how far away they are, because those are the nameplates someone is
+	 * looking at; the rest of the tab list follows to fill the cache.
+	 */
 	private void enqueueVisiblePlayers() {
 		Minecraft client = Minecraft.getInstance();
 		if (client.getConnection() == null) {
 			return;
 		}
+
+		// Loaded players, nearest first. These are the ones whose tags are on
+		// screen, or about to be.
+		if (client.level != null && client.player != null) {
+			List<AbstractClientPlayer> nearby = new ArrayList<>(client.level.players());
+			nearby.sort(Comparator.comparingDouble(client.player::distanceToSqr));
+			// Added in reverse: each goes to the front, so the nearest ends up
+			// first once they have all been pushed on.
+			for (int i = nearby.size() - 1; i >= 0; i--) {
+				UUID uuid = nearby.get(i).getUUID();
+				if (cache.needsLookup(uuid)) {
+					// Moved rather than skipped when already queued: a player
+					// who has just walked up should not keep a position they
+					// took at the back of the tab-list sweep.
+					queue.remove(uuid);
+					queue.addFirst(uuid);
+				}
+			}
+		}
+
 		for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
 			UUID uuid = entry.getProfile().id();
 			if (uuid != null && cache.needsLookup(uuid) && !queue.contains(uuid)) {
@@ -323,22 +356,57 @@ public class TierService {
 		}
 	}
 
+	/**
+	 * Dispatches queued lookups, quickly while there are players on screen
+	 * waiting and politely once there are not.
+	 *
+	 * <p>The rate limit exists to keep a full tab-list sweep friendly to the
+	 * providers, and that is worth doing for players who are only listed. It
+	 * is the wrong budget for the handful in front of you: those are few, they
+	 * are what the mod is for, and making them wait is the whole complaint.
+	 * So a burst is allowed for on-screen players and the configured rate
+	 * still governs the background sweep.
+	 */
 	private void drainQueue() {
 		if (queue.isEmpty()) {
 			return;
 		}
 		long now = System.currentTimeMillis();
 		long minGap = 1000L / Math.max(1, config.requestsPerSecond);
-		if (now - lastDispatchMillis < minGap) {
+		boolean visible = isLoaded(queue.peek());
+		if (!visible && now - lastDispatchMillis < minGap) {
 			return;
 		}
+
+		// One a tick for on-screen players, which at 20 ticks a second empties
+		// a lobby's worth of nameplates in well under a second, against the
+		// three background threads that do the fetching.
 		UUID uuid = queue.poll();
 		if (uuid == null || !cache.needsLookup(uuid)) {
 			return;
 		}
-		lastDispatchMillis = now;
+		if (!visible) {
+			lastDispatchMillis = now;
+		}
 		cache.markPending(uuid);
 		workers.submit(() -> fetchAll(uuid));
+	}
+
+	/** Whether this player is loaded in the world rather than only listed. */
+	private boolean isLoaded(UUID uuid) {
+		if (uuid == null) {
+			return false;
+		}
+		Minecraft client = Minecraft.getInstance();
+		if (client.level == null) {
+			return false;
+		}
+		for (AbstractClientPlayer player : client.level.players()) {
+			if (uuid.equals(player.getUUID())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Queries every enabled list; one failing must not sink the others. */
