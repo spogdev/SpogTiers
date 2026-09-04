@@ -128,7 +128,8 @@ public class AuraMixin {
 		var config = SpogTiersClient.config();
 		// The switch that already governs the door tag and the profile aura:
 		// with our tierlist off, none of it shows anywhere.
-		if (config == null || !config.enabled || !config.extraTierlists) {
+		if (config == null || !config.enabled || !config.extraTierlists
+				|| !config.showParticles) {
 			return;
 		}
 		PlayerGrade grade = AuraTarget.get(state);
