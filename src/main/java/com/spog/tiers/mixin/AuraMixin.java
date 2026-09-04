@@ -58,9 +58,18 @@ public class AuraMixin {
 	private static final float MIN_SIZE = PIXEL;
 	private static final float MAX_SIZE = 4.0f * PIXEL;
 
-	/** How far the glow, and the halo beyond it, reach past the core: the profile's pixels. */
+	/** How far the glow, and the halo beyond it, reach past the ember's body. */
 	private static final float GLOW = PIXEL;
 	private static final float HALO = 2.0f * PIXEL;
+
+	/**
+	 * How much of the ember's body the lit core takes.
+	 *
+	 * <p>Under half, so the core is a bright point sitting inside the glow
+	 * rather than the whole ember: a glow needs something to be glowing around
+	 * to read as one.
+	 */
+	private static final float CORE_SHARE = 0.45f;
 
 	/** How wide the aura is at its widest, as a multiple of the body width. */
 	private static final float SPREAD = 1.7f;
@@ -197,13 +206,17 @@ public class AuraMixin {
 			int glow = AURA.glowColour(rgb, i, elapsed);
 			int core = AURA.coreColour(rgb, i, elapsed);
 			float half = size / 2.0f;
+			// The lit centre, small enough that the glow reads as light coming
+			// off it rather than as a second edge around the same square.
+			float coreHalf = Math.max(half * CORE_SHARE, PIXEL / 2.0f);
 			matrices.push();
 			place(matrices, i, elapsed, height, reach);
 			queue.getBatchingQueue(BATCH).submitCustom(matrices, RenderLayers.textBackground(),
 					(entry, buffer) -> {
 						cube(entry, buffer, halo, half + HALO);
 						cube(entry, buffer, glow, half + GLOW);
-						cube(entry, buffer, core, half);
+						cube(entry, buffer, glow, half);
+						cube(entry, buffer, core, coreHalf);
 					});
 			matrices.pop();
 		}

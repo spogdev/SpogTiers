@@ -21,9 +21,18 @@ public final class TierAura {
 	private static final int MIN_SIZE = 1;
 	private static final int MAX_SIZE = 4;
 
-	/** How far the glow, and the halo beyond it, reach past the core, in pixels. */
+	/** How far the glow, and the halo beyond it, reach past the ember's body, in pixels. */
 	private static final int GLOW = 1;
 	private static final int HALO = 2;
+
+	/**
+	 * How much of the ember's body the lit core takes.
+	 *
+	 * <p>Under half, so the core is a bright point sitting inside the glow
+	 * rather than the whole ember: a glow needs something to be glowing around
+	 * to read as one.
+	 */
+	private static final float CORE_SHARE = 0.45f;
 
 	private final WorldAura aura = new WorldAura();
 
@@ -87,7 +96,13 @@ public final class TierAura {
 				graphics.fill(tx, ty, tx + ts, ty + ts, aura.tailColour(rgb, i, elapsed, segment));
 			}
 
-			graphics.fill(px, py, px + s, py + s, aura.coreColour(rgb, i, elapsed));
+			// The body in the glow colour, then the lit centre inside it: the
+			// core is a bright point the glow surrounds, not the whole ember.
+			graphics.fill(px, py, px + s, py + s, aura.glowColour(rgb, i, elapsed));
+			int core = Math.max(1, Math.round(s * CORE_SHARE));
+			int inset = (s - core) / 2;
+			graphics.fill(px + inset, py + inset, px + inset + core, py + inset + core,
+					aura.coreColour(rgb, i, elapsed));
 		}
 	}
 
