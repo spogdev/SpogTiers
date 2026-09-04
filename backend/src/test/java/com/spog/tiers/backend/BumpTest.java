@@ -187,4 +187,71 @@ class BumpTest {
 		store.set(A, "Ana", Grade.S, "t", "1");
 		assertNotEquals(List.of(), order(store, Grade.S));
 	}
+
+	/** Names on a tier as the tierlist draws it: retired players are hidden. */
+	private static List<String> visible(GradeStore store, Grade tier) {
+		List<String> out = new ArrayList<>();
+		for (GradeStore.Record record : store.all()) {
+			if (record.grade() == tier && !record.retired()) {
+				out.add(record.name());
+			}
+		}
+		return out;
+	}
+
+	@Test
+	void bumpingCountsOnlyThePlayersOnScreen(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		store.set(D, "Di", Grade.S, "t", "1");
+
+		// Ana Bo Cy Di, with the two in the middle retired, so the drawn list
+		// is just Ana Di.
+		assertTrue(store.retire(B, true));
+		assertTrue(store.retire(C, true));
+		assertEquals(List.of("Ana", "Di"), visible(store, Grade.S));
+
+		// One place up is one place up on screen. Counting the retired pair
+		// would have needed three to pass Ana.
+		assertEquals(1, store.bump(D, 1));
+		assertEquals(List.of("Di", "Ana"), visible(store, Grade.S));
+	}
+
+	@Test
+	void aRetiredPlayerCannotBeBumped(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(C, true));
+
+		// They are not on the drawn list, so there is no place to move within.
+		assertEquals(-1, store.bump(C, 1));
+	}
+
+	@Test
+	void bumpingDoesNotDisturbRetiredPlayers(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(A, true));
+		int kept = store.get(A).order();
+
+		store.bump(C, 1);
+
+		// Renumbering the visible players must not renumber the hidden one.
+		assertEquals(kept, store.get(A).order());
+		assertTrue(store.get(A).retired());
+	}
+
+	@Test
+	void placesAreCountedOverTheDrawnRow(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		store.set(D, "Di", Grade.S, "t", "1");
+		assertTrue(store.retire(B, true));
+
+		// What /whois counts: the drawn row, retired players left out. Ana is
+		// place 1 and Cy place 2, even though Bo sits between them in storage.
+		List<String> row = visible(store, Grade.S);
+		assertEquals(List.of("Ana", "Cy", "Di"), row);
+		assertEquals("Cy", row.get(2 - 1));
+
+		// And it tracks a bump, so a place read off the picture stays right.
+		store.bump(D, 2);
+		assertEquals(List.of("Di", "Ana", "Cy"), visible(store, Grade.S));
+	}
 }

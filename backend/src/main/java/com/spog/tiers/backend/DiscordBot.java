@@ -168,10 +168,30 @@ public final class DiscordBot extends ListenerAdapter {
 			filter.addChoice(value.label(), value.label());
 		}
 
+		// The tier a /whois place is counted within, and required: a place
+		// means nothing without the row it is a place in.
+		OptionData whoisTier = new OptionData(OptionType.STRING, "tier",
+				"Which tier to count within", true);
+		for (Grade value : Grade.values()) {
+			whoisTier.addChoice(value.label(), value.label());
+		}
+
+		// From the left, from 1, matching how someone reads a position off the
+		// rendered row rather than how a list is indexed.
+		OptionData spaces = new OptionData(OptionType.INTEGER, "spaces",
+				"Places from the left of the tier, starting at 1", true)
+				.setMinValue(1);
+
 		// Optional, and its absence is the dangerous case: with no tier named
 		// the whole list goes. Left optional anyway rather than requiring an
 		// "everything" choice, because the confirmation is what makes the
 		// scale of it clear, and a required option would not change that.
+		OptionData retiredFilter = new OptionData(OptionType.STRING, "grade",
+				"Only show this tier", false);
+		for (Grade value : Grade.values()) {
+			retiredFilter.addChoice(value.label(), value.label());
+		}
+
 		OptionData clearFilter = new OptionData(OptionType.STRING, "grade",
 				"Only clear this tier, instead of the whole list", false);
 		for (Grade value : Grade.values()) {
@@ -189,6 +209,10 @@ public final class DiscordBot extends ListenerAdapter {
 						.addOptions(player),
 				Commands.slash("tierlist", "Show current tierlist")
 						.addOptions(filter),
+				Commands.slash("retiredtierlist", "Show retired players only")
+						.addOptions(retiredFilter),
+				Commands.slash("whois", "Look up the player at a place in a tier")
+						.addOptions(whoisTier, spaces),
 				Commands.slash("bump", "Move a player within their tier")
 						.addOptions(player, places),
 				Commands.slash("retire", "Toggle retirement of a player")
@@ -208,7 +232,9 @@ public final class DiscordBot extends ListenerAdapter {
 		switch (event.getName()) {
 			case "assign" -> assign(event);
 			case "tier" -> lookup(event);
-			case "tierlist" -> list(event);
+			case "tierlist" -> list(event, false);
+			case "retiredtierlist" -> list(event, true);
+			case "whois" -> whois(event);
 			case "bump" -> bump(event);
 			case "retire" -> retire(event);
 			case "clear" -> clear(event);
@@ -292,12 +318,22 @@ public final class DiscordBot extends ListenerAdapter {
 			event.getHook().sendMessageEmbeds(new EmbedBuilder()
 					.setTitle(shown)
 					.setThumbnail(head(id))
-					.setDescription("Not on the " + LIST_NAME + " tierlist yet")
+					.setDescription("Not on the tierlist")
 					.setColor(NEUTRAL)
 					.build()).queue();
 			return;
 		}
 
+		event.getHook().sendMessageEmbeds(profile(id, shown, record)).queue();
+	}
+
+	/**
+	 * One player's standing, as /tier and /whois both show it.
+	 *
+	 * <p>Shared so the two commands cannot describe the same player
+	 * differently: they differ only in how the player was named.
+	 */
+	private MessageEmbed profile(UUID id, String shown, GradeStore.Record record) {
 		EmbedBuilder embed = new EmbedBuilder()
 				.setTitle(shown)
 				.setThumbnail(head(id))
@@ -310,10 +346,65 @@ public final class DiscordBot extends ListenerAdapter {
 			embed.setFooter("Graded by " + record.gradedBy());
 			embed.addField("Graded", "<t:" + record.gradedAt() + ":R>", false);
 		}
-		event.getHook().sendMessageEmbeds(embed.build()).queue();
+		return embed.build();
 	}
 
-	private void list(SlashCommandInteractionEvent event) {
+	/**
+	 * The player standing at a given place in a tier.
+	 *
+	 * <p>Counted from the left of the rendered row, from 1, and over the
+	 * players that row actually draws: retired players are not on it, so they
+	 * are not counted, exactly as with /bump.
+	 */
+	private void whois(SlashCommandInteractionEvent event) {
+		Grade tier = Grade.parse(event.getOption("tier", "", OptionMapping::getAsString));
+		if (tier == null) {
+			event.reply("Pick a tier").setEphemeral(true).queue();
+			return;
+		}
+		int place = event.getOption("spaces", 1L, OptionMapping::getAsLong).intValue();
+
+		List<GradeStore.Record> row = new ArrayList<>();
+		for (GradeStore.Record record : grades.all()) {
+			if (record.grade() == tier && !record.retired()) {
+				row.add(record);
+			}
+		}
+
+		if (row.isEmpty()) {
+			event.reply("Nobody is **" + tier.label() + "**").setEphemeral(true).queue();
+			return;
+		}
+		// Named rather than silently clamped: asking for the tenth of three is
+		// a mistake worth hearing about, and the size is the useful answer.
+		if (place < 1 || place > row.size()) {
+			event.reply("**" + tier.label() + "** has " + row.size() + " player"
+					+ (row.size() == 1 ? "" : "s") + ", so there is nobody at "
+					+ place).setEphemeral(true).queue();
+			return;
+		}
+
+		GradeStore.Record record = row.get(place - 1);
+		event.deferReply().queue();
+
+		// Refreshed while we are here, so a renamed player is not shown under
+		// the name they were graded with.
+		String shown = record.name();
+		String current = names.nameFor(record.uuid());
+		if (current != null && !current.isBlank()) {
+			grades.refreshName(record.uuid(), current);
+			shown = current;
+		}
+		event.getHook().sendMessageEmbeds(profile(record.uuid(), shown, record)).queue();
+	}
+
+	/**
+	 * The tierlist picture.
+	 *
+	 * @param retiredOnly show the players the ordinary list hides, and hide
+	 *     the ones it shows
+	 */
+	private void list(SlashCommandInteractionEvent event, boolean retiredOnly) {
 		Grade filter = Grade.parse(event.getOption("grade", "", OptionMapping::getAsString));
 
 		// all() is already sorted best tier first, then by name, so grouping is
@@ -322,8 +413,10 @@ public final class DiscordBot extends ListenerAdapter {
 		int total = 0;
 		for (GradeStore.Record record : grades.all()) {
 			// Retired players keep their tier and can still be looked up one by
-			// one, but the picture is about who is currently ranked.
-			if (record.retired() || (filter != null && record.grade() != filter)) {
+			// one, but the picture is about who is currently ranked -- or,
+			// for /retiredtierlist, about exactly the ones left out of it.
+			if (record.retired() != retiredOnly
+					|| (filter != null && record.grade() != filter)) {
 				continue;
 			}
 			byTier.computeIfAbsent(record.grade(), k -> new ArrayList<>()).add(record);
@@ -331,9 +424,14 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 
 		if (total == 0) {
-			event.reply(filter == null
-					? "Nobody is on the tierlist yet"
-					: "Nobody is **" + filter.label() + "**").queue();
+			String nobody = retiredOnly
+					? (filter == null
+							? "Nobody has retired yet"
+							: "Nobody retired at **" + filter.label() + "**")
+					: (filter == null
+							? "Nobody is on the tierlist yet"
+							: "Nobody is **" + filter.label() + "**");
+			event.reply(nobody).queue();
 			return;
 		}
 
@@ -360,7 +458,8 @@ public final class DiscordBot extends ListenerAdapter {
 			return;
 		}
 		event.getHook()
-				.sendFiles(FileUpload.fromData(png, "tierlist.png"))
+				.sendFiles(FileUpload.fromData(png,
+						retiredOnly ? "retired-tierlist.png" : "tierlist.png"))
 				.queue();
 	}
 

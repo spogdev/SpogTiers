@@ -236,11 +236,20 @@ public final class GradeStore {
 			}
 
 			// The tier as it is drawn, so a move is against what was on screen.
+			// Retired players are left out for exactly that reason: the
+			// tierlist hides them, so counting them here made a bump travel
+			// fewer visible places than asked for -- a +4 past two retired
+			// players moved someone only two places on screen.
 			List<Record> tier = new ArrayList<>();
 			for (Record record : grades.values()) {
-				if (record.grade() == target.grade()) {
+				if (record.grade() == target.grade() && !record.retired()) {
 					tier.add(record);
 				}
+			}
+
+			// A retired player has no place on the drawn list to move within.
+			if (target.retired()) {
+				return -1;
 			}
 			tier.sort(Comparator.comparingInt(Record::order)
 					.thenComparing(r -> r.name().toLowerCase(Locale.ROOT)));
@@ -262,8 +271,10 @@ public final class GradeStore {
 			}
 
 			tier.add(to, tier.remove(from));
-			// Renumber the whole tier from zero: leaving gaps would let orders
-			// drift apart until a later insert lands somewhere unexpected.
+			// Renumber the players that were moved among. Retired players keep
+			// whatever order they had: they are not in this list, so they are
+			// not renumbered, and they take their old place back if they
+			// return.
 			for (int i = 0; i < tier.size(); i++) {
 				Record record = tier.get(i);
 				grades.put(record.uuid(), new Record(record.uuid(), record.name(),
