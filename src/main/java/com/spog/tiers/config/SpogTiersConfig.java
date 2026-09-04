@@ -62,6 +62,16 @@ public class SpogTiersConfig {
 	public boolean showRetired = true;
 
 	/**
+	 * Draw the ember aura around graded players and on their profile.
+	 *
+	 * <p>Separate from {@link #extraTierlists}, which turns our tierlist off
+	 * altogether: this leaves the door tag showing and only stops the
+	 * particles, for someone who wants the tier without the decoration around
+	 * every graded player they walk past.
+	 */
+	public boolean showParticles = true;
+
+	/**
 	 * Show gamemodes a player is still placing into.
 	 *
 	 * <p>Only PVPHQ reports these. They carry no tier yet, so hiding them

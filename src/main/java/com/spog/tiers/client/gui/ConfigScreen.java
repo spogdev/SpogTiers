@@ -343,6 +343,13 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y = drawSwitch(graphics, "Particles", config.showParticles, x, y,
+				() -> {
+					config.showParticles = !config.showParticles;
+					config.save();
+				},
+				"Draw the embers around graded players");
+
 		return y + CARD_PADDING - top;
 	}
 
