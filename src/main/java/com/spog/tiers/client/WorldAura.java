@@ -76,11 +76,31 @@ public final class WorldAura {
 	private static final float MAX_ALPHA = 0.95f;
 
 	/** Opacity of the glow round the core and of the wider halo round that, as shares of the core's. */
-	private static final float GLOW_ALPHA = 0.45f;
-	private static final float HALO_ALPHA = 0.18f;
+	private static final float GLOW_ALPHA = 0.6f;
+	private static final float HALO_ALPHA = 0.28f;
+
+	/**
+	 * How solid the core stays regardless of its own fade.
+	 *
+	 * <p>The core is the lit point of the ember, and a light source does not
+	 * thin out as it travels -- it is either burning or it is gone. Fading it
+	 * on the same curve as its glow left the whole thing washed out, so the
+	 * core keeps most of its opacity across its life and the surrounding
+	 * layers do the fading instead.
+	 */
+	private static final float CORE_SOLIDITY = 0.72f;
 
 	/** How far a newborn core is pushed towards white. */
 	private static final float HOT = 0.75f;
+
+	/**
+	 * How white the core stays once it is no longer newborn.
+	 *
+	 * <p>A hot centre inside a tier-coloured glow, rather than a uniformly
+	 * tier-coloured blob: this is what reads as something burning rather than
+	 * as a coloured dot.
+	 */
+	private static final float CORE_WHITE = 0.35f;
 
 	/** Where in its rise an ember starts to darken, and how dark it gets. */
 	private static final float COOL_FROM = 0.55f;
@@ -235,9 +255,15 @@ public final class WorldAura {
 	 * {@value #COOL_FROM} of its rise, darkened towards a dying ember.
 	 */
 	public int coreColour(int rgb, int mote, float elapsed) {
-		int hot = mix(rgb, 0xFFFFFF, HOT * heat(mote, elapsed));
-		int colour = mix(hot, 0x000000, COOLED * cool(mote, elapsed));
-		return withAlpha(colour, alpha(mote, elapsed));
+		// Never darkened, unlike the glow and the tail: cooling a light source
+		// towards black is what made the embers look like dirty smudges late
+		// in their rise instead of dimming cleanly.
+		float white = CORE_WHITE + (HOT - CORE_WHITE) * heat(mote, elapsed);
+		int colour = mix(rgb, 0xFFFFFF, white);
+		// Lifted towards opaque so the centre stays a definite point of light
+		// even as the ember as a whole fades out.
+		float alpha = alpha(mote, elapsed);
+		return withAlpha(colour, alpha + (1.0f - alpha) * CORE_SOLIDITY);
 	}
 
 	/** The glow around the core: the tier colour, faint. */
