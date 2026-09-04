@@ -345,7 +345,8 @@ public class ProfileScreen extends Screen {
 
 		// The rest of the embers, over the model now that it has drawn, so the
 		// effect wraps the player rather than sitting flat behind them.
-		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
+		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists
+				&& SpogTiersClient.config().showParticles) {
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
 					skinWidget.getX(), skinWidget.getY(),
 					skinWidget.getWidth(), skinWidget.getHeight(), true);
@@ -549,7 +550,8 @@ public class ProfileScreen extends Screen {
 		// Outside the panel transform, because the model is a widget in screen
 		// space rather than something drawn into the panel. Widgets render
 		// after this method, so the embers land behind the player.
-		if (skinWidget != null && SpogTiersClient.config().extraTierlists) {
+		if (skinWidget != null && SpogTiersClient.config().extraTierlists
+				&& SpogTiersClient.config().showParticles) {
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
 					skinWidget.getWidth(), skinWidget.getHeight(), false);
 		}

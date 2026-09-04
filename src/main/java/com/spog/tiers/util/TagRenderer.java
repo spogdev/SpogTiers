@@ -14,8 +14,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -39,7 +41,7 @@ public final class TagRenderer {
 
 		Component door = doorTag(uuid);
 
-		Resolved leftSlot = resolve(uuid, config.leftTag, null);
+		Resolved leftSlot = resolve(uuid, config.leftTag, Set.of());
 		// The right slot is told what the left landed on, so it can avoid
 		// repeating it when the user has asked for that.
 		//
@@ -47,11 +49,12 @@ public final class TagRenderer {
 		// though: the tier it would have repeated is not going to be on show,
 		// so suppressing the right one leaves the pair saying less than either
 		// slot alone. The two are only duplicates while both are drawn.
-		String exclude = config.preventDuplicateTiers
-				&& leftSlot != null
-				&& !(door != null && isDiaSmp(leftSlot))
-				? leftSlot.label() : null;
-		Resolved rightSlot = resolve(uuid, config.rightTag, exclude);
+		Set<String> onTheLine = new LinkedHashSet<>();
+		if (config.preventDuplicateTiers && leftSlot != null
+				&& !(door != null && isDiaSmp(leftSlot))) {
+			onTheLine.add(leftSlot.label());
+		}
+		Resolved rightSlot = resolve(uuid, config.rightTag, onTheLine);
 
 		Component left = leftSlot == null ? null : leftSlot.text();
 		Component right = rightSlot == null ? null : rightSlot.text();
@@ -64,6 +67,12 @@ public final class TagRenderer {
 				left = door;
 			} else if (isDiaSmp(rightSlot)) {
 				right = door;
+			} else if (left == null) {
+				// Nothing in the first slot: rather than leave it empty and
+				// have the name sit against the region tag, our own tierlist
+				// takes it. A graded player always shows their door tier
+				// somewhere, even with no other list ranking them.
+				left = door;
 			}
 		}
 
@@ -101,7 +110,7 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		Resolved slot = resolve(uuid, config.leftTag, null);
+		Resolved slot = resolve(uuid, config.leftTag, Set.of());
 		return slot == null ? null : slot.text();
 	}
 
@@ -118,13 +127,45 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		// No exclusion here. Prevent Duplicates is about the left and right
-		// slots that sit on the same line -- "the same tier appearing in both
-		// slots" -- and applying it to this one as well meant the above tag
-		// silently vanished whenever it agreed with the left tag, which is
-		// most of the time: both default to the player's best tier.
-		Resolved above = resolve(uuid, config.aboveTag, null);
+		// Avoids whatever the name line is showing, so a player does not read
+		// the same tier twice over. An earlier version excluded nothing here,
+		// because excluding made the above tag vanish whenever it agreed with
+		// the left one -- but that was a Best slot with no second choice
+		// offered. Given the labels actually drawn, it searches past them for
+		// the next tier down instead, and only falls silent when it has
+		// nothing else to say.
+		Set<String> exclude = config.preventDuplicateTiers
+				? lineLabels(uuid) : Set.<String>of();
+		Resolved above = resolve(uuid, config.aboveTag, exclude);
 		return above == null ? null : above.text();
+	}
+
+	/**
+	 * The tier labels the name line is showing for this player.
+	 *
+	 * <p>Recomputed rather than remembered from {@link #withTag}: the above
+	 * tag is resolved from its own call, on a different mixin, and passing
+	 * state between them would go stale the moment either changed.
+	 */
+	private static Set<String> lineLabels(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		Component door = doorTag(uuid);
+		Set<String> labels = new LinkedHashSet<>();
+
+		Resolved left = resolve(uuid, config.leftTag, Set.of());
+		// A slot the door tag replaces is not showing its tier, so it does not
+		// count as something the above tag would be repeating.
+		boolean leftShown = left != null && !(door != null && isDiaSmp(left));
+		if (leftShown) {
+			labels.add(left.label());
+		}
+
+		Resolved right = resolve(uuid, config.rightTag,
+				leftShown ? labels : Set.<String>of());
+		if (right != null && !(door != null && isDiaSmp(right))) {
+			labels.add(right.label());
+		}
+		return labels;
 	}
 
 	/**
@@ -202,11 +243,11 @@ public final class TagRenderer {
 	/**
 	 * One configured side, or null when it is off or nothing is ranked.
 	 *
-	 * @param exclude a tier label the slot must not repeat, or null for no
-	 *     restriction. A Best slot searches past it for the next best thing; a
-	 *     slot pinned to one list has nowhere else to look and shows nothing.
+	 * @param exclude tier labels the slot must not repeat; empty for no
+	 *     restriction. A Best slot searches past them for the next best thing;
+	 *     a slot pinned to one list has nowhere else to look and shows nothing.
 	 */
-	private static Resolved resolve(UUID uuid, SpogTiersConfig.TagSlot slot, String exclude) {
+	private static Resolved resolve(UUID uuid, SpogTiersConfig.TagSlot slot, Set<String> exclude) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (slot == null || !slot.enabled) {
 			return null;
@@ -247,9 +288,9 @@ public final class TagRenderer {
 		if (tier == null || !tier.isRanked()) {
 			return null;
 		}
-		// A pinned slot has only one answer, so if that is the excluded one it
+		// A pinned slot has only one answer, so if that is an excluded one it
 		// simply has nothing to show.
-		if (exclude != null && exclude.equals(tier.label())) {
+		if (exclude.contains(tier.label())) {
 			return null;
 		}
 
@@ -305,7 +346,7 @@ public final class TagRenderer {
 	 * that mode, on the lists that rank it. The owning list comes back too, so
 	 * the caller can draw that list's own artwork for the mode.
 	 */
-	private static Best bestAcrossLists(UUID uuid, Gamemode mode, String exclude) {
+	private static Best bestAcrossLists(UUID uuid, Gamemode mode, Set<String> exclude) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		Best best = null;
 
@@ -330,7 +371,7 @@ public final class TagRenderer {
 			}
 			// Skipped rather than returned, so the search carries on to the
 			// next best thing instead of giving up on the slot entirely.
-			if (exclude != null && exclude.equals(candidate.label())) {
+			if (exclude.contains(candidate.label())) {
 				continue;
 			}
 			if (best == null || outranks(candidate, best.tier())) {
