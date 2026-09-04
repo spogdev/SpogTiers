@@ -304,6 +304,44 @@ public final class GradeStore {
 		return true;
 	}
 
+	/**
+	 * Remove every grade, or every grade in one tier.
+	 *
+	 * <p>One method for both so the whole clear happens under a single write
+	 * lock and a single save: removing players one at a time would rewrite the
+	 * file once per player, and would let a reader see a half-cleared list.
+	 *
+	 * @param grade the tier to clear, or null for the whole list
+	 * @return how many players were removed
+	 */
+	public int clear(Grade grade) {
+		int removed;
+		lock.writeLock().lock();
+		try {
+			if (grade == null) {
+				removed = grades.size();
+				grades.clear();
+			} else {
+				removed = 0;
+				var players = grades.entrySet().iterator();
+				while (players.hasNext()) {
+					if (players.next().getValue().grade() == grade) {
+						players.remove();
+						removed++;
+					}
+				}
+			}
+		} finally {
+			lock.writeLock().unlock();
+		}
+		// Nothing to write when nothing matched, so an empty clear does not
+		// touch the file.
+		if (removed > 0) {
+			save();
+		}
+		return removed;
+	}
+
 	/** Every grade, best first then alphabetical, for a listing. */
 	public List<Record> all() {
 		lock.readLock().lock();

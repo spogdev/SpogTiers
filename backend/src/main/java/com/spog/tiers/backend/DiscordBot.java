@@ -6,6 +6,7 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent;
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -16,6 +17,7 @@ import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.utils.FileUpload;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -50,6 +52,16 @@ public final class DiscordBot extends ListenerAdapter {
 
 	/** The choice that clears a player's tier, rather than setting one. */
 	private static final String NONE_CHOICE = "None";
+
+	/** Button id prefixes for the /clear confirmation. */
+	private static final String CLEAR_CONFIRM = "clear.confirm";
+	private static final String CLEAR_CANCEL = "clear.cancel";
+
+	/**
+	 * Stands in for the tier in a button id when the whole list is being
+	 * cleared. Not a tier label, so it cannot collide with one.
+	 */
+	private static final String ALL_TIERS = "*";
 
 	private final GradeStore grades;
 	private final GraderStore graders;
@@ -156,6 +168,16 @@ public final class DiscordBot extends ListenerAdapter {
 			filter.addChoice(value.label(), value.label());
 		}
 
+		// Optional, and its absence is the dangerous case: with no tier named
+		// the whole list goes. Left optional anyway rather than requiring an
+		// "everything" choice, because the confirmation is what makes the
+		// scale of it clear, and a required option would not change that.
+		OptionData clearFilter = new OptionData(OptionType.STRING, "grade",
+				"Only clear this tier, instead of the whole list", false);
+		for (Grade value : Grade.values()) {
+			clearFilter.addChoice(value.label(), value.label());
+		}
+
 		// Installable either to a server or to a person's own account, and
 		// usable in servers, the bot's DMs, and group chats. A user who adds
 		// the app carries these commands into any server they are in, whether
@@ -170,7 +192,9 @@ public final class DiscordBot extends ListenerAdapter {
 				Commands.slash("bump", "Move a player within their tier")
 						.addOptions(player, places),
 				Commands.slash("retire", "Toggle retirement of a player")
-						.addOptions(player));
+						.addOptions(player),
+				Commands.slash("clear", "Remove every player from the tierlist, or from one tier")
+						.addOptions(clearFilter));
 
 		for (SlashCommandData command : commands) {
 			command.setIntegrationTypes(IntegrationType.ALL)
@@ -187,6 +211,7 @@ public final class DiscordBot extends ListenerAdapter {
 			case "tierlist" -> list(event);
 			case "bump" -> bump(event);
 			case "retire" -> retire(event);
+			case "clear" -> clear(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
 	}
@@ -455,6 +480,120 @@ public final class DiscordBot extends ListenerAdapter {
 						+ "** at **" + record.grade().label() + "**")
 				.setColor(new Color(record.grade().color()))
 				.build()).queue();
+	}
+
+	/**
+	 * Ask an admin to confirm clearing the list, or one tier of it.
+	 *
+	 * <p>Nothing is removed here. The work happens in
+	 * {@link #onButtonInteraction}, once the caller has confirmed, so that a
+	 * mistyped command is never destructive on its own.
+	 */
+	private void clear(SlashCommandInteractionEvent event) {
+		if (!authorised(event)) {
+			return;
+		}
+		String choice = event.getOption("grade", "", OptionMapping::getAsString);
+		Grade grade = choice.isBlank() ? null : Grade.parse(choice);
+		if (!choice.isBlank() && grade == null) {
+			event.reply("**" + choice + "** is not a tier").setEphemeral(true).queue();
+			return;
+		}
+
+		// Counted now only to say how much is at stake. The count is taken
+		// again when the button is pressed, so a slow confirmation cannot
+		// remove more than the admin was shown.
+		long affected = grades.all().stream()
+				.filter(record -> grade == null || record.grade() == grade)
+				.count();
+		String scope = grade == null ? "the entire tierlist"
+				: "everyone at **" + grade.label() + "**";
+
+		if (affected == 0) {
+			event.reply("There is nobody to clear from " + scope + ".")
+					.setEphemeral(true).queue();
+			return;
+		}
+
+		EmbedBuilder embed = new EmbedBuilder()
+				.setTitle("Clear " + (grade == null ? "the tierlist" : grade.label() + "?"))
+				.setDescription("This removes **" + affected + "** player"
+						+ (affected == 1 ? "" : "s") + " from " + scope
+						+ ".\n\nThis cannot be undone.")
+				.setColor(grade == null ? Color.RED : new Color(grade.color()));
+
+		// The caller's id rides in the button id so the handler can refuse a
+		// different admin pressing someone else's prompt: two people clearing
+		// at once should not have one of them confirm the other's decision.
+		String owner = event.getUser().getId();
+		String suffix = ":" + owner + ":" + (grade == null ? ALL_TIERS : grade.label());
+
+		// Ephemeral: the prompt is the caller's own decision to make, and a
+		// destructive button left sitting in a channel invites a misclick.
+		event.replyEmbeds(embed.build())
+				.addActionRow(
+						Button.danger(CLEAR_CONFIRM + suffix, "Clear"),
+						Button.secondary(CLEAR_CANCEL + suffix, "Cancel"))
+				.setEphemeral(true)
+				.queue();
+	}
+
+	/** The confirm and cancel buttons from {@link #clear}. */
+	@Override
+	public void onButtonInteraction(@NotNull ButtonInteractionEvent event) {
+		String id = event.getComponentId();
+		if (!id.startsWith(CLEAR_CONFIRM) && !id.startsWith(CLEAR_CANCEL)) {
+			return;
+		}
+
+		// id is "<action>:<caller>:<tier>", and the tier may be the all-tiers
+		// marker. Split from the left on a fixed count: a tier label never
+		// contains a colon, so the remainder is unambiguous.
+		String[] parts = id.split(":", 3);
+		if (parts.length != 3) {
+			return;
+		}
+		String owner = parts[1];
+		String tier = parts[2];
+
+		// Checked again rather than trusted from the prompt: a grader can be
+		// removed between issuing the command and pressing the button.
+		if (!graders.isGrader(event.getUser().getId())) {
+			event.reply("You do not have permission to set tiers").setEphemeral(true).queue();
+			return;
+		}
+		if (!event.getUser().getId().equals(owner)) {
+			event.reply("That confirmation belongs to someone else. Run /clear yourself.")
+					.setEphemeral(true).queue();
+			return;
+		}
+
+		if (id.startsWith(CLEAR_CANCEL)) {
+			event.editMessageEmbeds(new EmbedBuilder()
+					.setDescription("Cancelled. Nothing was removed.")
+					.setColor(Color.GRAY)
+					.build()).setComponents().queue();
+			return;
+		}
+
+		Grade grade = ALL_TIERS.equals(tier) ? null : Grade.parse(tier);
+		if (!ALL_TIERS.equals(tier) && grade == null) {
+			event.reply("That tier no longer exists.").setEphemeral(true).queue();
+			return;
+		}
+
+		int removed = grades.clear(grade);
+		String scope = grade == null ? "the tierlist" : grade.label();
+		LOG.info("{} cleared {} ({} player(s))", event.getUser().getName(), scope, removed);
+
+		// The buttons are stripped as well as the embed replaced, so the
+		// prompt cannot be confirmed twice.
+		event.editMessageEmbeds(new EmbedBuilder()
+				.setDescription("Removed **" + removed + "** player"
+						+ (removed == 1 ? "" : "s") + " from "
+						+ (grade == null ? "the tierlist" : "**" + grade.label() + "**"))
+				.setColor(grade == null ? Color.RED : new Color(grade.color()))
+				.build()).setComponents().queue();
 	}
 
 	/**

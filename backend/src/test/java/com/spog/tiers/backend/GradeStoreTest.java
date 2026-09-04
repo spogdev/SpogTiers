@@ -133,4 +133,39 @@ class GradeStoreTest {
 					"the staged temp file should have been moved into place");
 		}
 	}
+
+	@Test
+	void clearingOneTierLeavesTheOthers(@TempDir Path dir) {
+		GradeStore store = GradeStore.load(dir.resolve("grades.json"));
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		store.set(JEB, "jeb_", Grade.A, "Spoginator", "123");
+
+		assertEquals(1, store.clear(Grade.S));
+		assertNull(store.get(NOTCH));
+		assertNotNull(store.get(JEB));
+	}
+
+	@Test
+	void clearingEverythingEmptiesTheStore(@TempDir Path dir) {
+		Path file = dir.resolve("grades.json");
+		GradeStore store = GradeStore.load(file);
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		store.set(JEB, "jeb_", Grade.A, "Spoginator", "123");
+
+		assertEquals(2, store.clear(null));
+		assertEquals(0, store.size());
+
+		// The clear has to reach the file, not just memory, or a restart
+		// brings everyone back.
+		assertEquals(0, GradeStore.load(file).size());
+	}
+
+	@Test
+	void clearingATierNobodyHoldsRemovesNothing(@TempDir Path dir) {
+		GradeStore store = GradeStore.load(dir.resolve("grades.json"));
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+
+		assertEquals(0, store.clear(Grade.F));
+		assertEquals(1, store.size());
+	}
 }
