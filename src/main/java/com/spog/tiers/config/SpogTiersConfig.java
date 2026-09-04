@@ -205,7 +205,7 @@ public class SpogTiersConfig {
 	 * outside the tier tags on that side.
 	 */
 	public enum RegionSlot {
-		OFF("Off"),
+		OFF("Disabled"),
 		TOP_LEFT("Top Left"),
 		TOP_RIGHT("Top Right"),
 		BOTTOM_LEFT("Bottom Left"),
