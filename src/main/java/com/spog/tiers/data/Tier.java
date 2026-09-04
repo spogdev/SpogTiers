@@ -1,5 +1,8 @@
 package com.spog.tiers.data;
 
+import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.config.SpogTiersConfig;
+
 import java.util.Locale;
 
 /**
@@ -72,8 +75,29 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	}
 
 	/**
+	 * Whether retirement is being shown at all.
+	 *
+	 * <p>Read from the config so that turning it off presents a retired rank
+	 * as the plain tier it is -- the R dropped and the colour left at full
+	 * strength -- everywhere this record is drawn. The config is consulted
+	 * rather than passed in because every caller of {@link #label()} and
+	 * {@link #color()} would otherwise have to thread the flag through, and
+	 * one that forgot would quietly disagree with the rest.
+	 */
+	private static boolean showRetired() {
+		SpogTiersConfig config = SpogTiersClient.config();
+		return config == null || config.showRetired;
+	}
+
+	/** Whether this rank should be presented as retired. */
+	private boolean showsRetirement() {
+		return retired && showRetired();
+	}
+
+	/**
 	 * Short display label, e.g. {@code HT1} or {@code MT3}. Retired ranks are
-	 * prefixed with an R, so a retired HT1 reads {@code RHT1}.
+	 * prefixed with an R, so a retired HT1 reads {@code RHT1} -- unless
+	 * retirement is switched off, when it reads as the plain {@code HT1}.
 	 */
 	public String label() {
 		if (isNamed()) {
@@ -82,7 +106,7 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		if (!isRanked()) {
 			return "?";
 		}
-		return (retired ? "R" : "") + position.prefix() + tier;
+		return (showsRetirement() ? "R" : "") + position.prefix() + tier;
 	}
 
 	/** The label without the retired marker, e.g. {@code LT2} for an RLT2. */
@@ -234,7 +258,7 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 				case LOW -> 0xFF655B79;
 			};
 		};
-		return retired ? desaturate(base) : base;
+		return showsRetirement() ? desaturate(base) : base;
 	}
 
 	/**

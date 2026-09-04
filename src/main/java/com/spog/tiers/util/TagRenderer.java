@@ -37,11 +37,21 @@ public final class TagRenderer {
 			return original;
 		}
 
+		Component door = doorTag(uuid);
+
 		Resolved leftSlot = resolve(uuid, config.leftTag, null);
 		// The right slot is told what the left landed on, so it can avoid
 		// repeating it when the user has asked for that.
-		Resolved rightSlot = resolve(uuid, config.rightTag,
-				config.preventDuplicateTiers && leftSlot != null ? leftSlot.label() : null);
+		//
+		// Not when the left is about to be replaced by our own tierlist,
+		// though: the tier it would have repeated is not going to be on show,
+		// so suppressing the right one leaves the pair saying less than either
+		// slot alone. The two are only duplicates while both are drawn.
+		String exclude = config.preventDuplicateTiers
+				&& leftSlot != null
+				&& !(door != null && isDiaSmp(leftSlot))
+				? leftSlot.label() : null;
+		Resolved rightSlot = resolve(uuid, config.rightTag, exclude);
 
 		Component left = leftSlot == null ? null : leftSlot.text();
 		Component right = rightSlot == null ? null : rightSlot.text();
@@ -49,7 +59,6 @@ public final class TagRenderer {
 		// Our own tierlist takes a slot when the one it would sit in is showing
 		// a Diamond SMP tier: that is the mode Door SMP is played at, so the
 		// two are saying the same thing and ours is the more specific.
-		Component door = doorTag(uuid);
 		if (door != null) {
 			if (isDiaSmp(leftSlot)) {
 				left = door;
@@ -389,7 +398,18 @@ public final class TagRenderer {
 		};
 	}
 
+	/**
+	 * What goes between two parts of a nametag.
+	 *
+	 * <p>A plain space when separators are switched off: the parts still need
+	 * holding apart, and dropping the bar without it would run the badge into
+	 * the name.
+	 */
 	private static Component separator() {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config != null && !config.showSeparators) {
+			return space();
+		}
 		return Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY);
 	}
 
