@@ -79,6 +79,7 @@ public class ConfigScreen extends Screen {
 	private Dropdown<TierList> rightList;
 	private Dropdown<Gamemode> rightMode;
 	private Dropdown<SpogTiersConfig.SortOrder> sortOrder;
+	private Dropdown<SpogTiersConfig.RegionSlot> regionSlot;
 
 	public ConfigScreen(Screen parent) {
 		super(Component.literal("SpogTiers"));
@@ -128,6 +129,11 @@ public class ConfigScreen extends Screen {
 		});
 		sortOrder = new Dropdown<>(value -> {
 			config.sortOrder = value;
+			config.save();
+			click();
+		});
+		regionSlot = new Dropdown<>(value -> {
+			config.regionSlot = value;
 			config.save();
 			click();
 		});
@@ -211,6 +217,7 @@ public class ConfigScreen extends Screen {
 			leftMode.drawOverlay(graphics, font, config.leftTag.gamemode, mouseX, mouseY);
 			rightList.drawOverlay(graphics, font, config.rightTag.list, mouseX, mouseY);
 			rightMode.drawOverlay(graphics, font, config.rightTag.gamemode, mouseX, mouseY);
+			regionSlot.drawOverlay(graphics, font, config.regionSlot, mouseX, mouseY);
 		} else if (active == Tab.GENERAL) {
 			sortOrder.drawOverlay(graphics, font, config().sortOrder, mouseX, mouseY);
 		}
@@ -246,7 +253,8 @@ public class ConfigScreen extends Screen {
 	/** Every dropdown on the active tab. */
 	private List<Dropdown<?>> dropdowns() {
 		if (active == Tab.NAMETAG) {
-			return List.of(aboveList, aboveMode, leftList, leftMode, rightList, rightMode);
+			return List.of(aboveList, aboveMode, leftList, leftMode, rightList, rightMode,
+					regionSlot);
 		}
 		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
@@ -430,11 +438,18 @@ public class ConfigScreen extends Screen {
 				x, y, mouseX, mouseY);
 		y += 8;
 
-		y = drawSwitch(graphics, "Region", config.showRegionOnNametag, x, y,
-				() -> {
-					config.showRegionOnNametag = !config.showRegionOnNametag;
-					config.save();
-				});
+		// A dropdown rather than a switch: the region can sit on either row and
+		// either side of it, and Off is one of the five choices.
+		graphics.text(font, Component.literal("Region"), x, y + 4, LABEL_COLOR);
+
+		List<Dropdown.Entry<SpogTiersConfig.RegionSlot>> slots = new ArrayList<>();
+		for (SpogTiersConfig.RegionSlot value : SpogTiersConfig.RegionSlot.values()) {
+			slots.add(new Dropdown.Entry<>(value, value.title(), null));
+		}
+		regionSlot.setEntries(slots);
+		regionSlot.setBounds(x + 118, y, 152);
+		regionSlot.draw(graphics, font, config.regionSlot, mouseX, mouseY);
+		y += ROW_HEIGHT + 4;
 		y = drawSwitch(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				() -> {
 					config.preventDuplicateTiers = !config.preventDuplicateTiers;
@@ -493,7 +508,11 @@ public class ConfigScreen extends Screen {
 
 	private int drawPreview(GuiGraphicsExtractor graphics, int x, int y, int right) {
 		SpogTiersConfig config = config();
-		boolean above = config.aboveTag != null && config.aboveTag.enabled;
+		// The top row exists if anything is on it. A region placed up there
+		// holds the row on its own, exactly as it does in game, so choosing
+		// Top Left with the above tag off still previews correctly.
+		boolean above = (config.aboveTag != null && config.aboveTag.enabled)
+				|| (config.regionSlot.shown() && config.regionSlot.top());
 
 		int boxWidth = Math.min(380, right - CARD_PADDING - x);
 		// Room for a second line when the above slot is on, so its tag sits
@@ -511,26 +530,46 @@ public class ConfigScreen extends Screen {
 		int nameWidth = font.width(PREVIEW_NAME);
 		int textY = y + (26 - font.lineHeight) / 2 + (above ? ROW_HEIGHT : 0);
 
+		SpogTiersConfig.RegionSlot slot = config.regionSlot;
+		String region = previewRegion();
+		int regionSpan = font.width(region) + 5;
+
 		if (above) {
-			// Centred over the name, matching how the line is drawn in game.
+			// Centred over the name, matching how the line is drawn in game,
+			// with the region counted in when it shares this row.
 			int aboveWidth = previewTagWidth(config.aboveTag, previewTier(config.aboveTag, sample));
+			int topSpan = aboveWidth + (slot.shown() && slot.top() ? regionSpan : 0);
 			int aboveX = x + 8 + regionWidth(config)
 					+ previewTagWidth(config.leftTag, previewTier(config.leftTag, sample))
-					+ (nameWidth - aboveWidth) / 2;
-			drawPreviewTag(graphics, config.aboveTag, previewTier(config.aboveTag, sample),
-					Math.max(x + 8, aboveX), textY - ROW_HEIGHT, true, true);
+					+ (nameWidth - topSpan) / 2;
+			int topCursor = Math.max(x + 8, aboveX);
+			if (slot.shown() && slot.top() && slot.before()) {
+				graphics.text(font, Component.literal(region), topCursor,
+						textY - ROW_HEIGHT, 0xFF89F19C);
+				topCursor += regionSpan;
+			}
+			topCursor = drawPreviewTag(graphics, config.aboveTag,
+					previewTier(config.aboveTag, sample), topCursor, textY - ROW_HEIGHT,
+					true, true);
+			if (slot.shown() && slot.top() && !slot.before()) {
+				graphics.text(font, Component.literal(region), topCursor,
+						textY - ROW_HEIGHT, 0xFF89F19C);
+			}
 		}
 
 		int cursor = x + 8;
-		if (config.showRegionOnNametag) {
-			String region = previewRegion();
+		boolean onName = slot.shown() && !slot.top();
+		if (onName && slot.before()) {
 			graphics.text(font, Component.literal(region), cursor, textY, 0xFF89F19C);
-			cursor += font.width(region) + 5;
+			cursor += regionSpan;
 		}
 		cursor = drawPreviewTag(graphics, config.leftTag, previewTier(config.leftTag, sample), cursor, textY, true, false);
 		graphics.text(font, Component.literal(PREVIEW_NAME), cursor, textY, 0xFFFFFFFF);
 		cursor += nameWidth;
-		drawPreviewTag(graphics, config.rightTag, previewTier(config.rightTag, sample), cursor, textY, false, false);
+		cursor = drawPreviewTag(graphics, config.rightTag, previewTier(config.rightTag, sample), cursor, textY, false, false);
+		if (onName && !slot.before()) {
+			graphics.text(font, Component.literal(region), cursor, textY, 0xFF89F19C);
+		}
 		return boxHeight;
 	}
 
@@ -540,9 +579,17 @@ public class ConfigScreen extends Screen {
 		return code.isEmpty() ? "EU" : code;
 	}
 
-	/** The region prefix's width, or nothing when it is switched off. */
+	/**
+	 * The width the region takes before the name, or nothing.
+	 *
+	 * <p>Only the name row's leading slot counts: it is what pushes everything
+	 * after it along. A region on the top row, or after the name, does not
+	 * move the tags on this one.
+	 */
 	private int regionWidth(SpogTiersConfig config) {
-		return config.showRegionOnNametag ? font.width(previewRegion()) + 5 : 0;
+		SpogTiersConfig.RegionSlot slot = config.regionSlot;
+		return slot.shown() && !slot.top() && slot.before()
+				? font.width(previewRegion()) + 5 : 0;
 	}
 
 	/**
@@ -799,6 +846,7 @@ public class ConfigScreen extends Screen {
 			rightList.close();
 			rightMode.close();
 			sortOrder.close();
+			regionSlot.close();
 		}
 	}
 
