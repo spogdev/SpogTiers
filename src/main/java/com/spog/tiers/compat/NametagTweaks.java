@@ -28,6 +28,15 @@ import java.lang.reflect.Method;
  */
 public final class NametagTweaks {
 	private static final String MOD_ID = "nametagtweaks";
+	/**
+	 * The alpha the mod caps a nameplate backdrop at.
+	 *
+	 * <p>Its own number, copied rather than guessed: above this it keeps the
+	 * hue and forces the alpha down, which is what stops a solid plate from
+	 * swallowing the name.
+	 */
+	private static final int ALPHA_CAP = 32;
+
 	private static final String CONFIG_CLASS =
 			"dev.microcontrollers.nametagtweaks.config.NametagTweaksConfig";
 
@@ -36,7 +45,6 @@ public final class NametagTweaks {
 	private static boolean present;
 	private static Object handler;
 	private static Method instance;
-	private static Field offsetField;
 	private static Field scaleField;
 	private static Field colourField;
 	private static Field shadowField;
@@ -58,22 +66,12 @@ public final class NametagTweaks {
 		return config != null && config.matchNametagTweaks && present();
 	}
 
-	/**
-	 * How far the nameplate has been moved, in font pixels.
-	 *
-	 * <p>The mod subtracts this straight from vanilla's label height, in the
-	 * same units the label's own y is measured in, so it is applied inside
-	 * the scaled frame rather than as a translation in blocks. Zero when the
-	 * mod is absent or the user has turned matching off, so a caller can add
-	 * it unconditionally.
-	 */
-	public static float offset() {
-		if (!following()) {
-			return 0.0f;
-		}
-		Object value = read(offsetField);
-		return value instanceof Integer offset ? offset : 0.0f;
-	}
+	// NB: no offset accessor. The mod moves the plate by changing the y it
+	// passes to the font, and our rows are positioned from that same argument
+	// -- vanilla hands us the value it was given -- so a raised plate already
+	// carries them. Adding it again shifted the rows off the plate and left
+	// their backdrops showing as two bars either side of the name.
+
 
 	/** The scale the nameplate is drawn at, or 1 when nothing applies. */
 	public static float scale() {
@@ -93,9 +91,12 @@ public final class NametagTweaks {
 	 * The backdrop colour to use behind a row, or {@code fallback} when the
 	 * mod is absent or not being followed.
 	 *
-	 * <p>Returned as ARGB. The mod keeps an {@link java.awt.Color}, whose own
-	 * alpha it honours, so a user who made the plate opaque gets opaque rows
-	 * too rather than one solid line over two translucent ones.
+	 * <p>Returned as ARGB, and clamped the way the mod clamps it rather than
+	 * taken whole: above an alpha of 32 it keeps the chosen hue but forces
+	 * the alpha down to 32, and only at 32 or below does the colour pass
+	 * through untouched. Reading {@code getRGB()} directly gave our rows the
+	 * user's own alpha, so a half-transparent plate sat over rows that were
+	 * either more solid or more faded than it.
 	 */
 	public static int background(int fallback) {
 		if (!following()) {
@@ -106,12 +107,15 @@ public final class NametagTweaks {
 			return fallback;
 		}
 		try {
-			Method rgb = value.getClass().getMethod("getRGB");
-			return (int) rgb.invoke(value);
+			Class<?> colour = value.getClass();
+			int alpha = (int) colour.getMethod("getAlpha").invoke(value);
+			int argb = (int) colour.getMethod("getRGB").invoke(value);
+			return alpha > ALPHA_CAP ? (ALPHA_CAP << 24) | (argb & 0xFFFFFF) : argb;
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			return fallback;
 		}
 	}
+
 
 	/** Whether the mod wants a shadow under nameplate text. */
 	public static boolean textShadow() {
@@ -174,7 +178,6 @@ public final class NametagTweaks {
 			handler = config.getField("CONFIG").get(null);
 			instance = handler.getClass().getMethod("instance");
 			instance.setAccessible(true);
-			offsetField = config.getField("nametagOffset");
 			scaleField = config.getField("nametagScale");
 			colourField = config.getField("nametagColor");
 			shadowField = config.getField("nametagTextShadow");
