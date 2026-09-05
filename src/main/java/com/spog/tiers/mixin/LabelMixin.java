@@ -73,6 +73,11 @@ public class LabelMixin {
 		if ((above == null && below == null) || attachment == null) {
 			return;
 		}
+		// Nothing without a name to hang off: when that mod is hiding the
+		// plate, rows floating on their own read as a bug.
+		if (NametagTweaks.hidden()) {
+			return;
+		}
 
 		Minecraft minecraft = Minecraft.getInstance();
 		Font font = minecraft.font;
