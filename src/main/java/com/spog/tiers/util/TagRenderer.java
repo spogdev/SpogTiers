@@ -3,6 +3,7 @@ package com.spog.tiers.util;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
+import com.spog.tiers.config.TagLayout;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerGrade;
 import com.spog.tiers.data.PlayerTiers;
@@ -38,90 +39,31 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return original;
 		}
-
-		Component door = doorTag(uuid);
-
-		Resolved leftSlot = resolve(uuid, config.leftTag, Set.of());
-		// The right slot is told what the left landed on, so it can avoid
-		// repeating it when the user has asked for that.
-		//
-		// Not when the left is about to be replaced by our own tierlist,
-		// though: the tier it would have repeated is not going to be on show,
-		// so suppressing the right one leaves the pair saying less than either
-		// slot alone. The two are only duplicates while both are drawn.
-		Set<String> onTheLine = new LinkedHashSet<>();
-		if (config.preventDuplicateTiers && leftSlot != null
-				&& !(door != null && isDiaSmp(leftSlot))) {
-			onTheLine.add(leftSlot.label());
-		}
-		Resolved rightSlot = resolve(uuid, config.rightTag, onTheLine);
-
-		Component left = leftSlot == null ? null : leftSlot.text();
-		Component right = rightSlot == null ? null : rightSlot.text();
-
-		// Our own tierlist takes a slot when the one it would sit in is showing
-		// a Diamond SMP tier: that is the mode Door SMP is played at, so the
-		// two are saying the same thing and ours is the more specific.
-		if (door != null) {
-			if (isDiaSmp(leftSlot)) {
-				left = door;
-			} else if (isDiaSmp(rightSlot)) {
-				right = door;
-			} else if (left == null) {
-				// Nothing in the first slot: rather than leave it empty and
-				// have the name sit against the region tag, our own tierlist
-				// takes it. A graded player always shows their door tier
-				// somewhere, even with no other list ranking them.
-				left = door;
-			}
-		}
-
-		// Only when it belongs on this row: the top slots are drawn by the
-		// above tag instead.
-		SpogTiersConfig.RegionSlot slot = config.regionSlot;
-		Component region = slot.shown() && !slot.top() ? regionFor(uuid) : null;
-
-		if (left == null && right == null && region == null) {
-			return original;
-		}
-
-		MutableComponent out = Component.empty();
-		// No leading space: the backdrop already extends a couple of pixels
-		// past the text on its own, which is enough to keep another mod's
-		// badge from butting against ours -- Essential puts its badge
-		// immediately to the left, and a space on top of the backdrop's own
-		// margin left a visibly wide gap.
-		if (region != null && slot.before()) {
-			out.append(region).append(space());
-		}
-		if (left != null) {
-			out.append(left).append(separator());
-		}
-		out.append(original);
-		// No trailing space either, for the same reason, and because an odd
-		// space on one end only makes the name asymmetric -- which offsets its
-		// backdrop from the above tag's and leaves a bar down one side.
-		if (right != null) {
-			out.append(separator()).append(right);
-		}
-		if (region != null && !slot.before()) {
-			out.append(space()).append(region);
-		}
-		return out;
+		Component middle = buildRow(uuid, TagLayout.Row.MIDDLE, original);
+		return middle == null ? original : middle;
 	}
 
-	/** The badge for the left-hand slot, for compact contexts. */
+	/** The badge for the first tier element, for compact contexts. */
 	public static Component badgeFor(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		Resolved slot = resolve(uuid, config.leftTag, Set.of());
-		return slot == null ? null : slot.text();
+		Set<String> shown = new LinkedHashSet<>();
+		for (TagLayout.Element element : config.tagLayout.elements) {
+			if (element.kind != TagLayout.Kind.TIER) {
+				continue;
+			}
+			Resolved tier = resolveTier(uuid, element, shown);
+			if (tier != null) {
+				return tier.text();
+			}
+		}
+		return null;
 	}
 
 	/**
-	 * The tag for the line above the name, or null when that slot is off.
+	 * The line above the name, or null when nothing is on that row.
 	 *
 	 * <p>Its own component rather than a line inside the name: vanilla draws
 	 * this from a separate field with its own background, so a newline in the
@@ -133,59 +75,165 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		// Avoids whatever the name line is showing, so a player does not read
-		// the same tier twice over. An earlier version excluded nothing here,
-		// because excluding made the above tag vanish whenever it agreed with
-		// the left one -- but that was a Best slot with no second choice
-		// offered. Given the labels actually drawn, it searches past them for
-		// the next tier down instead, and only falls silent when it has
-		// nothing else to say.
-		Set<String> exclude = config.preventDuplicateTiers
-				? lineLabels(uuid) : Set.<String>of();
-		Resolved above = resolve(uuid, config.aboveTag, exclude);
+		return buildRow(uuid, TagLayout.Row.TOP, null);
+	}
 
-		SpogTiersConfig.RegionSlot slot = config.regionSlot;
-		Component region = slot.shown() && slot.top() ? regionFor(uuid) : null;
-		if (region == null) {
-			return above == null ? null : above.text();
+	/** The line below the name, or null when nothing is on that row. */
+	public static Component belowTag(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled) {
+			return null;
 		}
-		// The region can hold this row on its own: someone who wants only a
-		// region above the name should get one, not nothing because no tier
-		// resolved beside it.
-		if (above == null) {
-			return region;
-		}
-		return slot.before()
-				? Component.empty().append(region).append(space()).append(above.text())
-				: Component.empty().append(above.text()).append(space()).append(region);
+		return buildRow(uuid, TagLayout.Row.BOTTOM, null);
 	}
 
 	/**
-	 * The tier labels the name line is showing for this player.
+	 * Builds one row of the tag.
 	 *
-	 * <p>Recomputed rather than remembered from {@link #withTag}: the above
-	 * tag is resolved from its own call, on a different mixin, and passing
-	 * state between them would go stale the moment either changed.
+	 * <p>All three rows come through here, so they cannot disagree about what
+	 * an element means or how duplicates are avoided. Tiers are resolved in
+	 * the order they are drawn -- top row, then middle, then bottom -- and
+	 * each one is told what the earlier ones settled on, so Prevent Duplicates
+	 * works across the whole tag rather than only between two fixed slots.
+	 *
+	 * @param name what a name element draws, or null to skip name elements
+	 * @return the row, or null if it came out empty
 	 */
-	private static Set<String> lineLabels(UUID uuid) {
+	private static Component buildRow(UUID uuid, TagLayout.Row row, Component name) {
 		SpogTiersConfig config = SpogTiersClient.config();
-		Component door = doorTag(uuid);
-		Set<String> labels = new LinkedHashSet<>();
+		TagLayout layout = config.tagLayout;
+		Set<String> shown = config.preventDuplicateTiers
+				? labelsBefore(uuid, row) : new LinkedHashSet<>();
 
-		Resolved left = resolve(uuid, config.leftTag, Set.of());
-		// A slot the door tag replaces is not showing its tier, so it does not
-		// count as something the above tag would be repeating.
-		boolean leftShown = left != null && !(door != null && isDiaSmp(left));
-		if (leftShown) {
-			labels.add(left.label());
+		MutableComponent out = Component.empty();
+		boolean any = false;
+		// A separator is only worth drawing between two things, so it is held
+		// back until something after it earns it. This is what lets a tier
+		// resolve to nothing without leaving a stray bar behind.
+		Component pending = null;
+
+		for (TagLayout.Element element : layout.elements) {
+			if (element.row != row) {
+				continue;
+			}
+			Component piece = switch (element.kind) {
+				case NAME -> name;
+				case REGION -> regionFor(uuid);
+				case SEPARATOR -> null;
+				case TIER -> {
+					Resolved tier = resolveTier(uuid, element, shown);
+					if (tier == null) {
+						yield null;
+					}
+					shown.add(tier.label());
+					yield tier.text();
+				}
+			};
+
+			if (element.kind == TagLayout.Kind.SEPARATOR) {
+				// Only after something, and only one at a time: two separators
+				// in a row with nothing between them draw as one.
+				if (any) {
+					pending = separator(element);
+				}
+				continue;
+			}
+			if (piece == null) {
+				continue;
+			}
+			if (pending != null) {
+				out.append(pending);
+				pending = null;
+			}
+			out.append(piece);
+			any = true;
 		}
+		return any ? out : null;
+	}
 
-		Resolved right = resolve(uuid, config.rightTag,
-				leftShown ? labels : Set.<String>of());
-		if (right != null && !(door != null && isDiaSmp(right))) {
-			labels.add(right.label());
+	/**
+	 * The tier labels drawn before this row, so a later row does not repeat
+	 * them.
+	 *
+	 * <p>Recomputed rather than remembered between calls: each row is built
+	 * from its own mixin at its own time, and state passed between them would
+	 * go stale the moment the layout or the player's tiers changed.
+	 */
+	private static Set<String> labelsBefore(UUID uuid, TagLayout.Row row) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		Set<String> labels = new LinkedHashSet<>();
+		for (TagLayout.Element element : config.tagLayout.elements) {
+			if (element.kind != TagLayout.Kind.TIER
+					|| element.row.ordinal() >= row.ordinal()) {
+				continue;
+			}
+			Resolved tier = resolveTier(uuid, element, labels);
+			if (tier != null) {
+				labels.add(tier.label());
+			}
 		}
 		return labels;
+	}
+
+	/**
+	 * One tier element, or null when it has nothing to show.
+	 *
+	 * <p>Our own tierlist stands in for a Diamond SMP tier, which is the mode
+	 * it is played at: the two say the same thing and ours is the more
+	 * specific. A door tier also fills a tier element that resolved to
+	 * nothing, so a graded player shows their grade even when no other list
+	 * ranks them.
+	 */
+	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
+			Set<String> exclude) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		SpogTiersConfig.TagSlot slot =
+				new SpogTiersConfig.TagSlot(true, element.list, element.gamemode);
+		Resolved resolved = resolve(uuid, slot, exclude);
+
+		Component door = doorTag(uuid);
+		if (door == null) {
+			return resolved;
+		}
+		if (resolved == null) {
+			PlayerGrade grade = SpogTiersClient.service().grade(uuid);
+			return new Resolved(door, grade == null ? "" : grade.label(), null);
+		}
+		if (resolved.mode() == Gamemode.DIA_SMP) {
+			return new Resolved(door, resolved.label(), resolved.mode());
+		}
+		return resolved;
+	}
+
+	private static boolean isDiaSmp(Resolved slot) {
+		return slot != null && slot.mode() == Gamemode.DIA_SMP;
+	}
+
+	/**
+	 * Our own tierlist as a nametag tag: the door, then the tier.
+	 *
+	 * <p>Null unless the player is on it and Door SMP is switched on, so this
+	 * only ever displaces another tag when there is something to put there.
+	 */
+	private static Component doorTag(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.extraTierlists) {
+			return null;
+		}
+		PlayerGrade grade = SpogTiersClient.service().grade(uuid);
+		if (grade == null || !grade.isGraded()) {
+			return null;
+		}
+		MutableComponent out = Component.empty();
+		if (config.showTagIcons) {
+			// A narrower gap than the other icons take: this glyph was shifted
+			// right inside its cell, which widened its advance, so a full space
+			// after it left the tier sitting noticeably away from the door.
+			out.append(ModeIcons.doorRaised()).append(ModeIcons.narrowSpace());
+		}
+		out.append(Component.literal(grade.label())
+				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
+		return out;
 	}
 
 	/**
@@ -327,38 +375,6 @@ public final class TagRenderer {
 		return new Resolved(out, tier.label(), shown);
 	}
 
-	/** True when a slot settled on a Diamond SMP ranking. */
-	private static boolean isDiaSmp(Resolved slot) {
-		return slot != null && slot.mode() == Gamemode.DIA_SMP;
-	}
-
-	/**
-	 * Our own tierlist as a nametag tag: the door, then the tier.
-	 *
-	 * <p>Null unless the player is on it and Door SMP is switched on, so this
-	 * only ever displaces another tag when there is something to put there.
-	 */
-	private static Component doorTag(UUID uuid) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		if (config == null || !config.extraTierlists) {
-			return null;
-		}
-		PlayerGrade grade = SpogTiersClient.service().grade(uuid);
-		if (grade == null || !grade.isGraded()) {
-			return null;
-		}
-		MutableComponent out = Component.empty();
-		if (config.showTagIcons) {
-			// A narrower gap than the other icons take: this glyph was shifted
-			// right inside its cell, which widened its advance, so a full space
-			// after it left the tier sitting noticeably away from the door.
-			out.append(ModeIcons.doorRaised()).append(ModeIcons.narrowSpace());
-		}
-		out.append(Component.literal(grade.label())
-				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
-		return out;
-	}
-
 	/**
 	 * The single best tier a player holds across every enabled list.
 	 *
@@ -460,19 +476,17 @@ public final class TagRenderer {
 	}
 
 	/**
-	 * What goes between two parts of a nametag.
+	 * What an element draws between two parts of a row.
 	 *
-	 * <p>A plain space when separators are switched off: the parts still need
-	 * holding apart, and dropping the bar without it would run the badge into
-	 * the name.
+	 * <p>Spaced on both sides rather than butted against its neighbours: the
+	 * backdrop already extends a couple of pixels past the text, and without
+	 * the padding a bar sits directly against the name.
 	 */
-	private static Component separator() {
-		SpogTiersConfig config = SpogTiersClient.config();
-		if (config != null && !config.showSeparators) {
-			return space();
-		}
-		return Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY);
+	private static Component separator(TagLayout.Element element) {
+		return Component.literal(" " + element.character + " ")
+				.setStyle(Style.EMPTY.withColor(element.colour));
 	}
+
 
 	private static Component space() {
 		return Component.literal(" ");

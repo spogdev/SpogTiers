@@ -153,6 +153,16 @@ public class SpogTiersConfig {
 	public TagSlot aboveTag = new TagSlot(false, TierList.PVPTIERS, null);
 
 	/**
+	 * The nametag as arranged in the editor.
+	 *
+	 * <p>Supersedes {@link #leftTag}, {@link #rightTag} and {@link #aboveTag},
+	 * which could only hold a tier each and only in that order. Null in a
+	 * config written before the editor existed; {@link #normalise} builds one
+	 * from the old slots so an upgrade keeps the tag someone had.
+	 */
+	public TagLayout tagLayout = null;
+
+	/**
 	 * Whether to tag nametags a server draws with a text display.
 	 *
 	 * <p>Servers use those to colour or style a name, which vanilla does not
@@ -321,6 +331,23 @@ public class SpogTiersConfig {
 	}
 
 	/** Fills in anything an older config file predates. */
+	/** One tier element carrying an old slot's list and gamemode. */
+	private static TagLayout.Element tierElement(TagLayout.Row row, TagSlot slot) {
+		TagLayout.Element element = new TagLayout.Element(TagLayout.Kind.TIER, row);
+		element.list = slot.list;
+		element.gamemode = slot.gamemode;
+		return element;
+	}
+
+	/** A separator carrying whatever the old single separator setting was. */
+	private TagLayout.Element separatorElement() {
+		TagLayout.Element element =
+				new TagLayout.Element(TagLayout.Kind.SEPARATOR, TagLayout.Row.MIDDLE);
+		element.character = showSeparators ? "|" : " ";
+		element.colour = 0x555555;
+		return element;
+	}
+
 	private void normalise() {
 		if (enabledLists == null) {
 			enabledLists = defaultLists();
@@ -344,6 +371,27 @@ public class SpogTiersConfig {
 		// Carried across from the old switch, which only knew "before the
 		// name": that is the bottom-left slot now. A config that predates
 		// either setting has neither, and gets the same default as a new one.
+		// Built from the old three slots on first run after the upgrade, so
+		// the tag someone had is the tag they keep. Their order was fixed:
+		// above on its own row, then left, the name, and right.
+		if (tagLayout == null) {
+			tagLayout = new TagLayout();
+			if (aboveTag != null && aboveTag.enabled) {
+				tagLayout.elements.add(tierElement(TagLayout.Row.TOP, aboveTag));
+			}
+			if (leftTag != null && leftTag.enabled) {
+				tagLayout.elements.add(tierElement(TagLayout.Row.MIDDLE, leftTag));
+				tagLayout.elements.add(separatorElement());
+			}
+			tagLayout.elements.add(
+					new TagLayout.Element(TagLayout.Kind.NAME, TagLayout.Row.MIDDLE));
+			if (rightTag != null && rightTag.enabled) {
+				tagLayout.elements.add(separatorElement());
+				tagLayout.elements.add(tierElement(TagLayout.Row.MIDDLE, rightTag));
+			}
+		}
+		tagLayout.normalise();
+
 		if (regionSlot == null) {
 			regionSlot = Boolean.TRUE.equals(showRegionOnNametag)
 					? RegionSlot.BOTTOM_LEFT

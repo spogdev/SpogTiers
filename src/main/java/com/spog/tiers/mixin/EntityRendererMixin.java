@@ -43,5 +43,6 @@ public class EntityRendererMixin {
 		// Stashed for LabelMixin rather than put in scoreText: vanilla draws
 		// that field under the name, since it is the scoreboard line.
 		AboveLabel.set(state, TagRenderer.aboveTag(player.getUUID()));
+		AboveLabel.setBelow(state, TagRenderer.belowTag(player.getUUID()));
 	}
 }

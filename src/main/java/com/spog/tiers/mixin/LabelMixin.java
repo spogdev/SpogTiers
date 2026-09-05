@@ -66,16 +66,14 @@ public class LabelMixin {
 			SubmitNodeCollector collector, CameraRenderState camera, int offset,
 			CallbackInfo ci) {
 		Component above = AboveLabel.get(state);
+		Component below = AboveLabel.getBelow(state);
 		Vec3 attachment = state.nameTagAttachment;
-		if (above == null || attachment == null) {
+		if ((above == null && below == null) || attachment == null) {
 			return;
 		}
 
 		Minecraft minecraft = Minecraft.getInstance();
 		Font font = minecraft.font;
-		int width = font.width(above);
-		float x = -width / 2.0f;
-		float y = offset + LINE_OFFSET;
 		boolean seeThrough = !state.isDiscrete;
 		int light = state.lightCoords;
 		int background = (int) (minecraft.gameRenderer.getGameRenderState()
@@ -89,6 +87,25 @@ public class LabelMixin {
 		poseStack.mulPose(camera.orientation);
 		poseStack.scale(SCALE, -SCALE, SCALE);
 
+		if (above != null) {
+			line(collector, poseStack, font, above, offset + LINE_OFFSET,
+					seeThrough, light, background);
+		}
+		// One line below the name rather than above it, by the same pitch, so
+		// the three rows are evenly spaced whichever of them are filled.
+		if (below != null) {
+			line(collector, poseStack, font, below, offset - LINE_OFFSET,
+					seeThrough, light, background);
+		}
+		poseStack.popPose();
+	}
+
+	/** One extra row, backdrop and both text passes, at {@code y} font pixels. */
+	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
+			Component text, float y, boolean seeThrough, int light, int background) {
+		int width = font.width(text);
+		float x = -width / 2.0f;
+
 		if ((background & 0xFF000000) != 0) {
 			// The box vanilla would draw for this text: a pixel of margin on
 			// the left and above, none on the right, nine rows of text below.
@@ -101,18 +118,17 @@ public class LabelMixin {
 					(pose, buffer) -> quad(pose, buffer, background, light, left, top, right, bottom));
 		}
 
-		FormattedCharSequence text = above.getVisualOrderText();
-		var ordered = collector.order(1);
+		FormattedCharSequence ordered = text.getVisualOrderText();
+		var queue = collector.order(1);
 		if (seeThrough) {
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.SEE_THROUGH,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.SEE_THROUGH,
 					light, FAINT, 0, 0);
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
 					light, FAINT, 0, 0);
 		}
-		poseStack.popPose();
 	}
 
 	/** One backdrop quad, wound the way vanilla winds its own. */
