@@ -1,18 +1,11 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.compat.NametagTweaks;
-import net.minecraft.client.gui.Font;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.SubmitNodeCollection;
-import net.minecraft.client.renderer.SubmitNodeStorage.NameTagSubmit;
-import net.minecraft.client.renderer.feature.NameTagFeatureRenderer;
-import org.joml.Matrix4f;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.List;
 
 /**
  * Moves a whole nameplate, not just its text, when Nametag Tweaks raises it.
@@ -20,43 +13,37 @@ import java.util.List;
  * <p>That mod raises a plate by subtracting its offset from the {@code y} it
  * hands the font, at the moment of drawing. Anything else drawn from the
  * same nameplate -- Essential's icon, and the two backdrop-coloured strips it
- * pads the plate with -- positions itself from the plate's pose alone, so it
+ * pads the plate with -- positions itself from the plate's anchor alone, so it
  * stays at the original height while the text and its box move away. With a
  * translucent black backdrop that left two faint bars beside the plate; with
  * a solid coloured one it left two solid bars.
  *
- * <p>Fixed here by folding the offset into the pose before any of that runs:
- * each queued plate is rebuilt with its pose moved up by the offset and its
- * {@code y} moved down by the same amount. The mod's own subtraction then
- * lands the text exactly where it did, and everything positioned from the
- * pose rises with it. Nothing changes without that mod, or when its offset is
- * zero.
+ * <p>Fixed here by raising the anchor the plate is built around, before any of
+ * that runs, and letting the mod's own subtraction pull the text back down to
+ * where it already was. Everything positioned from the anchor rises with it.
+ *
+ * <p>On 26.1.2 the same fix rewrites the queued submits, because the plate is
+ * assembled before anything can be intercepted. Here the anchor arrives as an
+ * argument, so it can simply be moved on the way in.
  */
-@Mixin(NameTagFeatureRenderer.class)
+@Mixin(SubmitNodeCollection.class)
 public class NameTagFeatureRendererMixin {
-	@Inject(method = "renderTranslucent", at = @At("HEAD"))
-	private void spogtiers$raiseWholePlate(SubmitNodeCollection collection,
-			MultiBufferSource.BufferSource buffers, Font font, CallbackInfo ci) {
-		float raise = NametagTweaks.plateOffset();
-		if (raise == 0.0f) {
-			return;
-		}
-		NameTagStorageAccessor storage = (NameTagStorageAccessor) collection.getNameTagSubmits();
-		lift(storage.spogtiers$seeThrough(), raise);
-		lift(storage.spogtiers$normal(), raise);
-	}
-
 	/**
-	 * Rebuilds each plate with the offset in its pose instead of its text.
+	 * Vanilla's nameplate scale: one font pixel is this many blocks.
 	 *
-	 * <p>The translate is in the pose's own space, where one unit is one font
-	 * pixel and y runs downwards, so a negative y is upwards -- the same
-	 * direction the mod's subtraction moves the text.
+	 * <p>The offset is counted in font pixels, and the anchor is in world
+	 * units, so the two need converting between. Upwards is positive here --
+	 * the {@code -y} flip that makes the mod's subtraction a rise happens
+	 * inside the plate's own frame, not out here.
 	 */
-	private static void lift(List<NameTagSubmit> submits, float raise) {
-		submits.replaceAll(submit -> new NameTagSubmit(
-				new Matrix4f(submit.pose()).translate(0.0f, -raise, 0.0f),
-				submit.x(), submit.y() + raise, submit.text(), submit.lightCoords(),
-				submit.color(), submit.backgroundColor(), submit.distanceToCameraSq()));
+	private static final double SCALE = 0.025;
+
+	@ModifyVariable(method = "submitNameTag", at = @At("HEAD"), argsOnly = true, index = 2)
+	private Vec3 spogtiers$raiseWholePlate(Vec3 attachment) {
+		float raise = NametagTweaks.plateOffset();
+		if (raise == 0.0f || attachment == null) {
+			return attachment;
+		}
+		return attachment.add(0.0, raise * SCALE, 0.0);
 	}
 }
