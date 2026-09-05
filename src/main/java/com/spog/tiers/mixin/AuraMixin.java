@@ -117,10 +117,10 @@ public class AuraMixin {
 	private void spogtiers$submitAura(EntityRenderState state, PoseStack poseStack,
 			SubmitNodeCollector collector, CameraRenderState camera, CallbackInfo ci) {
 		var config = SpogTiersClient.config();
-		// The switch that already governs the door tag and the profile aura:
-		// with our tierlist off, none of it shows anywhere.
-		if (config == null || !config.enabled || !config.extraTierlists
-				|| !config.showParticles) {
+		// Its own switch, and deliberately not the tagger's: turning tags off
+		// is about what is written over a player, and the aura is not writing
+		// anything. Someone who wants the decoration without the tags gets it.
+		if (config == null || !config.extraTierlists || !config.showParticles) {
 			return;
 		}
 		PlayerGrade grade = AuraTarget.get(state);
