@@ -1,6 +1,7 @@
 package com.spog.tiers.mixin;
 
 import com.spog.tiers.util.AboveLabel;
+import com.spog.tiers.util.NameShift;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.LightmapTextureManager;
@@ -59,16 +60,14 @@ public class LabelMixin {
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
 			OrderedRenderCommandQueue queue, CameraRenderState camera, CallbackInfo ci) {
 		Text above = AboveLabel.get(state);
+		Text below = AboveLabel.getBelow(state);
 		Vec3d attachment = state.nameLabelPos;
-		if (above == null || attachment == null) {
+		if ((above == null && below == null) || attachment == null) {
 			return;
 		}
 
 		MinecraftClient client = MinecraftClient.getInstance();
 		TextRenderer font = client.textRenderer;
-		int width = font.getWidth(above);
-		float x = -width / 2.0f;
-		float y = LINE_OFFSET;
 		boolean seeThrough = !state.sneaking;
 		int light = state.light;
 		int background = (int) (client.options.getTextBackgroundOpacity(0.25f) * 255.0f) << 24;
@@ -80,6 +79,50 @@ public class LabelMixin {
 		matrices.translate(attachment.x, attachment.y + 0.5, attachment.z);
 		matrices.multiply(camera.orientation);
 		matrices.scale(SCALE, -SCALE, SCALE);
+
+		// Centred over the name rather than over the whole plate, when asked:
+		// the middle row's own width includes its tiers, so a long tier on one
+		// side would otherwise push the other rows off to the side of the name.
+		float shift = nameShift(state, font);
+		if (above != null) {
+			line(queue, matrices, font, above, LINE_OFFSET, shift,
+					seeThrough, light, background);
+		}
+		// One line below the name rather than above it, by the same pitch, so
+		// the three rows are evenly spaced whichever of them are filled.
+		if (below != null) {
+			line(queue, matrices, font, below, -LINE_OFFSET, shift,
+					seeThrough, light, background);
+		}
+		matrices.pop();
+	}
+
+	/**
+	 * How far the extra rows move to sit over the name, in font pixels.
+	 *
+	 * <p>Zero unless the layout asks for it. The name plate is centred on its
+	 * whole text, so the name's own middle is offset from that by half of
+	 * whatever sits either side of it; moving the other rows by the same
+	 * amount lines all three up on the name.
+	 */
+	private static float nameShift(EntityRenderState state, TextRenderer font) {
+		var config = com.spog.tiers.SpogTiersClient.config();
+		if (config == null || !config.tagLayout.centerOnName) {
+			return 0.0f;
+		}
+		Text before = NameShift.before(state);
+		Text after = NameShift.after(state);
+		int left = before == null ? 0 : font.getWidth(before);
+		int right = after == null ? 0 : font.getWidth(after);
+		return (left - right) / 2.0f;
+	}
+
+	/** One extra row, backdrop and both text passes, at {@code y} font pixels. */
+	private static void line(OrderedRenderCommandQueue queue, MatrixStack matrices,
+			TextRenderer font, Text text, float y, float shift, boolean seeThrough,
+			int light, int background) {
+		int width = font.getWidth(text);
+		float x = -width / 2.0f + shift;
 
 		if ((background & 0xFF000000) != 0) {
 			// The box vanilla would draw for this text: a pixel of margin on
@@ -93,18 +136,17 @@ public class LabelMixin {
 					(matrix, buffer) -> quad(matrix, buffer, background, light, left, top, right, bottom));
 		}
 
-		OrderedText text = above.asOrderedText();
-		var ordered = queue.getBatchingQueue(1);
+		OrderedText ordered = text.asOrderedText();
+		var batch = queue.getBatchingQueue(1);
 		if (seeThrough) {
-			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.SEE_THROUGH,
+			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.SEE_THROUGH,
 					light, FAINT, 0, 0);
-			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.NORMAL,
+			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.NORMAL,
 					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
-			ordered.submitText(matrices, x, y, text, false, TextRenderer.TextLayerType.NORMAL,
+			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.NORMAL,
 					light, FAINT, 0, 0);
 		}
-		matrices.pop();
 	}
 
 	/** One backdrop quad, wound the way vanilla winds its own. */

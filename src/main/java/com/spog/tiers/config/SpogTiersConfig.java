@@ -10,6 +10,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -64,10 +65,9 @@ public class SpogTiersConfig {
 	/**
 	 * Draw the ember aura around graded players and on their profile.
 	 *
-	 * <p>Separate from {@link #extraTierlists}, which turns our tierlist off
-	 * altogether: this leaves the door tag showing and only stops the
-	 * particles, for someone who wants the tier without the decoration around
-	 * every graded player they walk past.
+	 * <p>Only the particles: a door tier stays on the tag and on the profile,
+	 * for someone who wants the tier without the decoration around every
+	 * graded player they walk past.
 	 */
 	public boolean showParticles = true;
 
@@ -88,6 +88,12 @@ public class SpogTiersConfig {
 	 * thing off without hunting through several options.
 	 */
 	public boolean extraTierlists = true;
+
+	// NB: no longer has a switch on the config screen. Door SMP is asked for
+	// by name in the tag editor now, and the profile aura has its own
+	// Particles option, so a second master switch only gave two ways to turn
+	// the same things off. The field stays so an existing config that turned
+	// it off is still honoured, and forced back on below.
 
 	/**
 	 * Per-list tag toggles, separate from {@link #enabledLists}.
@@ -151,6 +157,16 @@ public class SpogTiersConfig {
 
 	/** What the tag above the name shows, or null for none. */
 	public TagSlot aboveTag = new TagSlot(false, TierList.PVPTIERS, null);
+
+	/**
+	 * The nametag as arranged in the editor.
+	 *
+	 * <p>Supersedes {@link #leftTag}, {@link #rightTag} and {@link #aboveTag},
+	 * which could only hold a tier each and only in that order. Null in a
+	 * config written before the editor existed; {@link #normalise} builds one
+	 * from the old slots so an upgrade keeps the tag someone had.
+	 */
+	public TagLayout tagLayout = null;
 
 	/**
 	 * Whether to tag nametags a server draws with a text display.
@@ -305,7 +321,7 @@ public class SpogTiersConfig {
 	public static SpogTiersConfig load() {
 		Path path = path();
 		if (Files.exists(path)) {
-			try (Reader reader = Files.newBufferedReader(path)) {
+			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				SpogTiersConfig loaded = GSON.fromJson(reader, SpogTiersConfig.class);
 				if (loaded != null) {
 					loaded.normalise();
@@ -315,12 +331,35 @@ public class SpogTiersConfig {
 				SpogTiers.LOGGER.warn("Could not read config, using defaults", e);
 			}
 		}
+		// Normalised before saving, like a loaded one: the layout starts null
+		// so that an upgrade can tell "never had one" from "has an empty one",
+		// and without this a fresh config was written with no layout at all --
+		// which Gson omits, so the editor's own saves had nothing to merge
+		// into and every tier element was lost on restart.
 		SpogTiersConfig fresh = new SpogTiersConfig();
+		fresh.normalise();
 		fresh.save();
 		return fresh;
 	}
 
 	/** Fills in anything an older config file predates. */
+	/** One tier element carrying an old slot's list and gamemode. */
+	private static TagLayout.Element tierElement(TagLayout.Row row, TagSlot slot) {
+		TagLayout.Element element = new TagLayout.Element(TagLayout.Kind.TIER, row);
+		element.list(slot.list);
+		element.gamemode = slot.gamemode;
+		return element;
+	}
+
+	/** A separator carrying whatever the old single separator setting was. */
+	private TagLayout.Element separatorElement() {
+		TagLayout.Element element =
+				new TagLayout.Element(TagLayout.Kind.SEPARATOR, TagLayout.Row.MIDDLE);
+		element.character = showSeparators ? "|" : " ";
+		element.colour = 0x555555;
+		return element;
+	}
+
 	private void normalise() {
 		if (enabledLists == null) {
 			enabledLists = defaultLists();
@@ -344,6 +383,32 @@ public class SpogTiersConfig {
 		// Carried across from the old switch, which only knew "before the
 		// name": that is the bottom-left slot now. A config that predates
 		// either setting has neither, and gets the same default as a new one.
+		// Built from the old three slots on first run after the upgrade, so
+		// the tag someone had is the tag they keep. Their order was fixed:
+		// above on its own row, then left, the name, and right.
+		if (tagLayout == null) {
+			tagLayout = new TagLayout();
+			if (aboveTag != null && aboveTag.enabled) {
+				tagLayout.elements.add(tierElement(TagLayout.Row.TOP, aboveTag));
+			}
+			if (leftTag != null && leftTag.enabled) {
+				tagLayout.elements.add(tierElement(TagLayout.Row.MIDDLE, leftTag));
+				tagLayout.elements.add(separatorElement());
+			}
+			tagLayout.elements.add(
+					new TagLayout.Element(TagLayout.Kind.NAME, TagLayout.Row.MIDDLE));
+			if (rightTag != null && rightTag.enabled) {
+				tagLayout.elements.add(separatorElement());
+				tagLayout.elements.add(tierElement(TagLayout.Row.MIDDLE, rightTag));
+			}
+		}
+		tagLayout.normalise();
+
+		// Nothing sets this false any more, and leaving an old config's false
+		// in place would hide the door tier with no way in the UI to bring it
+		// back.
+		extraTierlists = true;
+
 		if (regionSlot == null) {
 			regionSlot = Boolean.TRUE.equals(showRegionOnNametag)
 					? RegionSlot.BOTTOM_LEFT
@@ -372,7 +437,7 @@ public class SpogTiersConfig {
 		Path path = path();
 		try {
 			Files.createDirectories(path.getParent());
-			try (Writer writer = Files.newBufferedWriter(path)) {
+			try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
 				GSON.toJson(this, writer);
 			}
 		} catch (IOException e) {

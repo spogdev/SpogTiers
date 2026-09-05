@@ -159,7 +159,13 @@ public final class ClientCommands {
 	}
 
 	/** Resolves a name to a profile via Mojang. Returns null when unknown. */
-	private static GameProfile resolveProfile(String name) {
+	/**
+	 * Resolves a name to a profile via Mojang. Returns null when unknown.
+	 *
+	 * <p>Blocking, and shared with the tag editor's preview: this is the one
+	 * place that knows how to turn a name into an id.
+	 */
+	public static GameProfile resolveProfile(String name) {
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(MOJANG_PROFILE + name))
 					.header("Accept", "application/json")

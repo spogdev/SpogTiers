@@ -2,6 +2,7 @@ package com.spog.tiers.mixin;
 
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
+import com.spog.tiers.util.NameShift;
 import com.spog.tiers.util.AuraTarget;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.render.entity.EntityRenderer;
@@ -42,6 +43,13 @@ public class EntityRendererMixin {
 		// Stashed rather than folded into the name: this version has no second
 		// label line of its own, so LabelMixin submits one, and a newline in
 		// the name would share the name's single background.
+		// Split from the bare name, before it is replaced: passing the tagged
+		// name back in would tag it a second time and measure the wrong halves.
+		Text bare = state.displayName;
+		Text[] around = TagRenderer.aroundName(player.getUuid(), bare);
+		NameShift.set(state, around == null ? null : around[0],
+				around == null ? null : around[1]);
 		AboveLabel.set(state, TagRenderer.aboveTag(player.getUuid()));
+		AboveLabel.setBelow(state, TagRenderer.belowTag(player.getUuid()));
 	}
 }
