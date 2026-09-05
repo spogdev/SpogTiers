@@ -152,19 +152,18 @@ public class LabelMixin {
 	/**
 	 * One extra row, drawn the way vanilla draws a nameplate.
 	 *
-	 * <p>Both passes carry the backdrop, not just one. That looks like a bug
-	 * and is not: vanilla queues an opaque-backdrop plate on <em>both</em> its
-	 * lists, each with the same background colour, so the box is composited
-	 * twice and the plate is darker than one pass of it would be. A row that
-	 * painted its box once came out visibly lighter than the name beside it --
-	 * measurably so: with the plate red at half alpha, the plate reads
-	 * {@code E02B40} and a single-pass row {@code C1567F}.
+	 * <p>Only the first pass carries the backdrop, though vanilla hands one to
+	 * both of its own. Ours cannot: vanilla's two passes are separate submits
+	 * flushed in two batches, so its second box lands under its second copy of
+	 * the text, while both of ours go through one queue -- the second box is
+	 * drawn after the first pass's glyphs and covers them. At a translucent
+	 * colour that only dimmed them; at an opaque one it erased the tier icons
+	 * outright, since they are drawn once and not repainted by the second
+	 * pass the way the text is.
 	 *
-	 * <p>Order matters as much as count. The see-through pass goes first,
-	 * carrying the faint text, and the in-view pass second with the solid
-	 * emissive text; that is the order {@code renderTranslucent} walks its two
-	 * lists in. Reversing them paints the second backdrop over the first
-	 * pass's glyphs, which is what buried the tier icons.
+	 * <p>The see-through pass goes first, carrying the box and the faint text,
+	 * and the in-view pass second with the solid emissive text over it. That
+	 * is the order {@code renderTranslucent} walks its two lists in.
 	 */
 	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
 			Component text, float y, float shift, boolean seeThrough, int light,
@@ -180,8 +179,7 @@ public class LabelMixin {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
 					light, FAINT, background, 0);
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
-					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID,
-					background, 0);
+					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					light, FAINT, background, 0);
