@@ -106,18 +106,14 @@ public class LabelMixin {
 		// the middle row's own width includes its tiers, so a long tier on one
 		// side would otherwise push the other rows off to the side of the name.
 		float shift = nameShift(state, font);
-		// Subtracted the way the mod subtracts it from the plate's own
-		// height, and inside the scaled frame, so a raised plate takes its
-		// rows with it by the same amount rather than a different one.
-		float raise = NametagTweaks.offset();
 		if (above != null) {
-			line(collector, poseStack, font, above, offset + LINE_OFFSET - raise, shift,
+			line(collector, poseStack, font, above, offset + LINE_OFFSET, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(collector, poseStack, font, below, offset - LINE_OFFSET - raise, shift,
+			line(collector, poseStack, font, below, offset - LINE_OFFSET, shift,
 					seeThrough, light, background);
 		}
 		poseStack.popPose();

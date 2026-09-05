@@ -339,7 +339,7 @@ public class ConfigScreen extends Screen {
 			return y + ROW_HEIGHT + CARD_PADDING - top;
 		}
 
-		y = drawSwitch(graphics, "Match Visual Adjustments", config.matchNametagTweaks,
+		y = drawSwitch(graphics, "Visual Adjustments", config.matchNametagTweaks,
 				x, y, () -> {
 					config.matchNametagTweaks = !config.matchNametagTweaks;
 					config.save();
