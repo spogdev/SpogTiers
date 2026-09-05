@@ -229,6 +229,12 @@ public class ConfigScreen extends Screen {
 		if (hoverLabel != null && hoverLabel.contains(mouseX, mouseY)) {
 			drawHoverText(graphics, hoverLabel.text(), mouseX, mouseY);
 		}
+		if (active == Tab.NAMETAG && tagEditor.hoverText() != null) {
+			drawHoverText(graphics, tagEditor.hoverText(), mouseX, mouseY);
+		}
+		if (active == Tab.NAMETAG) {
+			tagEditor.drawButtonTooltip(graphics, mouseX, mouseY, width, height);
+		}
 
 		super.render(graphics, mouseX, mouseY, partialTick);
 
