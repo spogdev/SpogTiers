@@ -1,7 +1,6 @@
 package com.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
@@ -10,7 +9,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -24,13 +22,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Draws the above-name tag as its own line, stacked over the nameplate.
  *
- * <p>Drawn by hand rather than through {@code submitNameTag}. A vanilla label
- * always paints its backdrop across the full width of its text, so the only
- * way to control that box was to pad the text -- and padding it out to the
- * name's width, which stopped the two lines' backdrops fighting, left a box
- * far wider than the tag inside it. Drawing our own quad sizes the box to the
- * icon and text exactly, and keeps it clear of the name's box by construction:
- * its bottom edge is the name's top edge, sharing pixels with nothing.
+ * <p>Drawn through {@code submitText} rather than {@code submitNameTag}. The
+ * two look the same -- the same font, backdrop and pair of passes -- but a
+ * name-tag submit is what other mods hook to decorate a nameplate, and each
+ * of them would decorate every row: Essential paints its icon and padding on
+ * every name-tag submit it sees. A text submit is nobody's nameplate.
+ *
+ * <p>The backdrop is the font's own, handed to it as the background colour
+ * rather than drawn as a separate quad. It has to be: text submits are drawn
+ * before custom geometry, so a quad of our own landed <em>over</em> the row.
+ * At vanilla's quarter-opaque black that only dimmed the text slightly; at
+ * the solid colours Nametag Tweaks allows it buried the row entirely, icon
+ * and all, and the row's colour read as the wrong shade through it.
  *
  * <p>Everything else copies vanilla's nameplate so the line looks like part
  * of it: the same anchor, camera billboarding and scale, the same backdrop
@@ -146,25 +149,19 @@ public class LabelMixin {
 		return (left - right) / 2.0f;
 	}
 
-	/** One extra row, backdrop and both text passes, at {@code y} font pixels. */
+	/**
+	 * One extra row, both text passes, at {@code y} font pixels.
+	 *
+	 * <p>The backdrop rides on the pass vanilla puts it on: the see-through
+	 * one when there is one, otherwise the single solid one. The in-view pass
+	 * over a see-through pass carries none, or the two boxes would stack and
+	 * double the opacity.
+	 */
 	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
 			Component text, float y, float shift, boolean seeThrough, int light,
 			int background) {
 		int width = font.width(text);
 		float x = -width / 2.0f + shift;
-
-		if ((background & 0xFF000000) != 0) {
-			// The box vanilla would draw for this text: a pixel of margin on
-			// the left and above, none on the right, nine rows of text below.
-			float left = x - 1.0f;
-			float top = y - 1.0f;
-			float right = x + width;
-			float bottom = y + 9.0f;
-			collector.submitCustomGeometry(poseStack,
-					seeThrough ? RenderTypes.textBackgroundSeeThrough() : RenderTypes.textBackground(),
-					(pose, buffer) -> quad(pose, buffer, background, light, left, top, right, bottom));
-		}
-
 		FormattedCharSequence ordered = text.getVisualOrderText();
 		// A shadow when the plate has one, so the rows are not the only text
 		// on the tag without it.
@@ -172,21 +169,12 @@ public class LabelMixin {
 		var queue = collector.order(1);
 		if (seeThrough) {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 		}
-	}
-
-	/** One backdrop quad, wound the way vanilla winds its own. */
-	private static void quad(PoseStack.Pose pose, VertexConsumer buffer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		buffer.addVertex(pose, left, top, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, left, bottom, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, bottom, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, top, 0.0f).setColor(colour).setLight(light);
 	}
 }
