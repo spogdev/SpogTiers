@@ -1400,15 +1400,21 @@ public final class TagEditor {
 	 */
 	private void colouredButton(GuiGraphicsExtractor graphics, String label, int x, int y,
 			int width, int mouseX, int mouseY, String id, Tint tint, String explains) {
-		int height = 20;
+		// Shorter than a plain button, and shorter than the plus beside them:
+		// these sit in a row of controls rather than standing alone, and at
+		// full height they crowded it. The bottom edge comes up rather than
+		// the top going down, so the row's tops stay in line.
+		int height = 16;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
 		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
 		outline(graphics, x, y, x + width, y + height,
 				hovered ? tint.text() : tint.border());
+		// Centred on the height the button used to be, so shortening it moved
+		// the edge and not the word.
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
-				y + (height - font.lineHeight) / 2, tint.text());
+				y + (20 - font.lineHeight) / 2, tint.text());
 		buttons.add(new Button(id, x, y, x + width, y + height));
 		if (hovered && explains != null) {
 			hoverButton = new Explained(explains, tint);
@@ -1480,7 +1486,9 @@ public final class TagEditor {
 
 		int ink = RED.text();
 		int cx = x + size / 2;
-		int top = y + size / 2 - 5;
+		// A pixel below centre: the lid and handle sit above `top`, so
+		// measuring from the middle left the bin riding high in its button.
+		int top = y + size / 2 - 4;
 		int lift = hovered ? 2 : 0;
 		// Handle and lid rise together; the body stays where it is.
 		graphics.fill(cx - 2, top - 2 - lift, cx + 2, top - 1 - lift, ink);
