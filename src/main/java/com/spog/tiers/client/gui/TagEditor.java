@@ -598,16 +598,36 @@ public final class TagEditor {
 		// The session's controls sit on this row too, to the right of the
 		// plus: they belong with the editing, not down beside Done, which
 		// only closes the screen.
+		// Beside the plus while they fit there, which they do at any ordinary
+		// window size. At a large GUI scale this column is only a few dozen
+		// pixels wide, and the three of them ran off its right-hand edge, so
+		// they wrap onto rows of their own -- as many to a row as there is
+		// room for.
 		int narrow = 56;
 		int gap = 6;
 		int barX = addX + addSize + gap * 2;
-		colouredButton(graphics, "Undo", barX, y, narrow, mouseX, mouseY, "undo", BLUE,
-				"Rolls back the most recent change");
-		colouredButton(graphics, "Reset", barX + narrow + gap, y, narrow, mouseX, mouseY,
-				"reset", AMBER, "Resets the tag to default settings");
-		colouredButton(graphics, "Revert", barX + (narrow + gap) * 2, y, narrow,
-				mouseX, mouseY, "revert", RED,
-				"Rolls back all changes done in this editing session");
+		String[] labels = {"Undo", "Reset", "Revert"};
+		String[] ids = {"undo", "reset", "revert"};
+		Tint[] tints = {BLUE, AMBER, RED};
+		String[] explains = {
+			"Rolls back the most recent change",
+			"Resets the tag to default settings",
+			"Rolls back all changes done in this editing session",
+		};
+		int perRow = fitPerRow(right - PADDING - barX, narrow, gap, labels.length);
+		if (perRow < labels.length) {
+			// Below the creator rather than beside it, where the whole width
+			// of the column is theirs instead of what the plus left over.
+			barX = left + PADDING;
+			y += ROW_HEIGHT + 4;
+			perRow = fitPerRow(right - PADDING - barX, narrow, gap, labels.length);
+		}
+		for (int i = 0; i < labels.length; i++) {
+			colouredButton(graphics, labels[i], barX + i % perRow * (narrow + gap),
+					y + i / perRow * (ROW_HEIGHT + 4), narrow, mouseX, mouseY, ids[i],
+					tints[i], explains[i]);
+		}
+		y += (labels.length - 1) / perRow * (ROW_HEIGHT + 4);
 		y += ROW_HEIGHT + 8;
 
 		if (complaint != null) {
@@ -1389,6 +1409,18 @@ public final class TagEditor {
 		// layout is already saved by the time anyone reaches it, and the
 		// session's own controls live beside the element creator instead.
 		pushButton(graphics, "Done", x, y, width, mouseX, mouseY, "done");
+	}
+
+	/**
+	 * How many fixed-width buttons fit across {@code width}, at least one and
+	 * never more than {@code most}.
+	 *
+	 * <p>Never zero: a width too small even for one button still has to draw
+	 * it, overhanging, rather than divide by zero or drop the control
+	 * entirely. Somewhere to click beats nowhere.
+	 */
+	private static int fitPerRow(int width, int button, int gap, int most) {
+		return Math.clamp((width + gap) / (button + gap), 1, most);
 	}
 
 	/**
