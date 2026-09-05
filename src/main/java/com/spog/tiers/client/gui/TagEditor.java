@@ -459,7 +459,8 @@ public final class TagEditor {
 			List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
 			lists.add(new Dropdown.Entry<>(null, "Best", null));
 			for (TierList list : TierList.values()) {
-				lists.add(new Dropdown.Entry<>(list, list.displayName(), null));
+				lists.add(new Dropdown.Entry<>(list, list.displayName(),
+						ConfigScreen.logoOf(list)));
 			}
 			tierList.setEntries(lists);
 			tierList.setBounds(x, y, right - x - PADDING);
@@ -476,7 +477,11 @@ public final class TagEditor {
 			List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
 			modes.add(new Dropdown.Entry<>(null, "Best", null));
 			for (Gamemode mode : modesFor(selected.list)) {
-				modes.add(new Dropdown.Entry<>(mode, mode.displayName(), null));
+				// A Best element has no one list to take artwork from, so its
+				// modes are drawn from whichever list ranks them.
+				TierList owner = selected.list != null ? selected.list : ownerOf(mode);
+				modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
+						ConfigScreen.modeIcon(owner, mode)));
 			}
 			tierMode.setEntries(modes);
 			tierMode.setBounds(x, y, right - x - PADDING);
@@ -799,6 +804,16 @@ public final class TagEditor {
 			}
 		}
 		return all;
+	}
+
+	/** Any list that ranks this mode, for a Best element's artwork. */
+	private TierList ownerOf(Gamemode mode) {
+		for (TierList list : TierList.values()) {
+			if (list.gamemodes().contains(mode)) {
+				return list;
+			}
+		}
+		return null;
 	}
 
 	/** The icon a tier element would draw, or null when it has none. */

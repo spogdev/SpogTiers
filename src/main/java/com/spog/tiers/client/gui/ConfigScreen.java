@@ -478,7 +478,7 @@ public class ConfigScreen extends Screen {
 				x + (boxWidth - font.width(text)) / 2, y + 4, textColor);
 	}
 
-	private static Identifier logoOf(TierList list) {
+	static Identifier logoOf(TierList list) {
 		return Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID, list.logoPath());
 	}
 
@@ -489,7 +489,7 @@ public class ConfigScreen extends Screen {
 	 * Vanilla resolves to a texture that does not exist and renders as the
 	 * missing-texture chequer.
 	 */
-	private static Identifier modeIcon(TierList list, Gamemode mode) {
+	static Identifier modeIcon(TierList list, Gamemode mode) {
 		if (list == null || mode == null || !list.gamemodes().contains(mode)) {
 			return null;
 		}
