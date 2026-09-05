@@ -144,6 +144,10 @@ public final class TagRenderer {
 			if (pending != null) {
 				out.append(pending);
 				pending = null;
+			} else if (any) {
+				// Two elements with nothing between them still need holding
+				// apart, or a tier runs straight into the name.
+				out.append(space());
 			}
 			out.append(piece);
 			any = true;
@@ -167,6 +171,11 @@ public final class TagRenderer {
 					|| element.row.ordinal() >= row.ordinal()) {
 				continue;
 			}
+			// Our own list is not part of the six, so it never counts as a
+			// duplicate of one of them.
+			if (element.doorSmp) {
+				continue;
+			}
 			Resolved tier = resolveTier(uuid, element, labels);
 			if (tier != null) {
 				labels.add(tier.label());
@@ -186,24 +195,30 @@ public final class TagRenderer {
 	 */
 	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
 			Set<String> exclude) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		SpogTiersConfig.TagSlot slot =
-				new SpogTiersConfig.TagSlot(true, element.list, element.gamemode);
-		Resolved resolved = resolve(uuid, slot, exclude);
-
-		Component door = doorTag(uuid);
-		if (door == null) {
-			return resolved;
-		}
-		if (resolved == null) {
+		// Our own list is asked for by name now, rather than standing in for a
+		// Diamond SMP tier whenever one happened to appear. That guess was
+		// wrong as often as it was right, and an element that says Door SMP
+		// says what it means.
+		if (element.doorSmp) {
+			Component door = doorTag(uuid);
+			if (door == null) {
+				return null;
+			}
 			PlayerGrade grade = SpogTiersClient.service().grade(uuid);
 			return new Resolved(door, grade == null ? "" : grade.label(), null);
 		}
-		if (resolved.mode() == Gamemode.DIA_SMP) {
-			return new Resolved(door, resolved.label(), resolved.mode());
-		}
-		return resolved;
+
+		SpogTiersConfig.TagSlot slot =
+				new SpogTiersConfig.TagSlot(true, element.list, element.gamemode);
+		// Only an element with a Best somewhere in it can honour an exclusion:
+		// it has other lists or other modes to fall back on. One pinned to a
+		// list and a mode has exactly one answer, and suppressing it would
+		// leave a hole rather than a different tier.
+		Set<String> applies = element.list == null || element.gamemode == null
+				? exclude : Set.of();
+		return resolve(uuid, slot, applies);
 	}
+
 
 	private static boolean isDiaSmp(Resolved slot) {
 		return slot != null && slot.mode() == Gamemode.DIA_SMP;
@@ -226,10 +241,10 @@ public final class TagRenderer {
 		}
 		MutableComponent out = Component.empty();
 		if (config.showTagIcons) {
-			// A narrower gap than the other icons take: this glyph was shifted
-			// right inside its cell, which widened its advance, so a full space
-			// after it left the tier sitting noticeably away from the door.
-			out.append(ModeIcons.doorRaised()).append(ModeIcons.narrowSpace());
+			// No gap of its own: the glyph was shifted right inside its cell,
+			// which already widened its advance, so anything added after it
+			// read as a space before the tier that no other icon has.
+			out.append(ModeIcons.doorRaised());
 		}
 		out.append(Component.literal(grade.label())
 				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));

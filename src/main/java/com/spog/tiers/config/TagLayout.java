@@ -79,6 +79,17 @@ public class TagLayout {
 		/** Tier elements: which list, or null for the best across all of them. */
 		public TierList list = TierList.PVPTIERS;
 
+		/**
+		 * Tier elements: our own Door SMP list rather than one of the six.
+		 *
+		 * <p>A flag rather than a value of {@link TierList}: Door SMP is a
+		 * separate service with one grade per player and no gamemodes, so it
+		 * has no place in an enum whose every member has an endpoint, a set of
+		 * modes and a shared shape. When this is set, {@link #list} and
+		 * {@link #gamemode} are both ignored.
+		 */
+		public boolean doorSmp;
+
 		/** Tier elements: which gamemode, or null for that list's best. */
 		public Gamemode gamemode;
 
@@ -98,6 +109,7 @@ public class TagLayout {
 		public Element copy() {
 			Element copy = new Element(kind, row);
 			copy.list = list;
+			copy.doorSmp = doorSmp;
 			copy.gamemode = gamemode;
 			copy.character = character;
 			copy.colour = colour;
@@ -110,7 +122,12 @@ public class TagLayout {
 				case NAME -> "Name";
 				case REGION -> "Region";
 				case SEPARATOR -> "Separator";
-				case TIER -> list == null ? "Tier: Best" : "Tier: " + list.displayName();
+				case TIER -> {
+					if (doorSmp) {
+						yield "Tier: Door SMP";
+					}
+					yield list == null ? "Tier: Best" : "Tier: " + list.displayName();
+				}
 			};
 		}
 	}

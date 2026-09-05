@@ -47,8 +47,11 @@ public final class TagEditor {
 	private static final int OFF_FILL = 0xFFC1443C;
 
 	/** The two coloured controls: add and delete. */
-	private static final int ADD_FILL = 0xFF3E8E41;
-	private static final int DELETE_FILL = 0xFFB03A32;
+	private static final int ADD_FILL = 0xFF4CAF50;
+	private static final int DELETE_FILL = 0xFFC1443C;
+
+	/** Reset starts the layout over, which is neither committing nor discarding. */
+	private static final int RESET_FILL = 0xFFD08A3E;
 
 	private static final int ROW_HEIGHT = 22;
 	private static final int PADDING = 10;
@@ -81,6 +84,9 @@ public final class TagEditor {
 	/** Set when a save is refused, and cleared by the next change. */
 	private String complaint;
 
+	/** What to explain under the pointer this frame, or null. */
+	private String hover;
+
 	private final Font font;
 
 	/** Where each element was last drawn, for hit testing and dropping. */
@@ -93,7 +99,7 @@ public final class TagEditor {
 	private final List<RowBand> bands = new ArrayList<>();
 
 	private final Dropdown<TagLayout.Kind> creator;
-	private final Dropdown<TierList> tierList;
+	private final Dropdown<Choice> tierList;
 	private final Dropdown<Gamemode> tierMode;
 
 	/** What to create next, and how far the right panel is scrolled. */
@@ -118,18 +124,44 @@ public final class TagEditor {
 	private record RowBand(TagLayout.Row row, int top, int bottom) {
 	}
 
+	/**
+	 * What the list dropdown offers.
+	 *
+	 * <p>Its own type because null already means Best, so Door SMP needs a
+	 * value of its own rather than another null.
+	 */
+	private record Choice(TierList list, boolean door) {
+		static Choice best() {
+			return new Choice(null, false);
+		}
+
+		static Choice of(TierList list) {
+			return new Choice(list, false);
+		}
+
+		static Choice doorSmp() {
+			return new Choice(null, true);
+		}
+	}
+
+	/** The choice an element currently represents. */
+	private static Choice current(TagLayout.Element element) {
+		return element.doorSmp ? Choice.doorSmp() : Choice.of(element.list);
+	}
+
 	public TagEditor(Font font, Runnable onChange) {
 		this.font = font;
 		this.onChange = onChange;
 		this.creator = new Dropdown<>(value -> creating = value);
 		this.tierList = new Dropdown<>(value -> {
 			if (selected != null) {
-				selected.list = value;
+				selected.doorSmp = value.door();
+				selected.list = value.list();
 				// A mode the new list does not rank would resolve to nothing,
 				// so it falls back to that list's best rather than being kept
 				// as a setting that cannot work.
 				if (selected.gamemode != null
-						&& !modesFor(value).contains(selected.gamemode)) {
+						&& !modesFor(value.list()).contains(selected.gamemode)) {
 					selected.gamemode = null;
 				}
 				changed();
@@ -177,6 +209,7 @@ public final class TagEditor {
 		hits.clear();
 		buttons.clear();
 		bands.clear();
+		hover = null;
 
 		int centreLeft = left + SIDE_WIDTH + PADDING;
 		int centreRight = right - SIDE_WIDTH - PADDING;
@@ -198,11 +231,16 @@ public final class TagEditor {
 		}
 	}
 
+	/** What the pointer is over, for the screen to draw as a tooltip. */
+	public String hoverText() {
+		return hover;
+	}
+
 	/** Dropdown lists, drawn last so they sit over everything else. */
 	public void drawOverlays(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		creator.drawOverlay(graphics, font, creating, mouseX, mouseY);
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
-			tierList.drawOverlay(graphics, font, selected.list, mouseX, mouseY);
+			tierList.drawOverlay(graphics, font, current(selected), mouseX, mouseY);
 			tierMode.drawOverlay(graphics, font, selected.gamemode, mouseX, mouseY);
 		}
 	}
@@ -224,7 +262,7 @@ public final class TagEditor {
 				mouseX, mouseY, "toggle.enabled");
 		y = rule(graphics, left, right, y);
 
-		graphics.text(font, Component.literal("Show tiers in"), x, y, LABEL_COLOR);
+		graphics.text(font, Component.literal("Show tiers in..."), x, y, LABEL_COLOR);
 		y += font.lineHeight + 6;
 		y = toggle(graphics, "Nametag", config.showNametags, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.nametag");
@@ -232,12 +270,20 @@ public final class TagEditor {
 				mouseX, mouseY, "toggle.tablist");
 		y = toggle(graphics, "Chat", config.showInChat, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.chat");
-		y = toggle(graphics, "Displays", config.tagDisplays, x, y, right - PADDING,
+		y = toggle(graphics, "Custom Nametags", config.tagDisplays, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.displays");
 		y = rule(graphics, left, right, y);
 
-		toggle(graphics, "No duplicates", config.preventDuplicateTiers, x, y, right - PADDING,
-				mouseX, mouseY, "toggle.duplicates");
+		int duplicatesTop = y;
+		toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.duplicates");
+		// Explained on hover: what it does depends on a Best option being
+		// picked somewhere, which the label has no room to say.
+		if (mouseX >= x && mouseX < right - PADDING
+				&& mouseY >= duplicatesTop && mouseY < duplicatesTop + 16) {
+			hover = "Prevent duplicate tiers from appearing when a best tierlist "
+					+ "or best gamemode option is selected";
+		}
 	}
 
 	/**
@@ -288,14 +334,7 @@ public final class TagEditor {
 			graphics.text(font, Component.literal(complaint), left + PADDING, y, OFF_FILL);
 		}
 
-		// The session's controls, along the bottom, in the same style as Done.
-		int barY = bottom - PADDING - 20;
-		int wide = 62;
-		pushButton(graphics, "Save", left + PADDING, barY, wide, mouseX, mouseY, "save");
-		pushButton(graphics, "Cancel", left + PADDING + wide + 6, barY, wide,
-				mouseX, mouseY, "cancel");
-		pushButton(graphics, "Reset", left + PADDING + (wide + 6) * 2, barY, wide,
-				mouseX, mouseY, "reset");
+		// Save, Cancel and Reset are drawn where Done sits, by drawActions.
 	}
 
 	/** One row of the preview, and the hit boxes for its elements. */
@@ -456,16 +495,30 @@ public final class TagEditor {
 		if (selected.kind == TagLayout.Kind.TIER) {
 			graphics.text(font, Component.literal("List"), x, y, MUTED_COLOR);
 			y += font.lineHeight + 4;
-			List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
-			lists.add(new Dropdown.Entry<>(null, "Best", null));
+			List<Dropdown.Entry<Choice>> lists = new ArrayList<>();
+			lists.add(new Dropdown.Entry<>(Choice.best(), "Best", null));
 			for (TierList list : TierList.values()) {
-				lists.add(new Dropdown.Entry<>(list, list.displayName(),
+				lists.add(new Dropdown.Entry<>(Choice.of(list), list.displayName(),
 						ConfigScreen.logoOf(list)));
 			}
+			lists.add(new Dropdown.Entry<>(Choice.doorSmp(), "Door SMP", null));
 			tierList.setEntries(lists);
 			tierList.setBounds(x, y, right - x - PADDING);
-			tierList.draw(graphics, font, selected.list, mouseX, mouseY);
+			tierList.draw(graphics, font, current(selected), mouseX, mouseY);
 			y += ROW_HEIGHT + 8;
+
+			// Our own list has one grade per player and no modes to choose
+			// between, so the second dropdown would only offer nothing.
+			if (selected.doorSmp) {
+				scrollMax = Math.max(0, (y + scroll) - (bottom - FOOTER_HEIGHT) + PADDING);
+				graphics.fill(left + 1, bottom - FOOTER_HEIGHT, right - 1,
+						bottom - FOOTER_HEIGHT + 1, PANEL_BORDER);
+				graphics.fill(left + 1, bottom - FOOTER_HEIGHT + 1, right - 1, bottom - 1,
+						0x40101720);
+				trash(graphics, right - PADDING - 18, bottom - FOOTER_HEIGHT + 4, 18,
+						mouseX, mouseY);
+				return;
+			}
 
 			graphics.text(font, Component.literal("Gamemode"), x, y, MUTED_COLOR);
 			y += font.lineHeight + 4;
@@ -818,6 +871,9 @@ public final class TagEditor {
 
 	/** The icon a tier element would draw, or null when it has none. */
 	private Component icon(TagLayout.Element element) {
+		if (element.doorSmp) {
+			return ModeIcons.doorRaised();
+		}
 		TierList list = element.list == null ? TierList.PVPTIERS : element.list;
 		Gamemode mode = element.gamemode;
 		if (mode == null) {
@@ -883,6 +939,50 @@ public final class TagEditor {
 				x + (width - font.width(label)) / 2,
 				y + (height - font.lineHeight) / 2, TEXT_COLOR);
 		buttons.add(new Button(id, x, y, x + width, y + height));
+	}
+
+	/**
+	 * The session's controls, drawn where Done sits on the other tabs.
+	 *
+	 * <p>Reset, Cancel, Save & Close, in that order, so the one most likely
+	 * to be wanted is nearest the corner the eye already goes to. All three
+	 * are Done's size, and coloured the way a switch is: green for the one
+	 * that commits, red for the one that discards, amber for the one that
+	 * starts over.
+	 */
+	public void drawActions(GuiGraphicsExtractor graphics, int x, int y, int width,
+			int mouseX, int mouseY) {
+		int gap = 6;
+		int reset = x - (width + gap) * 2;
+		int cancel = x - (width + gap);
+		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY,
+				"reset", RESET_FILL);
+		colouredButton(graphics, "Cancel", cancel, y, width, mouseX, mouseY,
+				"cancel", OFF_FILL);
+		colouredButton(graphics, "Save & Close", x, y, width, mouseX, mouseY,
+				"save", ON_FILL);
+	}
+
+	/** A button carrying a colour, in the same shape as every other one. */
+	private void colouredButton(GuiGraphicsExtractor graphics, String label, int x, int y,
+			int width, int mouseX, int mouseY, String id, int colour) {
+		int height = 20;
+		boolean hovered = mouseX >= x && mouseX < x + width
+				&& mouseY >= y && mouseY < y + height;
+		graphics.fill(x, y, x + width, y + height, shade(colour, hovered ? 0.85f : 0.6f));
+		outline(graphics, x, y, x + width, y + height, colour);
+		graphics.text(font, Component.literal(label),
+				x + (width - font.width(label)) / 2,
+				y + (height - font.lineHeight) / 2, 0xFFFFFFFF);
+		buttons.add(new Button(id, x, y, x + width, y + height));
+	}
+
+	/** A colour at a fraction of its brightness, alpha kept. */
+	private static int shade(int argb, float by) {
+		int r = (int) (((argb >> 16) & 0xFF) * by);
+		int g = (int) (((argb >> 8) & 0xFF) * by);
+		int b = (int) ((argb & 0xFF) * by);
+		return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
 	}
 
 	/** A small square choice, lit when it is the current one. */

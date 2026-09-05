@@ -52,6 +52,12 @@ public class ConfigScreen extends Screen {
 	private final Screen parent;
 	private Tab active = Tab.GENERAL;
 
+	/** Hidden on the nametag tab, which has its own session controls. */
+	private PanelButton doneButton;
+
+	/** The width Done takes, which its replacements match. */
+	private static final int DONE_WIDTH = 90;
+
 	/** Click targets rebuilt every frame, so painting and hit-testing agree. */
 	private final List<Zone> zones = new ArrayList<>();
 
@@ -97,12 +103,17 @@ public class ConfigScreen extends Screen {
 			click();
 		});
 
-		addRenderableWidget(new PanelButton(
-				width - MARGIN - CARD_PADDING - 90,
+		// The nametag tab ends a session rather than just closing a screen, so
+		// it puts its own Save & Close, Cancel and Reset here instead. Done is
+		// only added for the tabs that have nothing to commit.
+		doneButton = new PanelButton(
+				width - MARGIN - CARD_PADDING - DONE_WIDTH,
 				height - MARGIN - CARD_PADDING - 14,
-				90, 20,
+				DONE_WIDTH, 20,
 				Component.literal("Done"),
-				button -> onClose()));
+				button -> onClose());
+		addRenderableWidget(doneButton);
+		doneButton.visible = active != Tab.NAMETAG;
 	}
 
 	/** Vanilla's UI click, so the panel feels like the rest of the game. */
@@ -154,6 +165,10 @@ public class ConfigScreen extends Screen {
 		if (active == Tab.NAMETAG) {
 			tagEditor.draw(graphics, left, bodyTop, right,
 					bodyTop + viewHeight, mouseX, mouseY);
+			tagEditor.drawActions(graphics,
+					width - MARGIN - CARD_PADDING - DONE_WIDTH,
+					height - MARGIN - CARD_PADDING - 14,
+					DONE_WIDTH, mouseX, mouseY);
 		}
 		// Clamping here as well as on input keeps a resize or a tab switch from
 		// leaving the view scrolled past the end.
@@ -167,6 +182,9 @@ public class ConfigScreen extends Screen {
 		// Outside the scissor, so it is never clipped to the body.
 		if (hoverLabel != null && hoverLabel.contains(mouseX, mouseY)) {
 			drawHoverText(graphics, hoverLabel.text(), mouseX, mouseY);
+		}
+		if (active == Tab.NAMETAG && tagEditor.hoverText() != null) {
+			drawHoverText(graphics, tagEditor.hoverText(), mouseX, mouseY);
 		}
 
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
@@ -270,6 +288,9 @@ public class ConfigScreen extends Screen {
 					// Cancel undoes this visit rather than every visit since
 					// the screen was opened.
 					tagEditor.open();
+				}
+				if (doneButton != null) {
+					doneButton.visible = tab != Tab.NAMETAG;
 				}
 				click();
 			}));
