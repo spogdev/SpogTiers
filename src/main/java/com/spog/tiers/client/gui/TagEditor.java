@@ -1,14 +1,17 @@
 package com.spog.tiers.client.gui;
 
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.config.TagLayout;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.Regions;
+import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,9 +21,9 @@ import java.util.UUID;
  * The nametag tab: a live tag in the middle, settings either side.
  *
  * <p>Replaces three fixed rows of dropdowns with the tag itself. Everything
- * drawn in the centre is an element that can be clicked, and the right panel
- * then shows what that element can do -- so what a setting affects is never in
- * doubt, because the thing it affects is what was clicked.
+ * drawn in the centre is an element that can be clicked or dragged, and the
+ * right panel then shows what that element can do -- so what a setting affects
+ * is never in doubt, because the thing it affects is what was clicked.
  *
  * <p>Edits are made against a copy taken when the tab is opened. Save commits
  * it, Cancel throws it away, and Reset returns to the shipped layout without
@@ -36,16 +39,37 @@ public final class TagEditor {
 	private static final int PANEL_BORDER = 0x70323B47;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
 	private static final int MUTED_COLOR = 0xFF6C7683;
+	private static final int TEXT_COLOR = 0xFFD7DEE6;
 	private static final int ACCENT = 0xFF6FC3E8;
-	private static final int DANGER = 0xFFD46A6A;
+
+	/** A switch reads as on or off by colour, not by position alone. */
+	private static final int ON_FILL = 0xFF4CAF50;
+	private static final int OFF_FILL = 0xFFC1443C;
+
+	/** The two coloured controls: add and delete. */
+	private static final int ADD_FILL = 0xFF3E8E41;
+	private static final int DELETE_FILL = 0xFFB03A32;
+
 	private static final int ROW_HEIGHT = 22;
 	private static final int PADDING = 10;
 
-	/** How wide the side panels are; the centre takes what is left. */
-	private static final int SIDE_WIDTH = 132;
+	/**
+	 * How tall a row of the preview is.
+	 *
+	 * <p>Tighter than a control row: these are three lines of one tag, and
+	 * spacing them like separate settings made the tag read as three unrelated
+	 * things rather than one stacked over another.
+	 */
+	private static final int PREVIEW_ROW = 15;
 
-	/** The bar at the bottom of the right panel that the delete button is pinned to. */
+	/** How wide the side panels are; the centre takes what is left. */
+	private static final int SIDE_WIDTH = 168;
+
+	/** The bar at the bottom of the right panel that delete is pinned to. */
 	private static final int FOOTER_HEIGHT = 26;
+
+	/** How far the pointer must travel before a click becomes a drag. */
+	private static final int DRAG_SLOP = 3;
 
 	/** The layout being edited, and the one to fall back to on cancel. */
 	private TagLayout working;
@@ -59,11 +83,14 @@ public final class TagEditor {
 
 	private final Font font;
 
-	/** Where each element was last drawn, for hit testing. */
+	/** Where each element was last drawn, for hit testing and dropping. */
 	private final List<Hit> hits = new ArrayList<>();
 
 	/** Where each button was last drawn, likewise. */
 	private final List<Button> buttons = new ArrayList<>();
+
+	/** Where each row was last drawn, so a drag can change rows. */
+	private final List<RowBand> bands = new ArrayList<>();
 
 	private final Dropdown<TagLayout.Kind> creator;
 	private final Dropdown<TierList> tierList;
@@ -74,12 +101,21 @@ public final class TagEditor {
 	private int scroll;
 	private int scrollMax;
 
+	/** The element under the pointer while dragging, and where it started. */
+	private TagLayout.Element dragging;
+	private int dragFromX;
+	private int dragFromY;
+	private boolean dragMoved;
+
 	private final Runnable onChange;
 
 	private record Hit(TagLayout.Element element, int left, int top, int right, int bottom) {
 	}
 
 	private record Button(String id, int left, int top, int right, int bottom) {
+	}
+
+	private record RowBand(TagLayout.Row row, int top, int bottom) {
 	}
 
 	public TagEditor(Font font, Runnable onChange) {
@@ -107,6 +143,7 @@ public final class TagEditor {
 		working = config.tagLayout.copy();
 		selected = null;
 		complaint = null;
+		dragging = null;
 		scroll = 0;
 	}
 
@@ -132,6 +169,7 @@ public final class TagEditor {
 		}
 		hits.clear();
 		buttons.clear();
+		bands.clear();
 
 		int centreLeft = left + SIDE_WIDTH + PADDING;
 		int centreRight = right - SIDE_WIDTH - PADDING;
@@ -139,6 +177,19 @@ public final class TagEditor {
 		drawGeneral(graphics, left, top, left + SIDE_WIDTH, bottom, mouseX, mouseY);
 		drawPreview(graphics, centreLeft, top, centreRight, bottom, mouseX, mouseY);
 		drawElement(graphics, centreRight + PADDING, top, right, bottom, mouseX, mouseY);
+
+		// The dragged element rides the pointer, drawn last so it is over
+		// everything it might be dropped onto.
+		if (dragging != null && dragMoved) {
+			String text = preview(dragging);
+			int width = font.width(text) + 6;
+			int x = mouseX - width / 2;
+			int y = mouseY - PREVIEW_ROW / 2;
+			graphics.fill(x, y, x + width, y + PREVIEW_ROW, 0x90222A35);
+			outline(graphics, x, y, x + width, y + PREVIEW_ROW, ACCENT);
+			drawElementText(graphics, dragging, x + 3,
+					y + (PREVIEW_ROW - font.lineHeight) / 2, true);
+		}
 	}
 
 	/** Dropdown lists, drawn last so they sit over everything else. */
@@ -159,12 +210,13 @@ public final class TagEditor {
 		int x = left + PADDING;
 		int y = top + PADDING;
 
-		graphics.text(font, Component.literal("Tier Tagger"), x, y, LABEL_COLOR);
+		graphics.text(font, Component.literal("General"), x, y, LABEL_COLOR);
 		y += font.lineHeight + 6;
+		y = rule(graphics, left, right, y);
 
 		y = toggle(graphics, "Enabled", config.enabled, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.enabled");
-		y += 6;
+		y = rule(graphics, left, right, y);
 
 		graphics.text(font, Component.literal("Show tiers in"), x, y, LABEL_COLOR);
 		y += font.lineHeight + 6;
@@ -176,14 +228,14 @@ public final class TagEditor {
 				mouseX, mouseY, "toggle.chat");
 		y = toggle(graphics, "Displays", config.tagDisplays, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.displays");
-		y += 6;
+		y = rule(graphics, left, right, y);
 
 		toggle(graphics, "No duplicates", config.preventDuplicateTiers, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.duplicates");
 	}
 
 	/**
-	 * The tag itself, as three rows of clickable elements.
+	 * The tag itself, as three rows of elements that can be dragged.
 	 *
 	 * <p>Drawn from the same layout the game draws from, so what is arranged
 	 * here is what appears over a player's head.
@@ -199,49 +251,61 @@ public final class TagEditor {
 		// A dark plate behind the rows, so the tag reads the way it does in
 		// the world rather than as three lines of loose text.
 		int plateTop = y;
-		int plateHeight = ROW_HEIGHT * 3 + 8;
+		int plateHeight = PREVIEW_ROW * 3 + 8;
 		graphics.fill(left + PADDING, plateTop, right - PADDING, plateTop + plateHeight,
 				0x60101720);
 
 		int rowY = plateTop + 4;
 		for (TagLayout.Row row : TagLayout.Row.values()) {
+			bands.add(new RowBand(row, rowY, rowY + PREVIEW_ROW));
 			drawRow(graphics, row, left + PADDING, rowY, right - PADDING, mouseX, mouseY);
-			rowY += ROW_HEIGHT;
+			rowY += PREVIEW_ROW;
 		}
 
 		y = plateTop + plateHeight + 10;
 
-		// The creator: pick a kind, press Create, and it lands at the end of
-		// the middle row where it can be seen and then moved.
+		// Pick a kind and press plus; it lands at the end of the middle row
+		// where it can be seen and then dragged.
 		List<Dropdown.Entry<TagLayout.Kind>> kinds = new ArrayList<>();
 		for (TagLayout.Kind kind : TagLayout.Kind.values()) {
 			kinds.add(new Dropdown.Entry<>(kind, kind.title(), null));
 		}
+		int addSize = 18;
+		int listWidth = Math.min(140, right - PADDING - addSize - 6 - (left + PADDING));
 		creator.setEntries(kinds);
-		creator.setBounds(left + PADDING, y, 110);
+		creator.setBounds(left + PADDING, y, listWidth);
 		creator.draw(graphics, font, creating, mouseX, mouseY);
-		button(graphics, "Create", left + PADDING + 116, y, 60, mouseX, mouseY,
-				"create", ACCENT);
-		y += ROW_HEIGHT + 10;
+		plus(graphics, left + PADDING + listWidth + 6, y, addSize, mouseX, mouseY);
+		y += ROW_HEIGHT + 8;
 
 		if (complaint != null) {
-			graphics.text(font, Component.literal(complaint), left + PADDING, y, DANGER);
+			graphics.text(font, Component.literal(complaint), left + PADDING, y, OFF_FILL);
 		}
 
-		// The session's controls, along the bottom.
-		int barY = bottom - PADDING - 18;
-		button(graphics, "Save", left + PADDING, barY, 60, mouseX, mouseY, "save", ACCENT);
-		button(graphics, "Cancel", left + PADDING + 66, barY, 60, mouseX, mouseY,
-				"cancel", LABEL_COLOR);
-		button(graphics, "Reset", left + PADDING + 132, barY, 60, mouseX, mouseY,
-				"reset", MUTED_COLOR);
+		// The session's controls, along the bottom, in the same style as Done.
+		int barY = bottom - PADDING - 20;
+		int wide = 62;
+		pushButton(graphics, "Save", left + PADDING, barY, wide, mouseX, mouseY, "save");
+		pushButton(graphics, "Cancel", left + PADDING + wide + 6, barY, wide,
+				mouseX, mouseY, "cancel");
+		pushButton(graphics, "Reset", left + PADDING + (wide + 6) * 2, barY, wide,
+				mouseX, mouseY, "reset");
 	}
 
 	/** One row of the preview, and the hit boxes for its elements. */
 	private void drawRow(GuiGraphicsExtractor graphics, TagLayout.Row row, int left, int y,
 			int right, int mouseX, int mouseY) {
 		List<TagLayout.Element> elements = working.row(row);
-		int textY = y + (ROW_HEIGHT - font.lineHeight) / 2;
+		int textY = y + (PREVIEW_ROW - font.lineHeight) / 2;
+
+		// The row being dragged over is lit, so where a drop will land is
+		// visible before letting go.
+		boolean over = dragging != null && dragMoved
+				&& mouseY >= y && mouseY < y + PREVIEW_ROW
+				&& mouseX >= left && mouseX < right;
+		if (over) {
+			graphics.fill(left, y, right, y + PREVIEW_ROW, 0x20FFFFFF);
+		}
 
 		if (elements.isEmpty()) {
 			// Named rather than left blank, so an empty row still reads as a
@@ -259,30 +323,66 @@ public final class TagEditor {
 		int x = left + Math.max(4, ((right - left) - width) / 2);
 
 		for (TagLayout.Element element : elements) {
-			String text = preview(element);
-			int span = font.width(text) + 6;
+			int span = font.width(preview(element)) + 6;
 			boolean hovered = mouseX >= x && mouseX < x + span
-					&& mouseY >= y && mouseY < y + ROW_HEIGHT;
+					&& mouseY >= y && mouseY < y + PREVIEW_ROW;
+			boolean chosen = element == selected;
 
-			if (element == selected) {
-				graphics.fill(x, y + 1, x + span, y + ROW_HEIGHT - 1, 0x503B82C4);
-				graphics.fill(x, y + 1, x + span, y + 2, ACCENT);
-				graphics.fill(x, y + ROW_HEIGHT - 2, x + span, y + ROW_HEIGHT - 1, ACCENT);
-			} else if (hovered) {
-				graphics.fill(x, y + 1, x + span, y + ROW_HEIGHT - 1, 0x30FFFFFF);
+			// Hover still needs a hint of a box to show it is grabbable, but
+			// the selection itself is carried by the text, not a panel behind it.
+			if (hovered && dragging == null) {
+				graphics.fill(x, y + 1, x + span, y + PREVIEW_ROW - 1, 0x18FFFFFF);
 			}
-			graphics.text(font, Component.literal(text), x + 3, textY, colour(element));
+			if (element != dragging || !dragMoved) {
+				drawElementText(graphics, element, x + 3, textY, chosen);
+			}
 
-			hits.add(new Hit(element, x, y, x + span, y + ROW_HEIGHT));
+			hits.add(new Hit(element, x, y, x + span, y + PREVIEW_ROW));
 			x += span;
 		}
 	}
 
 	/**
+	 * One element's text, in the colours it will actually be drawn in.
+	 *
+	 * <p>A tier shows its list's icon and its own colour, so the preview says
+	 * what the tag will look like rather than only what is in it. The
+	 * selected element is drawn highlighted rather than boxed.
+	 */
+	private void drawElementText(GuiGraphicsExtractor graphics, TagLayout.Element element,
+			int x, int y, boolean chosen) {
+		if (element.kind == TagLayout.Kind.TIER) {
+			MutableComponent text = Component.empty();
+			Component icon = icon(element);
+			if (icon != null && SpogTiersClient.config().showTagIcons) {
+				text.append(icon).append(Component.literal(" "));
+			}
+			Tier sample = sampleTier();
+			text.append(Component.literal(sample.label()));
+			graphics.text(font, text, x, y, chosen ? 0xFFFFFFFF : sample.color());
+			if (chosen) {
+				underline(graphics, x, y, font.width(text));
+			}
+			return;
+		}
+		String plain = preview(element);
+		graphics.text(font, Component.literal(plain), x, y,
+				chosen ? 0xFFFFFFFF : colour(element));
+		if (chosen) {
+			underline(graphics, x, y, font.width(plain));
+		}
+	}
+
+	/** The mark under a selected element, in place of a box around it. */
+	private void underline(GuiGraphicsExtractor graphics, int x, int y, int width) {
+		graphics.fill(x, y + font.lineHeight, x + width, y + font.lineHeight + 1, ACCENT);
+	}
+
+	/**
 	 * The right panel: what the selected element can do.
 	 *
-	 * <p>Scrolls, because a tier element carries two dropdowns and the move
-	 * buttons, which is more than fits on a short screen.
+	 * <p>Scrolls, because a tier element carries two dropdowns and a
+	 * separator a palette, which is more than fits on a short screen.
 	 */
 	private void drawElement(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int bottom, int mouseX, int mouseY) {
@@ -293,10 +393,6 @@ public final class TagEditor {
 		if (selected == null) {
 			graphics.text(font, Component.literal("Nothing selected"), x, top + PADDING,
 					MUTED_COLOR);
-			graphics.text(font, Component.literal("Click a piece of"), x,
-					top + PADDING + font.lineHeight + 6, MUTED_COLOR);
-			graphics.text(font, Component.literal("the tag to edit it."), x,
-					top + PADDING + (font.lineHeight + 6) * 2, MUTED_COLOR);
 			scrollMax = 0;
 			return;
 		}
@@ -305,19 +401,8 @@ public final class TagEditor {
 		graphics.text(font, Component.literal(selected.title()), x, y, LABEL_COLOR);
 		y += font.lineHeight + 8;
 
-		// Four arrows: two to change row, two to move along it. Labelled with
-		// triangles so the direction is the label.
-		graphics.text(font, Component.literal("Move"), x, y, MUTED_COLOR);
-		y += font.lineHeight + 4;
-		int arrow = 26;
-		button(graphics, "▲", x, y, arrow, mouseX, mouseY, "move.up", LABEL_COLOR);
-		button(graphics, "▼", x + arrow + 4, y, arrow, mouseX, mouseY,
-				"move.down", LABEL_COLOR);
-		y += ROW_HEIGHT + 2;
-		button(graphics, "◀", x, y, arrow, mouseX, mouseY, "move.left", LABEL_COLOR);
-		button(graphics, "▶", x + arrow + 4, y, arrow, mouseX, mouseY,
-				"move.right", LABEL_COLOR);
-		y += ROW_HEIGHT + 10;
+		graphics.text(font, Component.literal("Drag to move it"), x, y, MUTED_COLOR);
+		y += font.lineHeight + 10;
 
 		if (selected.kind == TagLayout.Kind.TIER) {
 			graphics.text(font, Component.literal("List"), x, y, MUTED_COLOR);
@@ -350,12 +435,11 @@ public final class TagEditor {
 			y += font.lineHeight + 4;
 			// A row of the characters worth having: typing one in would need a
 			// text field, and these are what a separator is ever set to.
-			String[] choices = {"|", "/", "-", "·", "•", ":", " "};
+			String[] choices = {"|", "/", "-", "·", "•", ":"};
 			int cx = x;
 			for (String choice : choices) {
 				boolean picked = choice.equals(selected.character);
-				button(graphics, choice.isBlank() ? "␣" : choice, cx, y, 20,
-						mouseX, mouseY, "char." + choice, picked ? ACCENT : LABEL_COLOR);
+				pill(graphics, choice, cx, y, 20, mouseX, mouseY, "char." + choice, picked);
 				cx += 22;
 				if (cx + 20 > right - PADDING) {
 					cx = x;
@@ -370,13 +454,9 @@ public final class TagEditor {
 					0xEDE04E, 0xEB8526, 0xD46A6A, 0xA034C7};
 			int sx = x;
 			for (int colour : palette) {
-				boolean picked = colour == selected.colour;
 				graphics.fill(sx, y, sx + 18, y + 18, 0xFF000000 | colour);
-				if (picked) {
-					graphics.fill(sx - 1, y - 1, sx + 19, y, ACCENT);
-					graphics.fill(sx - 1, y + 18, sx + 19, y + 19, ACCENT);
-					graphics.fill(sx - 1, y - 1, sx, y + 19, ACCENT);
-					graphics.fill(sx + 18, y - 1, sx + 19, y + 19, ACCENT);
+				if (colour == selected.colour) {
+					outline(graphics, sx - 1, y - 1, sx + 19, y + 19, ACCENT);
 				}
 				buttons.add(new Button("colour." + colour, sx, y, sx + 18, y + 18));
 				sx += 20;
@@ -391,12 +471,11 @@ public final class TagEditor {
 		// How far the content ran past the footer, so scrolling knows its limit.
 		scrollMax = Math.max(0, (y + scroll) - footer + PADDING);
 
-		// The footer, and the delete button pinned to it. Drawn after the
-		// content so a long panel scrolls underneath rather than over it.
+		// The footer, and delete pinned to its right. Drawn after the content
+		// so a long panel scrolls underneath rather than over it.
 		graphics.fill(left + 1, footer, right - 1, footer + 1, PANEL_BORDER);
 		graphics.fill(left + 1, footer + 1, right - 1, bottom - 1, 0x40101720);
-		button(graphics, "Delete", x, footer + 4, right - x - PADDING, mouseX, mouseY,
-				"delete", DANGER);
+		trash(graphics, right - PADDING - 18, footer + 4, 18, mouseX, mouseY);
 	}
 
 	// ---------------------------------------------------------------- input
@@ -415,10 +494,96 @@ public final class TagEditor {
 				selected = hit.element();
 				scroll = 0;
 				closeDropdowns();
+				// Held rather than moved: a drag only begins once the pointer
+				// has travelled, so a plain click still just selects.
+				dragging = hit.element();
+				dragFromX = (int) mouseX;
+				dragFromY = (int) mouseY;
+				dragMoved = false;
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/** Tracks a held element. Called while the button is down. */
+	public void drag(double mouseX, double mouseY) {
+		if (dragging == null) {
+			return;
+		}
+		if (!dragMoved && (Math.abs(mouseX - dragFromX) > DRAG_SLOP
+				|| Math.abs(mouseY - dragFromY) > DRAG_SLOP)) {
+			dragMoved = true;
+		}
+	}
+
+	/**
+	 * Drops a dragged element wherever the pointer let go.
+	 *
+	 * @return true when a drop was handled here
+	 */
+	public boolean release(double mouseX, double mouseY) {
+		if (dragging == null) {
+			return false;
+		}
+		TagLayout.Element moved = dragging;
+		boolean wasDrag = dragMoved;
+		dragging = null;
+		dragMoved = false;
+		if (!wasDrag) {
+			return false;
+		}
+
+		TagLayout.Row target = null;
+		for (RowBand band : bands) {
+			if (mouseY >= band.top() && mouseY < band.bottom()) {
+				target = band.row();
+				break;
+			}
+		}
+		if (target == null) {
+			return true;
+		}
+
+		// Placed by where it was dropped along the row rather than appended:
+		// dropping between two elements should put it between them.
+		int at = 0;
+		List<TagLayout.Element> row = working.row(target);
+		for (TagLayout.Element element : row) {
+			if (element == moved) {
+				continue;
+			}
+			Hit hit = hitFor(element);
+			if (hit != null && mouseX > (hit.left() + hit.right()) / 2.0) {
+				at++;
+			}
+		}
+
+		working.elements.remove(moved);
+		moved.row = target;
+		insertAt(moved, target, at);
+		changed();
+		return true;
+	}
+
+	/** Puts an element at a place along its row, in the backing list. */
+	private void insertAt(TagLayout.Element element, TagLayout.Row row, int at) {
+		List<TagLayout.Element> existing = working.row(row);
+		if (at >= existing.size()) {
+			working.elements.add(element);
+			return;
+		}
+		int index = working.elements.indexOf(existing.get(at));
+		working.elements.add(index, element);
+	}
+
+	private Hit hitFor(TagLayout.Element element) {
+		for (Hit hit : hits) {
+			if (hit.element() == element) {
+				return hit;
+			}
+		}
+		return null;
 	}
 
 	public boolean scroll(double amount) {
@@ -444,20 +609,6 @@ public final class TagEditor {
 				if (selected != null) {
 					working.elements.remove(selected);
 					selected = null;
-					changed();
-				}
-			}
-			case "move.up" -> move(false);
-			case "move.down" -> move(true);
-			case "move.left" -> {
-				if (selected != null) {
-					working.shift(selected, false);
-					changed();
-				}
-			}
-			case "move.right" -> {
-				if (selected != null) {
-					working.shift(selected, true);
 					changed();
 				}
 			}
@@ -511,13 +662,6 @@ public final class TagEditor {
 		return true;
 	}
 
-	private void move(boolean down) {
-		if (selected != null) {
-			working.reRow(selected, down);
-			changed();
-		}
-	}
-
 	/**
 	 * Commits the working copy, unless it has no name.
 	 *
@@ -551,8 +695,35 @@ public final class TagEditor {
 			case NAME -> PREVIEW_NAME;
 			case REGION -> region();
 			case SEPARATOR -> element.character;
-			case TIER -> "HT1";
+			case TIER -> tierPreview(element);
 		};
+	}
+
+	/** A tier's preview text, icon included, for measuring its width. */
+	private String tierPreview(TagLayout.Element element) {
+		Component icon = icon(element);
+		String label = sampleTier().label();
+		return icon != null && SpogTiersClient.config().showTagIcons
+				? icon.getString() + " " + label : label;
+	}
+
+	/** The icon a tier element would draw, or null when it has none. */
+	private Component icon(TagLayout.Element element) {
+		TierList list = element.list == null ? TierList.PVPTIERS : element.list;
+		Gamemode mode = element.gamemode;
+		if (mode == null) {
+			List<Gamemode> modes = List.copyOf(list.gamemodes());
+			if (modes.isEmpty()) {
+				return null;
+			}
+			mode = modes.get(0);
+		}
+		return ModeIcons.of(list, mode.key());
+	}
+
+	/** The tier the preview stands in with, so its colour is a real one. */
+	private Tier sampleTier() {
+		return new Tier(1, Tier.Position.HIGH, false);
 	}
 
 	private int colour(TagLayout.Element element) {
@@ -560,7 +731,7 @@ public final class TagEditor {
 			case NAME -> 0xFFFFFFFF;
 			case REGION -> 0xFF89F19C;
 			case SEPARATOR -> 0xFF000000 | element.colour;
-			case TIER -> 0xFF6FC3E8;
+			case TIER -> sampleTier().color();
 		};
 	}
 
@@ -572,22 +743,87 @@ public final class TagEditor {
 
 	private void panel(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
 		graphics.fill(left, top, right, bottom, PANEL_FILL);
-		graphics.fill(left, top, right, top + 1, PANEL_BORDER);
-		graphics.fill(left, bottom - 1, right, bottom, PANEL_BORDER);
-		graphics.fill(left, top, left + 1, bottom, PANEL_BORDER);
-		graphics.fill(right - 1, top, right, bottom, PANEL_BORDER);
+		outline(graphics, left, top, right, bottom, PANEL_BORDER);
 	}
 
-	private void button(GuiGraphicsExtractor graphics, String label, int x, int y, int width,
-			int mouseX, int mouseY, String id, int colour) {
-		int height = 18;
+	/** A one-pixel border, the same weight on every edge. */
+	private void outline(GuiGraphicsExtractor graphics, int left, int top, int right,
+			int bottom, int colour) {
+		graphics.fill(left, top, right, top + 1, colour);
+		graphics.fill(left, bottom - 1, right, bottom, colour);
+		graphics.fill(left, top, left + 1, bottom, colour);
+		graphics.fill(right - 1, top, right, bottom, colour);
+	}
+
+	/** A divider between groups, inset from both edges of the panel. */
+	private int rule(GuiGraphicsExtractor graphics, int left, int right, int y) {
+		graphics.fill(left + PADDING, y + 2, right - PADDING, y + 3, PANEL_BORDER);
+		return y + 9;
+	}
+
+	/** A button in the same style as Done and the rest of the screen. */
+	private void pushButton(GuiGraphicsExtractor graphics, String label, int x, int y,
+			int width, int mouseX, int mouseY, String id) {
+		int height = 20;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
-		graphics.fill(x, y, x + width, y + height, hovered ? 0x50FFFFFF : 0x30FFFFFF);
+		graphics.fill(x, y, x + width, y + height, hovered ? 0x8022303F : 0x60161B22);
+		outline(graphics, x, y, x + width, y + height,
+				hovered ? 0xA05B6B7D : PANEL_BORDER);
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
-				y + (height - font.lineHeight) / 2 + 1, colour);
+				y + (height - font.lineHeight) / 2, TEXT_COLOR);
 		buttons.add(new Button(id, x, y, x + width, y + height));
+	}
+
+	/** A small square choice, lit when it is the current one. */
+	private void pill(GuiGraphicsExtractor graphics, String label, int x, int y, int size,
+			int mouseX, int mouseY, String id, boolean picked) {
+		boolean hovered = mouseX >= x && mouseX < x + size
+				&& mouseY >= y && mouseY < y + size;
+		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
+		outline(graphics, x, y, x + size, y + size, picked ? ACCENT : PANEL_BORDER);
+		graphics.text(font, Component.literal(label),
+				x + (size - font.width(label)) / 2,
+				y + (size - font.lineHeight) / 2, TEXT_COLOR);
+		buttons.add(new Button(id, x, y, x + size, y + size));
+	}
+
+	/** The green square that adds an element. */
+	private void plus(GuiGraphicsExtractor graphics, int x, int y, int size,
+			int mouseX, int mouseY) {
+		boolean hovered = mouseX >= x && mouseX < x + size
+				&& mouseY >= y && mouseY < y + size;
+		graphics.fill(x, y, x + size, y + size, hovered ? 0xFF4CAF50 : ADD_FILL);
+		outline(graphics, x, y, x + size, y + size, 0xFF2E6B31);
+		// Drawn rather than lettered, so it is a symbol at any font.
+		int mid = size / 2;
+		graphics.fill(x + 4, y + mid, x + size - 4, y + mid + 1, 0xFFFFFFFF);
+		graphics.fill(x + mid, y + 4, x + mid + 1, y + size - 4, 0xFFFFFFFF);
+		buttons.add(new Button("create", x, y, x + size, y + size));
+	}
+
+	/** The red square that deletes the selected element. */
+	private void trash(GuiGraphicsExtractor graphics, int x, int y, int size,
+			int mouseX, int mouseY) {
+		boolean hovered = mouseX >= x && mouseX < x + size
+				&& mouseY >= y && mouseY < y + size;
+		graphics.fill(x, y, x + size, y + size, hovered ? 0xFFC1443C : DELETE_FILL);
+		outline(graphics, x, y, x + size, y + size, 0xFF7A2924);
+
+		// A lid, a handle and three staves: enough to read as a bin at 18px.
+		int white = 0xFFFFFFFF;
+		graphics.fill(x + 4, y + 5, x + size - 4, y + 6, white);
+		graphics.fill(x + 7, y + 3, x + size - 7, y + 4, white);
+		graphics.fill(x + 5, y + 6, x + size - 5, y + size - 4, 0x40FFFFFF);
+		graphics.fill(x + 7, y + 8, x + 8, y + size - 6, white);
+		graphics.fill(x + mid(size), y + 8, x + mid(size) + 1, y + size - 6, white);
+		graphics.fill(x + size - 8, y + 8, x + size - 7, y + size - 6, white);
+		buttons.add(new Button("delete", x, y, x + size, y + size));
+	}
+
+	private static int mid(int size) {
+		return size / 2;
 	}
 
 	/** A labelled switch, returning the y to carry on from. */
@@ -597,8 +833,7 @@ public final class TagEditor {
 		int boxWidth = 22;
 		int boxX = right - boxWidth;
 		graphics.text(font, Component.literal(label), x, y + 4, LABEL_COLOR);
-		graphics.fill(boxX, y + 2, boxX + boxWidth, y + height - 2,
-				on ? 0xFF3B82C4 : 0x40FFFFFF);
+		graphics.fill(boxX, y + 2, boxX + boxWidth, y + height - 2, on ? ON_FILL : OFF_FILL);
 		int knob = on ? boxX + boxWidth - 10 : boxX + 2;
 		graphics.fill(knob, y + 4, knob + 8, y + height - 4, 0xFFFFFFFF);
 		buttons.add(new Button(id, x, y, right, y + height));

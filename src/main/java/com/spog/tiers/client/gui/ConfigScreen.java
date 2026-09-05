@@ -130,7 +130,11 @@ public class ConfigScreen extends Screen {
 		drawTabs(graphics, left, top, mouseX, mouseY);
 
 		int bodyTop = top + TAB_HEIGHT + CARD_PADDING + 6;
-		drawFrame(graphics, left, bodyTop, right, bottom);
+		// The nametag tab draws its own three panels edge to edge, so the body
+		// frame would only add a line across their tops joining them together.
+		if (active != Tab.NAMETAG) {
+			drawFrame(graphics, left, bodyTop, right, bottom);
+		}
 
 		// Scroll the body, then clamp so a short page cannot drift off.
 		int viewHeight = bottom - bodyTop - 40;
@@ -148,7 +152,7 @@ public class ConfigScreen extends Screen {
 		}
 		graphics.disableScissor();
 		if (active == Tab.NAMETAG) {
-			tagEditor.draw(graphics, left + 1, bodyTop + 1, right - 1,
+			tagEditor.draw(graphics, left, bodyTop, right,
 					bodyTop + viewHeight, mouseX, mouseY);
 		}
 		// Clamping here as well as on input keeps a resize or a tab switch from
@@ -551,6 +555,24 @@ public class ConfigScreen extends Screen {
 			}
 		}
 		return super.mouseClicked(event, doubled);
+	}
+
+	@Override
+	public boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event,
+			double dragX, double dragY) {
+		if (active == Tab.NAMETAG) {
+			tagEditor.drag(event.x(), event.y());
+		}
+		return super.mouseDragged(event, dragX, dragY);
+	}
+
+	@Override
+	public boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event) {
+		if (active == Tab.NAMETAG && tagEditor.release(event.x(), event.y())) {
+			click();
+			return true;
+		}
+		return super.mouseReleased(event);
 	}
 
 	@Override
