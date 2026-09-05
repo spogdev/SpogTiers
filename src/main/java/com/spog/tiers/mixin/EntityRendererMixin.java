@@ -2,6 +2,7 @@ package com.spog.tiers.mixin;
 
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
+import com.spog.tiers.util.NameShift;
 import com.spog.tiers.util.AuraTarget;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -39,7 +40,13 @@ public class EntityRendererMixin {
 		if (!SpogTiersClient.config().showNametags || state.nameTag == null) {
 			return;
 		}
-		state.nameTag = TagRenderer.withTag(player.getUUID(), state.nameTag);
+		// Split from the bare name, before it is replaced: passing the tagged
+		// name back in would tag it a second time and measure the wrong halves.
+		Component bare = state.nameTag;
+		Component[] around = TagRenderer.aroundName(player.getUUID(), bare);
+		NameShift.set(state, around == null ? null : around[0],
+				around == null ? null : around[1]);
+		state.nameTag = TagRenderer.withTag(player.getUUID(), bare);
 		// Stashed for LabelMixin rather than put in scoreText: vanilla draws
 		// that field under the name, since it is the scoreboard line.
 		AboveLabel.set(state, TagRenderer.aboveTag(player.getUUID()));

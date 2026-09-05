@@ -84,6 +84,10 @@ public class ConfigScreen extends Screen {
 	private final TagEditor tagEditor = new TagEditor(
 			net.minecraft.client.Minecraft.getInstance().font, null);
 
+	{
+		tagEditor.onClose(this::onClose);
+	}
+
 	public ConfigScreen(Screen parent) {
 		super(Component.literal("SpogTiers"));
 		this.parent = parent;
@@ -215,6 +219,9 @@ public class ConfigScreen extends Screen {
 				over = true;
 				break;
 			}
+		}
+		if (!over && active == Tab.NAMETAG && tagEditor.isOverControl(mouseX, mouseY)) {
+			over = true;
 		}
 		if (!over) {
 			for (Zone zone : zones) {
@@ -576,6 +583,22 @@ public class ConfigScreen extends Screen {
 			}
 		}
 		return super.mouseClicked(event, doubled);
+	}
+
+	@Override
+	public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+		if (active == Tab.NAMETAG && tagEditor.keyPressed(event)) {
+			return true;
+		}
+		return super.keyPressed(event);
+	}
+
+	@Override
+	public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
+		if (active == Tab.NAMETAG && tagEditor.charTyped(event)) {
+			return true;
+		}
+		return super.charTyped(event);
 	}
 
 	@Override

@@ -135,33 +135,35 @@ public class TagLayout {
 	/** Every element, in drawing order within each row. */
 	public List<Element> elements = new ArrayList<>();
 
+	/**
+	 * Line the other rows up over the name rather than over the whole tag.
+	 *
+	 * <p>Off, each row is centred in its own width, which is how a nameplate
+	 * is normally drawn. On, the top and bottom rows are centred on wherever
+	 * the name sits in the middle row, so a tag with a long tier on one side
+	 * does not leave the rows looking staggered.
+	 */
+	public boolean centreOnName;
+
 	public TagLayout() {
 	}
 
 	/**
-	 * The layout the mod ships with: a tier, the name, a tier, separated.
+	 * What Reset returns to: the player's plain nameplate.
 	 *
-	 * <p>The same tag the three fixed slots used to produce with their own
-	 * defaults, so someone who never opens the editor sees no change.
+	 * <p>Nothing but the name, so resetting clears every tier and separator
+	 * rather than restoring some other arrangement the user did not choose.
 	 */
 	public static TagLayout defaults() {
 		TagLayout layout = new TagLayout();
-		layout.elements.add(new Element(Kind.TIER, Row.MIDDLE));
-		layout.elements.add(separator());
 		layout.elements.add(new Element(Kind.NAME, Row.MIDDLE));
 		return layout;
-	}
-
-	private static Element separator() {
-		Element element = new Element(Kind.SEPARATOR, Row.MIDDLE);
-		element.character = "|";
-		element.colour = 0x555555;
-		return element;
 	}
 
 	/** A deep copy, for editing without committing. */
 	public TagLayout copy() {
 		TagLayout copy = new TagLayout();
+		copy.centreOnName = centreOnName;
 		for (Element element : elements) {
 			copy.elements.add(element.copy());
 		}
@@ -177,6 +179,16 @@ public class TagLayout {
 			}
 		}
 		return out;
+	}
+
+	/** The one name element, or null if somehow there is none. */
+	public Element name() {
+		for (Element element : elements) {
+			if (element.kind == Kind.NAME) {
+				return element;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -258,6 +270,18 @@ public class TagLayout {
 		// elements at all is a file someone has emptied by accident.
 		if (!hasName()) {
 			elements.add(new Element(Kind.NAME, Row.MIDDLE));
+		}
+		// Exactly one name: two would draw the player's name twice, and the
+		// editor offers no way to tell them apart.
+		boolean seen = false;
+		for (int i = elements.size() - 1; i >= 0; i--) {
+			if (elements.get(i).kind != Kind.NAME) {
+				continue;
+			}
+			if (seen) {
+				elements.remove(i);
+			}
+			seen = true;
 		}
 	}
 }

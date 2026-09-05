@@ -5,15 +5,21 @@ import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.config.TagLayout;
 import com.spog.tiers.data.Gamemode;
+import com.spog.tiers.data.PlayerGrade;
+import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,10 +36,8 @@ import java.util.UUID;
  * committing anything -- so an editing session can always be abandoned whole.
  */
 public final class TagEditor {
-	/** The player the preview is built around. */
-	private static final UUID PREVIEW_PLAYER =
-			UUID.fromString("ebd7af32-759e-41e2-b227-9eeb8576d609");
-	private static final String PREVIEW_NAME = "Swight";
+	/** How many steps back Undo can go. */
+	private static final int HISTORY = 32;
 
 	private static final int PANEL_FILL = 0x50161B22;
 	private static final int PANEL_BORDER = 0x70323B47;
@@ -66,6 +70,10 @@ public final class TagEditor {
 	private static final Tint RED =
 			new Tint(0x50241A1D, 0x80241A1D, 0xA0955A5A, 0xFFE0A0A0);
 
+	/** Blue: steps back, which neither commits nor discards the session. */
+	private static final Tint BLUE =
+			new Tint(0x501B2A38, 0x801B2A38, 0xA04E7EA8, 0xFF9CC9E8);
+
 	/** Amber: starts over, which is neither of the two. */
 	private static final Tint AMBER =
 			new Tint(0x50332813, 0x80332813, 0xA0A8813E, 0xFFE8C88A);
@@ -94,6 +102,20 @@ public final class TagEditor {
 	/** The layout being edited, and the one to fall back to on cancel. */
 	private TagLayout working;
 	private TagLayout original;
+
+	/**
+	 * Every state the layout has been in this session, newest last.
+	 *
+	 * <p>Whole copies rather than a list of reversible actions: a layout is
+	 * small, and a copy cannot disagree with what it is undoing the way a
+	 * hand-written inverse can.
+	 */
+	private final Deque<TagLayout> history = new ArrayDeque<>();
+
+	/** Who the preview is drawn for, and the box that name is typed into. */
+	private UUID previewPlayer;
+	private String previewName = "";
+	private EditBox nameField;
 
 	/** Which element the right panel is showing, or null for none. */
 	private TagLayout.Element selected;
@@ -131,6 +153,13 @@ public final class TagEditor {
 	private boolean dragMoved;
 
 	private final Runnable onChange;
+
+	/** Closes the screen, for Save & Close. */
+	private Runnable closer = () -> { };
+
+	public void onClose(Runnable closer) {
+		this.closer = closer;
+	}
 
 	private record Hit(TagLayout.Element element, int left, int top, int right, int bottom) {
 	}
@@ -201,6 +230,60 @@ public final class TagEditor {
 		complaint = null;
 		dragging = null;
 		scroll = 0;
+		history.clear();
+		// The player's own name to start with: the preview is most useful
+		// showing the tag they will actually be wearing.
+		Minecraft client = Minecraft.getInstance();
+		if (client.player != null) {
+			previewName = client.player.getGameProfile().name();
+			previewPlayer = client.player.getUUID();
+		}
+	}
+
+	/** Remembers the layout before a change, so Undo can put it back. */
+	private void remember() {
+		history.addLast(working.copy());
+		while (history.size() > HISTORY) {
+			history.removeFirst();
+		}
+	}
+
+	/** Steps back one change. */
+	private void undo() {
+		if (history.isEmpty()) {
+			return;
+		}
+		working = history.removeLast();
+		// The selection is an object in the old list, which the restored copy
+		// does not contain, so it cannot survive the step.
+		selected = null;
+		complaint = null;
+	}
+
+	/**
+	 * Handles a key press. Delete removes the selected element, the same as
+	 * the button does.
+	 *
+	 * @return true when the key was used here
+	 */
+	public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+		EditBox field = nameField();
+		if (field != null && field.isFocused()) {
+			return field.keyPressed(event);
+		}
+		// Delete and Backspace both remove: which one people reach for
+		// depends on their keyboard, and neither means anything else here.
+		if ((event.key() == 261 || event.key() == 259) && selected != null) {
+			act("delete");
+			return true;
+		}
+		return false;
+	}
+
+	/** Typing, when the name box has focus. */
+	public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
+		EditBox field = nameField();
+		return field != null && field.isFocused() && field.charTyped(event);
 	}
 
 	/** Every dropdown, so the screen can route clicks and overlays to them. */
@@ -248,6 +331,55 @@ public final class TagEditor {
 		}
 	}
 
+	/**
+	 * Shows the preview as a different player.
+	 *
+	 * <p>Resolved through the tab list, which is the only name-to-id the
+	 * client has to hand without a lookup: someone not on the server keeps
+	 * the name in the preview but has no tiers to show, which is the honest
+	 * answer rather than a made-up one.
+	 */
+	private void previewAs(String name) {
+		previewName = name;
+		previewPlayer = null;
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() == null || name.isBlank()) {
+			return;
+		}
+		for (var entry : client.getConnection().getOnlinePlayers()) {
+			if (name.equalsIgnoreCase(entry.getProfile().name())) {
+				previewPlayer = entry.getProfile().id();
+				// Asked for while we are here, so the preview fills in rather
+				// than staying on the stand-in tier.
+				SpogTiersClient.service().requestNow(previewPlayer);
+				return;
+			}
+		}
+	}
+
+	/** The name box, when one is on screen, so the screen can drive it. */
+	public EditBox nameField() {
+		return selected != null && selected.kind == TagLayout.Kind.NAME
+				&& nameField != null && nameField.visible ? nameField : null;
+	}
+
+	/** Whether the pointer is over anything clickable, for the cursor. */
+	public boolean isOverControl(int mouseX, int mouseY) {
+		for (Button button : buttons) {
+			if (mouseX >= button.left() && mouseX < button.right()
+					&& mouseY >= button.top() && mouseY < button.bottom()) {
+				return true;
+			}
+		}
+		for (Hit hit : hits) {
+			if (mouseX >= hit.left() && mouseX < hit.right()
+					&& mouseY >= hit.top() && mouseY < hit.bottom()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** What the pointer is over, for the screen to draw as a tooltip. */
 	public String hoverText() {
 		return hover;
@@ -291,6 +423,9 @@ public final class TagEditor {
 				mouseX, mouseY, "toggle.displays");
 		y = rule(graphics, left, right, y);
 
+		y = toggle(graphics, "Center on Name", working.centreOnName, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.centre");
+
 		int duplicatesTop = y;
 		toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.duplicates");
@@ -324,10 +459,17 @@ public final class TagEditor {
 		graphics.fill(left + PADDING, plateTop, right - PADDING, plateTop + plateHeight,
 				0x60101720);
 
+		// How far the outer rows move to sit over the name, mirroring what
+		// the game does, so the preview shows the arrangement that will be
+		// drawn rather than one the editor invents.
+		int shift = working.centreOnName ? nameShift(left + PADDING, right - PADDING) : 0;
+
 		int rowY = plateTop + 4;
 		for (TagLayout.Row row : TagLayout.Row.values()) {
 			bands.add(new RowBand(row, rowY, rowY + PREVIEW_ROW));
-			drawRow(graphics, row, left + PADDING, rowY, right - PADDING, mouseX, mouseY);
+			int nudge = row == TagLayout.Row.MIDDLE ? 0 : shift;
+			drawRow(graphics, row, left + PADDING, rowY, right - PADDING, nudge,
+					mouseX, mouseY);
 			rowY += PREVIEW_ROW;
 		}
 
@@ -335,9 +477,17 @@ public final class TagEditor {
 
 		// Pick a kind and press plus; it lands at the end of the middle row
 		// where it can be seen and then dragged.
+		// A second name would draw the player's name twice with no way to
+		// tell the two apart, so it is not offered once one exists.
 		List<Dropdown.Entry<TagLayout.Kind>> kinds = new ArrayList<>();
 		for (TagLayout.Kind kind : TagLayout.Kind.values()) {
+			if (kind == TagLayout.Kind.NAME && working.hasName()) {
+				continue;
+			}
 			kinds.add(new Dropdown.Entry<>(kind, kind.title(), null));
+		}
+		if (creating == TagLayout.Kind.NAME && working.hasName()) {
+			creating = TagLayout.Kind.TIER;
 		}
 		int addSize = 18;
 		int listWidth = Math.min(140, right - PADDING - addSize - 6 - (left + PADDING));
@@ -356,7 +506,7 @@ public final class TagEditor {
 
 	/** One row of the preview, and the hit boxes for its elements. */
 	private void drawRow(GuiGraphicsExtractor graphics, TagLayout.Row row, int left, int y,
-			int right, int mouseX, int mouseY) {
+			int right, int shift, int mouseX, int mouseY) {
 		List<TagLayout.Element> elements = working.row(row);
 		int textY = y + (PREVIEW_ROW - font.lineHeight) / 2;
 
@@ -365,10 +515,6 @@ public final class TagEditor {
 				&& mouseX >= left && mouseX < right;
 
 		if (elements.isEmpty()) {
-			// Named rather than left blank, so an empty row still reads as a
-			// place something can be put.
-			graphics.text(font, Component.literal(row.title() + " row"),
-					left + 4, textY, 0x40FFFFFF);
 			return;
 		}
 
@@ -381,7 +527,7 @@ public final class TagEditor {
 		for (TagLayout.Element element : elements) {
 			width += span(element);
 		}
-		int x = left + Math.max(4, ((right - left) - width) / 2);
+		int x = left + Math.max(4, ((right - left) - width) / 2) + shift;
 
 		for (TagLayout.Element element : elements) {
 			int span = span(element);
@@ -408,6 +554,33 @@ public final class TagEditor {
 		if (over) {
 			caret(graphics, dropX(row, left, right, mouseX), y);
 		}
+	}
+
+	/**
+	 * How far the outer rows move to line up on the name, in pixels.
+	 *
+	 * <p>The middle row is centred on its whole width, so the name's own
+	 * middle sits off that centre by half of the difference between what
+	 * precedes it and what follows. Moving the other rows by the same amount
+	 * puts all three over the name.
+	 */
+	private int nameShift(int left, int right) {
+		List<TagLayout.Element> middle = working.row(TagLayout.Row.MIDDLE);
+		int before = 0;
+		int after = 0;
+		boolean seen = false;
+		for (TagLayout.Element element : middle) {
+			if (element.kind == TagLayout.Kind.NAME) {
+				seen = true;
+				continue;
+			}
+			if (seen) {
+				after += span(element);
+			} else {
+				before += span(element);
+			}
+		}
+		return (before - after) / 2;
 	}
 
 	/**
@@ -456,7 +629,7 @@ public final class TagEditor {
 			int x, int y, boolean chosen) {
 		if (element.kind == TagLayout.Kind.TIER) {
 			Component icon = SpogTiersClient.config().showTagIcons ? icon(element) : null;
-			Tier sample = sampleTier();
+			Tier sample = tierFor(element);
 			int cursor = x;
 			if (icon != null) {
 				// Drawn white and on its own: the glyphs are coloured artwork,
@@ -465,7 +638,7 @@ public final class TagEditor {
 				graphics.text(font, icon, cursor, y, 0xFFFFFFFF);
 				cursor += font.width(icon) + font.width(" ");
 			}
-			String label = sample.label();
+			String label = labelFor(element, sample);
 			graphics.text(font, Component.literal(label), cursor, y,
 					chosen ? 0xFFFFFFFF : sample.color());
 			if (chosen) {
@@ -577,7 +750,7 @@ public final class TagEditor {
 			}
 			y += ROW_HEIGHT + 8;
 
-			graphics.text(font, Component.literal("Colour"), x, y, MUTED_COLOR);
+			graphics.text(font, Component.literal("Color"), x, y, MUTED_COLOR);
 			y += font.lineHeight + 4;
 			int[] palette = {0x555555, 0xFFFFFF, 0xB9C4D0, 0x6FC3E8, 0x89F19C,
 					0xEDE04E, 0xEB8526, 0xD46A6A, 0xA034C7};
@@ -600,6 +773,10 @@ public final class TagEditor {
 		// How far the content ran past the footer, so scrolling knows its limit.
 		scrollMax = Math.max(0, (y + scroll) - footer + PADDING);
 
+		if (nameField != null && nameField.visible) {
+			nameField.extractWidgetRenderState(graphics, mouseX, mouseY, 0.0f);
+		}
+
 		// The footer, and delete pinned to its right. Drawn after the content
 		// so a long panel scrolls underneath rather than over it.
 		graphics.fill(left + 1, footer, right - 1, footer + 1, PANEL_BORDER);
@@ -611,6 +788,17 @@ public final class TagEditor {
 
 	/** @return true when the click was handled here */
 	public boolean click(double mouseX, double mouseY) {
+		// Focus follows the click: inside the box it takes typing, outside it
+		// gives it back so Delete removes an element again.
+		EditBox field = nameField();
+		if (field != null) {
+			boolean inside = mouseX >= field.getX() && mouseX < field.getX() + field.getWidth()
+					&& mouseY >= field.getY() && mouseY < field.getY() + field.getHeight();
+			field.setFocused(inside);
+			if (inside) {
+				return true;
+			}
+		}
 		for (Button button : buttons) {
 			if (mouseX >= button.left() && mouseX < button.right()
 					&& mouseY >= button.top() && mouseY < button.bottom()) {
@@ -728,6 +916,7 @@ public final class TagEditor {
 		SpogTiersConfig config = SpogTiersClient.config();
 		switch (id) {
 			case "create" -> {
+				remember();
 				TagLayout.Element element =
 						new TagLayout.Element(creating, TagLayout.Row.MIDDLE);
 				working.elements.add(element);
@@ -736,18 +925,25 @@ public final class TagEditor {
 			}
 			case "delete" -> {
 				if (selected != null) {
+					remember();
 					working.elements.remove(selected);
 					selected = null;
 					changed();
 				}
 			}
-			case "save" -> save();
+			case "save" -> {
+				if (save()) {
+					closer.run();
+				}
+			}
+			case "undo" -> undo();
 			case "cancel" -> {
 				working = original.copy();
 				selected = null;
 				complaint = null;
 			}
 			case "reset" -> {
+				remember();
 				working = TagLayout.defaults();
 				selected = null;
 				complaint = null;
@@ -771,6 +967,11 @@ public final class TagEditor {
 			case "toggle.displays" -> {
 				config.tagDisplays = !config.tagDisplays;
 				config.save();
+			}
+			case "toggle.centre" -> {
+				remember();
+				working.centreOnName = !working.centreOnName;
+				changed();
 			}
 			case "toggle.duplicates" -> {
 				config.preventDuplicateTiers = !config.preventDuplicateTiers;
@@ -797,16 +998,17 @@ public final class TagEditor {
 	 * <p>Refused rather than corrected: silently adding a name back would
 	 * leave the editor showing something the user did not arrange.
 	 */
-	private void save() {
+	private boolean save() {
 		if (!working.hasName()) {
 			complaint = "Needs a name element";
-			return;
+			return false;
 		}
 		SpogTiersConfig config = SpogTiersClient.config();
 		config.tagLayout = working.copy();
 		config.save();
 		original = working.copy();
 		complaint = null;
+		return true;
 	}
 
 	private void changed() {
@@ -828,7 +1030,7 @@ public final class TagEditor {
 	private int span(TagLayout.Element element) {
 		if (element.kind == TagLayout.Kind.TIER) {
 			Component icon = SpogTiersClient.config().showTagIcons ? icon(element) : null;
-			int width = font.width(sampleTier().label());
+			int width = font.width(labelFor(element, tierFor(element)));
 			if (icon != null) {
 				width += font.width(icon) + font.width(" ");
 			}
@@ -837,10 +1039,29 @@ public final class TagEditor {
 		return font.width(preview(element)) + 6;
 	}
 
+	/** The text a tier element draws: our own grade, or the list's tier. */
+	private String labelFor(TagLayout.Element element, Tier tier) {
+		if (element.doorSmp) {
+			PlayerGrade grade = gradeForPreview();
+			return grade != null && grade.isGraded() ? grade.label() : "S";
+		}
+		return tier.label();
+	}
+
+	/** The colour a tier element draws in. */
+	private int colourFor(TagLayout.Element element) {
+		if (element.doorSmp) {
+			PlayerGrade grade = gradeForPreview();
+			return grade != null && grade.isGraded()
+					? grade.foreground() : 0xFFFFFFFF;
+		}
+		return tierFor(element).color();
+	}
+
 	/** What an element reads as in the preview. */
 	private String preview(TagLayout.Element element) {
 		return switch (element.kind) {
-			case NAME -> PREVIEW_NAME;
+			case NAME -> previewName.isBlank() ? "Player" : previewName;
 			case REGION -> region();
 			case SEPARATOR -> element.character;
 			case TIER -> tierPreview(element);
@@ -850,7 +1071,7 @@ public final class TagEditor {
 	/** A tier's preview text, icon included, for measuring its width. */
 	private String tierPreview(TagLayout.Element element) {
 		Component icon = icon(element);
-		String label = sampleTier().label();
+		String label = labelFor(element, tierFor(element));
 		return icon != null && SpogTiersClient.config().showTagIcons
 				? icon.getString() + " " + label : label;
 	}
@@ -903,9 +1124,31 @@ public final class TagEditor {
 		return ModeIcons.of(list, mode.key());
 	}
 
-	/** The tier the preview stands in with, so its colour is a real one. */
-	private Tier sampleTier() {
+	/**
+	 * The tier an element would actually draw for the preview player.
+	 *
+	 * <p>Read from the cache and never fetched, since this runs on the render
+	 * thread. Falls back to a stand-in only when nothing is known yet, so the
+	 * row still has something to show and a width to measure.
+	 */
+	private Tier tierFor(TagLayout.Element element) {
+		if (previewPlayer != null && element != null && !element.doorSmp) {
+			PlayerTiers tiers = element.list == null
+					? SpogTiersClient.cache().get(previewPlayer)
+					: SpogTiersClient.cache().get(previewPlayer, element.list);
+			if (tiers != null) {
+				Tier tier = element.gamemode == null ? tiers.best() : tiers.get(element.gamemode);
+				if (tier != null && tier.isRanked()) {
+					return tier;
+				}
+			}
+		}
 		return new Tier(1, Tier.Position.HIGH, false);
+	}
+
+	/** The grade our own list holds for the preview player, or null. */
+	private PlayerGrade gradeForPreview() {
+		return previewPlayer == null ? null : SpogTiersClient.service().grade(previewPlayer);
 	}
 
 	private int colour(TagLayout.Element element) {
@@ -913,13 +1156,16 @@ public final class TagEditor {
 			case NAME -> 0xFFFFFFFF;
 			case REGION -> 0xFF89F19C;
 			case SEPARATOR -> 0xFF000000 | element.colour;
-			case TIER -> sampleTier().color();
+			case TIER -> colourFor(element);
 		};
 	}
 
-	/** His region where it is known, else a stand-in so the row still reads. */
+	/** The preview player's region where it is known, else a stand-in. */
 	private String region() {
-		String code = Regions.resolve(SpogTiersClient.cache().allLists(PREVIEW_PLAYER));
+		if (previewPlayer == null) {
+			return "EU";
+		}
+		String code = Regions.resolve(SpogTiersClient.cache().allLists(previewPlayer));
 		return code.isEmpty() ? "EU" : code;
 	}
 
@@ -970,8 +1216,10 @@ public final class TagEditor {
 	public void drawActions(GuiGraphicsExtractor graphics, int x, int y, int width,
 			int mouseX, int mouseY) {
 		int gap = 6;
+		int undo = x - (width + gap) * 3;
 		int reset = x - (width + gap) * 2;
 		int cancel = x - (width + gap);
+		colouredButton(graphics, "Undo", undo, y, width, mouseX, mouseY, "undo", BLUE);
 		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY, "reset", AMBER);
 		colouredButton(graphics, "Cancel", cancel, y, width, mouseX, mouseY, "cancel", RED);
 		colouredButton(graphics, "Save & Close", x, y, width, mouseX, mouseY, "save", GREEN);
@@ -1059,7 +1307,7 @@ public final class TagEditor {
 		graphics.fill(cx - 4, top + 2, cx - 3, top + 10, ink);
 		graphics.fill(cx + 3, top + 2, cx + 4, top + 10, ink);
 		graphics.fill(cx - 4, top + 9, cx + 4, top + 10, ink);
-		graphics.fill(cx - 1, top + 4, cx, top + 8, ink);
+		graphics.fill(cx - 2, top + 4, cx - 1, top + 8, ink);
 		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
 		buttons.add(new Button("delete", x, y, x + size, y + size));
 	}

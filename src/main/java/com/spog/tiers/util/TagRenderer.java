@@ -15,7 +15,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +43,20 @@ public final class TagRenderer {
 		}
 		Component middle = buildRow(uuid, TagLayout.Row.MIDDLE, original);
 		return middle == null ? original : middle;
+	}
+
+	/**
+	 * The middle row split at the name: what precedes it, and what follows.
+	 *
+	 * <p>Built the same way the row itself is, so the two agree about which
+	 * elements resolved and where the separators fell.
+	 */
+	public static Component[] aroundName(UUID uuid, Component name) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled || !config.tagLayout.centreOnName) {
+			return null;
+		}
+		return splitRow(uuid, name);
 	}
 
 	/** The badge for the first tier element, for compact contexts. */
@@ -99,14 +115,53 @@ public final class TagRenderer {
 	 * @param name what a name element draws, or null to skip name elements
 	 * @return the row, or null if it came out empty
 	 */
+	/** The middle row as its two halves either side of the name. */
+	private static Component[] splitRow(UUID uuid, Component name) {
+		Component whole = buildRow(uuid, TagLayout.Row.MIDDLE, name);
+		if (whole == null) {
+			return null;
+		}
+		// Rebuilt rather than searched: the row is a tree of components and
+		// finding the name inside it would mean matching on text, which a
+		// player called after a tier label would break.
+		MutableComponent before = Component.empty();
+		MutableComponent after = Component.empty();
+		boolean seenName = false;
+		for (Component piece : rowPieces(uuid, TagLayout.Row.MIDDLE, name)) {
+			if (piece == name) {
+				seenName = true;
+				continue;
+			}
+			(seenName ? after : before).append(piece);
+		}
+		return new Component[] {before, after};
+	}
+
 	private static Component buildRow(UUID uuid, TagLayout.Row row, Component name) {
+		List<Component> pieces = rowPieces(uuid, row, name);
+		if (pieces.isEmpty()) {
+			return null;
+		}
+		MutableComponent out = Component.empty();
+		for (Component piece : pieces) {
+			out.append(piece);
+		}
+		return out;
+	}
+
+	/**
+	 * One row as the pieces it is made of, in order.
+	 *
+	 * <p>The name is returned as the very object passed in, so a caller can
+	 * find it by identity and split the row there.
+	 */
+	private static List<Component> rowPieces(UUID uuid, TagLayout.Row row, Component name) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		TagLayout layout = config.tagLayout;
 		Set<String> shown = config.preventDuplicateTiers
 				? labelsBefore(uuid, row) : new LinkedHashSet<>();
 
-		MutableComponent out = Component.empty();
-		boolean any = false;
+		List<Component> pieces = new ArrayList<>();
 		// A separator is only worth drawing between two things, so it is held
 		// back until something after it earns it. This is what lets a tier
 		// resolve to nothing without leaving a stray bar behind.
@@ -133,7 +188,7 @@ public final class TagRenderer {
 			if (element.kind == TagLayout.Kind.SEPARATOR) {
 				// Only after something, and only one at a time: two separators
 				// in a row with nothing between them draw as one.
-				if (any) {
+				if (!pieces.isEmpty()) {
 					pending = separator(element);
 				}
 				continue;
@@ -142,18 +197,18 @@ public final class TagRenderer {
 				continue;
 			}
 			if (pending != null) {
-				out.append(pending);
+				pieces.add(pending);
 				pending = null;
-			} else if (any) {
+			} else if (!pieces.isEmpty()) {
 				// Two elements with nothing between them still need holding
 				// apart, or a tier runs straight into the name.
-				out.append(space());
+				pieces.add(space());
 			}
-			out.append(piece);
-			any = true;
+			pieces.add(piece);
 		}
-		return any ? out : null;
+		return pieces;
 	}
+
 
 	/**
 	 * The tier labels drawn before this row, so a later row does not repeat
