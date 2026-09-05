@@ -3,6 +3,7 @@ package com.spog.tiers.compat;
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -39,6 +40,8 @@ public final class NametagTweaks {
 	private static Field scaleField;
 	private static Field colourField;
 	private static Field shadowField;
+	private static Field removeField;
+	private static Field hidePlayersInHudField;
 
 	private NametagTweaks() {
 	}
@@ -118,6 +121,28 @@ public final class NametagTweaks {
 		return Boolean.TRUE.equals(read(shadowField));
 	}
 
+	/**
+	 * Whether the extra rows should be suppressed for a player right now.
+	 *
+	 * <p>The mod hides the plate by refusing vanilla's own name-tag submit,
+	 * which our rows never go through -- so without this they carried on
+	 * drawing with no name between them, which is worse than showing nothing.
+	 *
+	 * <p>Only the player rules are consulted: our rows only ever hang off a
+	 * player's tag, so the entity and armour-stand switches cannot apply.
+	 */
+	public static boolean hidden() {
+		if (!following()) {
+			return false;
+		}
+		if (Boolean.TRUE.equals(read(removeField))) {
+			return true;
+		}
+		Minecraft client = Minecraft.getInstance();
+		return client.options != null && client.options.hideGui
+				&& Boolean.TRUE.equals(read(hidePlayersInHudField));
+	}
+
 	/** Looks the mod up once, and remembers whether it is usable. */
 	private static void resolve() {
 		if (checked) {
@@ -136,6 +161,8 @@ public final class NametagTweaks {
 			scaleField = config.getField("nametagScale");
 			colourField = config.getField("nametagColor");
 			shadowField = config.getField("nametagTextShadow");
+			removeField = config.getField("removeNametags");
+			hidePlayersInHudField = config.getField("hidePlayerNametagsInHiddenHud");
 			present = true;
 			SpogTiers.LOGGER.info("Nametag Tweaks found; extra tag rows will follow it");
 		} catch (ReflectiveOperationException | RuntimeException e) {
