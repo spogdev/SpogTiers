@@ -138,9 +138,26 @@ public final class NametagTweaks {
 		if (Boolean.TRUE.equals(read(removeField))) {
 			return true;
 		}
-		Minecraft client = Minecraft.getInstance();
-		return client.options != null && client.options.hideGui
-				&& Boolean.TRUE.equals(read(hidePlayersInHudField));
+		return hudHidden() && Boolean.TRUE.equals(read(hidePlayersInHudField));
+	}
+
+	/**
+	 * Whether the HUD is hidden, as F1 does.
+	 *
+	 * <p>Read reflectively because the flag is not in the same place on every
+	 * version this mod supports, and its absence should cost us this one rule
+	 * rather than the whole integration.
+	 */
+	private static boolean hudHidden() {
+		Object options = Minecraft.getInstance().options;
+		if (options == null) {
+			return false;
+		}
+		try {
+			return options.getClass().getField("hideGui").getBoolean(options);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return false;
+		}
 	}
 
 	/** Looks the mod up once, and remembers whether it is usable. */
