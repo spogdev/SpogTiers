@@ -95,9 +95,11 @@ public class Dropdown<T> {
 		graphics.text(font, Component.literal(trim(font, label, width - (textX - x) - 16)),
 				textX, y + 4, hovered || open ? TEXT_HOVER : TEXT);
 
-		// Caret, pointing the way the list will open.
+		// Caret, pointing the way the list will open. Its rows run downward
+		// from caretY, so the middle row rather than the top one is what has
+		// to sit on the box's centre line.
 		int caretX = x + width - 10;
-		int caretY = y + boxHeight / 2 - 1;
+		int caretY = y + boxHeight / 2;
 		for (int i = 0; i < 3; i++) {
 			graphics.fill(caretX - i, caretY + (open ? i : -i),
 					caretX + i + 1, caretY + (open ? i : -i) + 1, 0xFF8A93A0);

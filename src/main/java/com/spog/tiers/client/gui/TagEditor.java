@@ -77,21 +77,34 @@ public final class TagEditor {
 	private record Tint(int fill, int hovered, int border, int text) {
 	}
 
+	/**
+	 * The panel a tooltip takes for a coloured button.
+	 *
+	 * <p>Drawn in the button's own hue, so the explanation is visibly tied to
+	 * the control it came from rather than being one anonymous grey box.
+	 */
+	private record Explained(String text, Tint tint) {
+	}
+
+	// The hovered fill is a long way above the resting one on purpose: at the
+	// general tab's own step the lift was barely visible on these small
+	// buttons, so hovering did not read as anything happening.
+
 	/** Green: commits, and adds. The general tab's own ON colours. */
 	private static final Tint GREEN =
-			new Tint(0x5023351F, 0x8023351F, 0xA05F9A56, 0xFFA8E39B);
+			new Tint(0x5023351F, 0xE04C8F3F, 0xA05F9A56, 0xFFA8E39B);
 
 	/** Red: discards, and deletes. Its OFF colours. */
 	private static final Tint RED =
-			new Tint(0x50241A1D, 0x80241A1D, 0xA0955A5A, 0xFFE0A0A0);
+			new Tint(0x50241A1D, 0xE0A6453D, 0xA0955A5A, 0xFFE0A0A0);
 
 	/** Blue: steps back, which neither commits nor discards the session. */
 	private static final Tint BLUE =
-			new Tint(0x501B2A38, 0x801B2A38, 0xA04E7EA8, 0xFF9CC9E8);
+			new Tint(0x501B2A38, 0xE03E6E96, 0xA04E7EA8, 0xFF9CC9E8);
 
 	/** Amber: starts over, which is neither of the two. */
 	private static final Tint AMBER =
-			new Tint(0x50332813, 0x80332813, 0xA0A8813E, 0xFFE8C88A);
+			new Tint(0x50332813, 0xE0B07B31, 0xA0A8813E, 0xFFE8C88A);
 
 	private static final int ROW_HEIGHT = 22;
 	private static final int PADDING = 10;
@@ -140,6 +153,9 @@ public final class TagEditor {
 
 	/** What to explain under the pointer this frame, or null. */
 	private String hover;
+
+	/** The same, for a coloured button, so its panel can match it. */
+	private Explained hoverButton;
 
 	private final Font font;
 
@@ -213,8 +229,14 @@ public final class TagEditor {
 	public TagEditor(Font font, Runnable onChange) {
 		this.font = font;
 		this.onChange = onChange;
-		this.creator = new Dropdown<>(value -> creating = value);
+		// Picking a kind clicks like every other control: the dropdown itself
+		// is silent, and the screen only sounds the ones it routes.
+		this.creator = new Dropdown<>(value -> {
+			creating = value;
+			click();
+		});
 		this.tierList = new Dropdown<>(value -> {
+			click();
 			if (selected != null) {
 				selected.doorSmp = value.door();
 				selected.list(value.list());
@@ -229,11 +251,19 @@ public final class TagEditor {
 			}
 		});
 		this.tierMode = new Dropdown<>(value -> {
+			click();
 			if (selected != null) {
 				selected.gamemode = value;
 				changed();
 			}
 		});
+	}
+
+	/** Vanilla's UI click, so the editor sounds like the rest of the game. */
+	private static void click() {
+		Minecraft.getInstance().getSoundManager().play(
+				net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
+						net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0f));
 	}
 
 	/** Takes a fresh working copy. Call when the tab is opened. */
@@ -325,6 +355,7 @@ public final class TagEditor {
 		buttons.clear();
 		bands.clear();
 		hover = null;
+		hoverButton = null;
 
 		int centreLeft = left + SIDE_WIDTH + PADDING;
 		int centreRight = right - SIDE_WIDTH - PADDING;
@@ -426,6 +457,30 @@ public final class TagEditor {
 		return hover;
 	}
 
+	/**
+	 * Draws a coloured button's own tooltip, in that button's hue.
+	 *
+	 * <p>Drawn here rather than handed to the screen, because the screen's
+	 * tooltip is one fixed grey and the point is that these are not.
+	 */
+	public void drawButtonTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
+			int screenWidth, int screenHeight) {
+		if (hoverButton == null) {
+			return;
+		}
+		String text = hoverButton.text();
+		Tint tint = hoverButton.tint();
+		int boxWidth = font.width(text) + 12;
+		int boxHeight = font.lineHeight + 12;
+		int boxX = Math.min(mouseX + 12, screenWidth - boxWidth - 4);
+		int boxY = Math.clamp(mouseY - 8, 4, screenHeight - boxHeight - 4);
+
+		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, tint.border());
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1,
+				tint.fill() | 0xE0000000);
+		graphics.text(font, Component.literal(text), boxX + 6, boxY + 6, tint.text());
+	}
+
 	/** Dropdown lists, drawn last so they sit over everything else. */
 	public void drawOverlays(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		creator.drawOverlay(graphics, font, creating, mouseX, mouseY);
@@ -500,7 +555,7 @@ public final class TagEditor {
 		int plateTop = y;
 		int plateHeight = PREVIEW_ROW * 3 + 8;
 		graphics.fill(left + PADDING, plateTop, right - PADDING, plateTop + plateHeight,
-				0x60101720);
+				0xA0080C12);
 
 		// How far the outer rows move to sit over the name, mirroring what
 		// the game does, so the preview shows the arrangement that will be
@@ -537,7 +592,22 @@ public final class TagEditor {
 		creator.setEntries(kinds);
 		creator.setBounds(left + PADDING, y, listWidth);
 		creator.draw(graphics, font, creating, mouseX, mouseY);
-		plus(graphics, left + PADDING + listWidth + 6, y, addSize, mouseX, mouseY);
+		int addX = left + PADDING + listWidth + 6;
+		plus(graphics, addX, y, addSize, mouseX, mouseY);
+
+		// The session's controls sit on this row too, to the right of the
+		// plus: they belong with the editing, not down beside Done, which
+		// only closes the screen.
+		int narrow = 56;
+		int gap = 6;
+		int barX = addX + addSize + gap * 2;
+		colouredButton(graphics, "Undo", barX, y, narrow, mouseX, mouseY, "undo", BLUE,
+				"Rolls back the most recent change");
+		colouredButton(graphics, "Reset", barX + narrow + gap, y, narrow, mouseX, mouseY,
+				"reset", AMBER, "Resets the tag to default settings");
+		colouredButton(graphics, "Revert", barX + (narrow + gap) * 2, y, narrow,
+				mouseX, mouseY, "revert", RED,
+				"Rolls back all changes done in this editing session");
 		y += ROW_HEIGHT + 8;
 
 		if (complaint != null) {
@@ -723,8 +793,13 @@ public final class TagEditor {
 		int footer = bottom - FOOTER_HEIGHT;
 
 		if (selected == null) {
-			graphics.text(font, Component.literal("Nothing selected"), x, top + PADDING,
-					MUTED_COLOR);
+			// Centred both ways: with nothing to show, text tucked into the
+			// top corner reads as a panel that failed to draw rather than one
+			// that is deliberately empty.
+			String empty = "Nothing selected";
+			graphics.text(font, Component.literal(empty),
+					left + (right - left - font.width(empty)) / 2,
+					top + (bottom - top - font.lineHeight) / 2, MUTED_COLOR);
 			scrollMax = 0;
 			return;
 		}
@@ -1305,23 +1380,14 @@ public final class TagEditor {
 	/**
 	 * The session's controls, drawn where Done sits on the other tabs.
 	 *
-	 * <p>Reset, Cancel, Save & Close, in that order, so the one most likely
-	 * to be wanted is nearest the corner the eye already goes to. All three
-	 * are Done's size, and coloured the way a switch is: green for the one
-	 * that commits, red for the one that discards, amber for the one that
-	 * starts over.
+	 * <p>Only Done: it is the one control here that is about the screen
+	 * rather than about the tag.
 	 */
 	public void drawActions(GuiGraphicsExtractor graphics, int x, int y, int width,
 			int mouseX, int mouseY) {
-		int gap = 6;
-		int undo = x - (width + gap) * 3;
-		int reset = x - (width + gap) * 2;
-		int revert = x - (width + gap);
-		colouredButton(graphics, "Undo", undo, y, width, mouseX, mouseY, "undo", BLUE);
-		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY, "reset", AMBER);
-		colouredButton(graphics, "Revert", revert, y, width, mouseX, mouseY, "revert", RED);
-		// Done in the plain style, because it only closes: the layout is
-		// already saved by the time anyone reaches it.
+		// Done alone here, in the plain style, because it only closes: the
+		// layout is already saved by the time anyone reaches it, and the
+		// session's own controls live beside the element creator instead.
 		pushButton(graphics, "Done", x, y, width, mouseX, mouseY, "done");
 	}
 
@@ -1333,16 +1399,20 @@ public final class TagEditor {
 	 * makes those switches read as controls rather than as coloured labels.
 	 */
 	private void colouredButton(GuiGraphicsExtractor graphics, String label, int x, int y,
-			int width, int mouseX, int mouseY, String id, Tint tint) {
+			int width, int mouseX, int mouseY, String id, Tint tint, String explains) {
 		int height = 20;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
 		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
-		outline(graphics, x, y, x + width, y + height, tint.border());
+		outline(graphics, x, y, x + width, y + height,
+				hovered ? tint.text() : tint.border());
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
 				y + (height - font.lineHeight) / 2, tint.text());
 		buttons.add(new Button(id, x, y, x + width, y + height));
+		if (hovered && explains != null) {
+			hoverButton = new Explained(explains, tint);
+		}
 	}
 
 
@@ -1365,23 +1435,32 @@ public final class TagEditor {
 	/**
 	 * The button that adds an element, in the same style as an ON switch.
 	 *
-	 * <p>The cross is built outward from the button's centre with equal arms,
-	 * so both strokes share the middle pixel and it cannot lean.
+	 * <p>Two bars thick rather than one, and built outward from the button's
+	 * exact centre: an odd-width stroke on an even-width button sat a pixel
+	 * off, which is what made it look askew.
 	 */
 	private void plus(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
 		graphics.fill(x, y, x + size, y + size, hovered ? GREEN.hovered() : GREEN.fill());
-		outline(graphics, x, y, x + size, y + size, GREEN.border());
+		outline(graphics, x, y, x + size, y + size, hovered ? GREEN.text() : GREEN.border());
 
+		// Both strokes share one centre and one thickness, so the cross is
+		// symmetrical whichever way it is measured.
+		int thickness = 2;
+		int arm = size / 2 - 4;
 		int cx = x + size / 2;
 		int cy = y + size / 2;
-		int arm = size / 2 - 4;
-		graphics.fill(cx - arm, cy, cx + arm + 1, cy + 1, GREEN.text());
-		graphics.fill(cx, cy - arm, cx + 1, cy + arm + 1, GREEN.text());
+		int half = thickness / 2;
+		graphics.fill(cx - arm, cy - half, cx + arm, cy + thickness - half, GREEN.text());
+		graphics.fill(cx - half, cy - arm, cx + thickness - half, cy + arm, GREEN.text());
 		buttons.add(new Button("create", x, y, x + size, y + size));
+		if (hovered) {
+			hoverButton = new Explained("Create element of this type", GREEN);
+		}
 	}
+
 
 	/**
 	 * The button that deletes the selected element, in the same style as an
@@ -1389,20 +1468,23 @@ public final class TagEditor {
 	 *
 	 * <p>The bin is drawn about the button's centre -- a handle, a lid and a
 	 * body with two staves -- each piece placed from the middle out, so it is
-	 * symmetrical whatever the button's size.
+	 * symmetrical whatever the button's size. Hovering lifts the lid off the
+	 * body, so the icon answers the pointer as much as the panel behind it.
 	 */
 	private void trash(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
 		graphics.fill(x, y, x + size, y + size, hovered ? RED.hovered() : RED.fill());
-		outline(graphics, x, y, x + size, y + size, RED.border());
+		outline(graphics, x, y, x + size, y + size, hovered ? RED.text() : RED.border());
 
 		int ink = RED.text();
 		int cx = x + size / 2;
 		int top = y + size / 2 - 5;
-		graphics.fill(cx - 2, top - 2, cx + 2, top - 1, ink);
-		graphics.fill(cx - 5, top, cx + 5, top + 1, ink);
+		int lift = hovered ? 2 : 0;
+		// Handle and lid rise together; the body stays where it is.
+		graphics.fill(cx - 2, top - 2 - lift, cx + 2, top - 1 - lift, ink);
+		graphics.fill(cx - 5, top - lift, cx + 5, top + 1 - lift, ink);
 		graphics.fill(cx - 4, top + 2, cx + 4, top + 3, ink);
 		graphics.fill(cx - 4, top + 2, cx - 3, top + 10, ink);
 		graphics.fill(cx + 3, top + 2, cx + 4, top + 10, ink);
@@ -1411,6 +1493,7 @@ public final class TagEditor {
 		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
 		buttons.add(new Button("delete", x, y, x + size, y + size));
 	}
+
 
 
 

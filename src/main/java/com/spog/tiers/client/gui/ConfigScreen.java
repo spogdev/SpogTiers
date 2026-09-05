@@ -197,6 +197,9 @@ public class ConfigScreen extends Screen {
 		if (active == Tab.NAMETAG && tagEditor.hoverText() != null) {
 			drawHoverText(graphics, tagEditor.hoverText(), mouseX, mouseY);
 		}
+		if (active == Tab.NAMETAG) {
+			tagEditor.drawButtonTooltip(graphics, mouseX, mouseY, width, height);
+		}
 
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
