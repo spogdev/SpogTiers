@@ -76,8 +76,25 @@ public class TagLayout {
 		public Kind kind = Kind.NAME;
 		public Row row = Row.MIDDLE;
 
-		/** Tier elements: which list, or null for the best across all of them. */
-		public TierList list = TierList.PVPTIERS;
+		/**
+		 * Tier elements: which list, or null for the best across all of them.
+		 *
+		 * <p>Starts null, not at a list. Gson omits a null field when writing
+		 * and leaves the field initialiser in place when reading, so a Best
+		 * element saved with no list came back as whatever the initialiser
+		 * said -- silently turning every Best tier into a PvPTiers one on the
+		 * next start. {@link #best} carries the distinction explicitly
+		 * instead.
+		 */
+		public TierList list;
+
+		/**
+		 * Whether this element means "best across every list".
+		 *
+		 * <p>Written out as a real value, so it survives a round trip that a
+		 * null {@link #list} cannot.
+		 */
+		public boolean best;
 
 		/**
 		 * Tier elements: our own Door SMP list rather than one of the six.
@@ -103,12 +120,29 @@ public class TagLayout {
 		public Element(Kind kind, Row row) {
 			this.kind = kind;
 			this.row = row;
+			if (kind == Kind.TIER) {
+				list = TierList.PVPTIERS;
+			}
+		}
+
+		/** The list this element draws from, or null when it is a Best. */
+		public TierList list() {
+			return best ? null : list;
+		}
+
+		/** Points the element at one list, or at all of them. */
+		public void list(TierList value) {
+			best = value == null;
+			if (value != null) {
+				list = value;
+			}
 		}
 
 		/** A copy, so an editing session can be abandoned without effect. */
 		public Element copy() {
 			Element copy = new Element(kind, row);
 			copy.list = list;
+			copy.best = best;
 			copy.doorSmp = doorSmp;
 			copy.gamemode = gamemode;
 			copy.character = character;
@@ -126,7 +160,8 @@ public class TagLayout {
 					if (doorSmp) {
 						yield "Tier: Door SMP";
 					}
-					yield list == null ? "Tier: Best" : "Tier: " + list.displayName();
+					yield best || list == null
+							? "Tier: Best" : "Tier: " + list.displayName();
 				}
 			};
 		}
@@ -262,8 +297,17 @@ public class TagLayout {
 				element.row = Row.MIDDLE;
 			}
 			if (element.kind == Kind.SEPARATOR
-					&& (element.character == null || element.character.isEmpty())) {
+					&& (element.character == null || element.character.isEmpty()
+							|| element.character.indexOf('�') >= 0)) {
+				// The replacement character means the file was read back in
+				// the wrong charset at some point and the original bytes are
+				// gone. A bar is better than a glyph that cannot be drawn.
 				element.character = "|";
+			}
+			// A layout written before `best` existed says Best by leaving the
+			// list out, which Gson cannot tell from "never set".
+			if (element.kind == Kind.TIER && element.list == null) {
+				element.best = true;
 			}
 		}
 		// A layout with no name cannot be drawn usefully, and one with no

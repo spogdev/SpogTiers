@@ -207,7 +207,7 @@ public final class TagEditor {
 
 	/** The choice an element currently represents. */
 	private static Choice current(TagLayout.Element element) {
-		return element.doorSmp ? Choice.doorSmp() : Choice.of(element.list);
+		return element.doorSmp ? Choice.doorSmp() : Choice.of(element.list());
 	}
 
 	public TagEditor(Font font, Runnable onChange) {
@@ -217,7 +217,7 @@ public final class TagEditor {
 		this.tierList = new Dropdown<>(value -> {
 			if (selected != null) {
 				selected.doorSmp = value.door();
-				selected.list = value.list();
+				selected.list(value.list());
 				// A mode the new list does not rank would resolve to nothing,
 				// so it falls back to that list's best rather than being kept
 				// as a setting that cannot work.
@@ -771,10 +771,10 @@ public final class TagEditor {
 			// enabled list ranks.
 			List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
 			modes.add(new Dropdown.Entry<>(null, "Best", null));
-			for (Gamemode mode : modesFor(selected.list)) {
+			for (Gamemode mode : modesFor(selected.list())) {
 				// A Best element has no one list to take artwork from, so its
 				// modes are drawn from whichever list ranks them.
-				TierList owner = selected.list != null ? selected.list : ownerOf(mode);
+				TierList owner = selected.list() != null ? selected.list() : ownerOf(mode);
 				modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
 						ConfigScreen.modeIcon(owner, mode)));
 			}
@@ -1183,8 +1183,8 @@ public final class TagEditor {
 	 * to go on, and the icon is left off rather than guessed at.
 	 */
 	private TierList listFor(TagLayout.Element element) {
-		if (element.list != null) {
-			return element.list;
+		if (element.list() != null) {
+			return element.list();
 		}
 		if (previewPlayer == null) {
 			return null;
@@ -1231,9 +1231,9 @@ public final class TagEditor {
 	 */
 	private Tier tierFor(TagLayout.Element element) {
 		if (previewPlayer != null && element != null && !element.doorSmp) {
-			PlayerTiers tiers = element.list == null
+			PlayerTiers tiers = element.list() == null
 					? SpogTiersClient.cache().get(previewPlayer)
-					: SpogTiersClient.cache().get(previewPlayer, element.list);
+					: SpogTiersClient.cache().get(previewPlayer, element.list());
 			if (tiers != null) {
 				Tier tier = element.gamemode == null ? tiers.best() : tiers.get(element.gamemode);
 				if (tier != null && tier.isRanked()) {

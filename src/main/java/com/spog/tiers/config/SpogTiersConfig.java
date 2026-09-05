@@ -10,6 +10,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -320,7 +321,7 @@ public class SpogTiersConfig {
 	public static SpogTiersConfig load() {
 		Path path = path();
 		if (Files.exists(path)) {
-			try (Reader reader = Files.newBufferedReader(path)) {
+			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				SpogTiersConfig loaded = GSON.fromJson(reader, SpogTiersConfig.class);
 				if (loaded != null) {
 					loaded.normalise();
@@ -345,7 +346,7 @@ public class SpogTiersConfig {
 	/** One tier element carrying an old slot's list and gamemode. */
 	private static TagLayout.Element tierElement(TagLayout.Row row, TagSlot slot) {
 		TagLayout.Element element = new TagLayout.Element(TagLayout.Kind.TIER, row);
-		element.list = slot.list;
+		element.list(slot.list);
 		element.gamemode = slot.gamemode;
 		return element;
 	}
@@ -436,7 +437,7 @@ public class SpogTiersConfig {
 		Path path = path();
 		try {
 			Files.createDirectories(path.getParent());
-			try (Writer writer = Files.newBufferedWriter(path)) {
+			try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
 				GSON.toJson(this, writer);
 			}
 		} catch (IOException e) {

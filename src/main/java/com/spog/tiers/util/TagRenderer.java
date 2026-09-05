@@ -264,12 +264,12 @@ public final class TagRenderer {
 		}
 
 		SpogTiersConfig.TagSlot slot =
-				new SpogTiersConfig.TagSlot(true, element.list, element.gamemode);
+				new SpogTiersConfig.TagSlot(true, element.list(), element.gamemode);
 		// Only an element with a Best somewhere in it can honour an exclusion:
 		// it has other lists or other modes to fall back on. One pinned to a
 		// list and a mode has exactly one answer, and suppressing it would
 		// leave a hole rather than a different tier.
-		Set<String> applies = element.list == null || element.gamemode == null
+		Set<String> applies = element.list() == null || element.gamemode == null
 				? exclude : Set.of();
 		return resolve(uuid, slot, applies);
 	}
