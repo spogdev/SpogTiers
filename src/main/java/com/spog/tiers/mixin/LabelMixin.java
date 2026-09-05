@@ -2,6 +2,7 @@ package com.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
 import net.minecraft.client.Minecraft;
@@ -77,29 +78,41 @@ public class LabelMixin {
 		Font font = minecraft.font;
 		boolean seeThrough = !state.isDiscrete;
 		int light = state.lightCoords;
-		int background = (int) (minecraft.gameRenderer.gameRenderState()
-				.optionsRenderState.getBackgroundOpacity(0.25f) * 255.0f) << 24;
+		// The plate's own colour when that mod is setting one, so a row does
+		// not sit on vanilla's translucent black under a recoloured name.
+		int background = NametagTweaks.background(
+				(int) (minecraft.gameRenderer.gameRenderState()
+						.optionsRenderState.getBackgroundOpacity(0.25f) * 255.0f) << 24);
 
 		// The same frame vanilla builds for the name: anchored at the label
 		// point, turned to face the camera, and scaled so that one unit is one
 		// font pixel with y running downwards.
+		// Nametag Tweaks moves and resizes the plate itself by wrapping
+		// vanilla's own drawing, which our rows never go through. Reading the
+		// same numbers keeps the three lines together instead of leaving two
+		// of them at the old height and size.
+		float tweakScale = NametagTweaks.scale();
 		poseStack.pushPose();
 		poseStack.translate(attachment.x, attachment.y + 0.5, attachment.z);
 		poseStack.mulPose(camera.orientation);
-		poseStack.scale(SCALE, -SCALE, SCALE);
+		poseStack.scale(SCALE * tweakScale, -SCALE * tweakScale, SCALE * tweakScale);
 
 		// Centred over the name rather than over the whole plate, when asked:
 		// the middle row's own width includes its tiers, so a long tier on one
 		// side would otherwise push the other rows off to the side of the name.
 		float shift = nameShift(state, font);
+		// Subtracted the way the mod subtracts it from the plate's own
+		// height, and inside the scaled frame, so a raised plate takes its
+		// rows with it by the same amount rather than a different one.
+		float raise = NametagTweaks.offset();
 		if (above != null) {
-			line(collector, poseStack, font, above, offset + LINE_OFFSET, shift,
+			line(collector, poseStack, font, above, offset + LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(collector, poseStack, font, below, offset - LINE_OFFSET, shift,
+			line(collector, poseStack, font, below, offset - LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		poseStack.popPose();
@@ -145,14 +158,17 @@ public class LabelMixin {
 		}
 
 		FormattedCharSequence ordered = text.getVisualOrderText();
+		// A shadow when the plate has one, so the rows are not the only text
+		// on the tag without it.
+		boolean shadow = NametagTweaks.textShadow();
 		var queue = collector.order(1);
 		if (seeThrough) {
-			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.SEE_THROUGH,
+			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
 					light, FAINT, 0, 0);
-			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
-			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					light, FAINT, 0, 0);
 		}
 	}

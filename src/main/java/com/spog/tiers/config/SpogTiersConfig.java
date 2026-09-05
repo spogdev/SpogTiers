@@ -72,6 +72,17 @@ public class SpogTiersConfig {
 	public boolean showParticles = true;
 
 	/**
+	 * Let Nametag Tweaks' adjustments reach our extra tag rows.
+	 *
+	 * <p>That mod scales, raises and recolours the nameplate by wrapping
+	 * vanilla's drawing, which our own rows do not go through -- so without
+	 * this the middle line moves and the other two stay put. On by default,
+	 * because a tag whose lines disagree is never what anyone wanted; off for
+	 * someone who would rather the tier rows kept vanilla's own placement.
+	 */
+	public boolean matchNametagTweaks = true;
+
+	/**
 	 * Show gamemodes a player is still placing into.
 	 *
 	 * <p>Only PVPHQ reports these. They carry no tier yet, so hiding them
