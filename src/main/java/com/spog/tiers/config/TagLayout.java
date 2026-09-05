@@ -143,7 +143,7 @@ public class TagLayout {
 	 * the name sits in the middle row, so a tag with a long tier on one side
 	 * does not leave the rows looking staggered.
 	 */
-	public boolean centreOnName;
+	public boolean centerOnName;
 
 	public TagLayout() {
 	}
@@ -163,7 +163,7 @@ public class TagLayout {
 	/** A deep copy, for editing without committing. */
 	public TagLayout copy() {
 		TagLayout copy = new TagLayout();
-		copy.centreOnName = centreOnName;
+		copy.centerOnName = centerOnName;
 		for (Element element : elements) {
 			copy.elements.add(element.copy());
 		}

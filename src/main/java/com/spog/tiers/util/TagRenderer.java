@@ -53,7 +53,7 @@ public final class TagRenderer {
 	 */
 	public static Component[] aroundName(UUID uuid, Component name) {
 		SpogTiersConfig config = SpogTiersClient.config();
-		if (config == null || !config.enabled || !config.tagLayout.centreOnName) {
+		if (config == null || !config.enabled || !config.tagLayout.centerOnName) {
 			return null;
 		}
 		return splitRow(uuid, name);

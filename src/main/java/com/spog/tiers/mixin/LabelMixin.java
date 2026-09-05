@@ -115,7 +115,7 @@ public class LabelMixin {
 	 */
 	private static float nameShift(EntityRenderState state, Font font) {
 		var config = com.spog.tiers.SpogTiersClient.config();
-		if (config == null || !config.tagLayout.centreOnName) {
+		if (config == null || !config.tagLayout.centerOnName) {
 			return 0.0f;
 		}
 		Component before = NameShift.before(state);

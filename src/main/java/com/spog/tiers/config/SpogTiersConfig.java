@@ -64,10 +64,9 @@ public class SpogTiersConfig {
 	/**
 	 * Draw the ember aura around graded players and on their profile.
 	 *
-	 * <p>Separate from {@link #extraTierlists}, which turns our tierlist off
-	 * altogether: this leaves the door tag showing and only stops the
-	 * particles, for someone who wants the tier without the decoration around
-	 * every graded player they walk past.
+	 * <p>Only the particles: a door tier stays on the tag and on the profile,
+	 * for someone who wants the tier without the decoration around every
+	 * graded player they walk past.
 	 */
 	public boolean showParticles = true;
 
@@ -88,6 +87,12 @@ public class SpogTiersConfig {
 	 * thing off without hunting through several options.
 	 */
 	public boolean extraTierlists = true;
+
+	// NB: no longer has a switch on the config screen. Door SMP is asked for
+	// by name in the tag editor now, and the profile aura has its own
+	// Particles option, so a second master switch only gave two ways to turn
+	// the same things off. The field stays so an existing config that turned
+	// it off is still honoured, and forced back on below.
 
 	/**
 	 * Per-list tag toggles, separate from {@link #enabledLists}.
@@ -391,6 +396,11 @@ public class SpogTiersConfig {
 			}
 		}
 		tagLayout.normalise();
+
+		// Nothing sets this false any more, and leaving an old config's false
+		// in place would hide the door tier with no way in the UI to bring it
+		// back.
+		extraTierlists = true;
 
 		if (regionSlot == null) {
 			regionSlot = Boolean.TRUE.equals(showRegionOnNametag)

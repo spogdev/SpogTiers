@@ -341,12 +341,6 @@ public class ConfigScreen extends Screen {
 				},
 				"Show retired ranks as retired, rather than as the plain tier");
 
-		y = drawSwitch(graphics, "Extra Tierlists", config.extraTierlists, x, y,
-				() -> {
-					config.extraTierlists = !config.extraTierlists;
-					config.save();
-				});
-
 		y = drawSwitch(graphics, "Particles", config.showParticles, x, y,
 				() -> {
 					config.showParticles = !config.showParticles;

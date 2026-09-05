@@ -456,15 +456,17 @@ public final class TagEditor {
 		y += font.lineHeight + 6;
 		y = toggle(graphics, "Nametag", config.showNametags, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.nametag");
+		// Directly under Nametag, because it is the same setting for the tags
+		// a server draws itself rather than a separate place tiers appear.
+		y = toggle(graphics, "Custom Nametags", config.tagDisplays, x, y, right - PADDING,
+				mouseX, mouseY, "toggle.displays");
 		y = toggle(graphics, "Tab list", config.showTabList, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.tablist");
 		y = toggle(graphics, "Chat", config.showInChat, x, y, right - PADDING,
 				mouseX, mouseY, "toggle.chat");
-		y = toggle(graphics, "Custom Nametags", config.tagDisplays, x, y, right - PADDING,
-				mouseX, mouseY, "toggle.displays");
 		y = rule(graphics, left, right, y);
 
-		y = toggle(graphics, "Center on Name", working.centreOnName, x, y,
+		y = toggle(graphics, "Center on name", working.centerOnName, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.centre");
 
 		int duplicatesTop = y;
@@ -503,7 +505,7 @@ public final class TagEditor {
 		// How far the outer rows move to sit over the name, mirroring what
 		// the game does, so the preview shows the arrangement that will be
 		// drawn rather than one the editor invents.
-		int shift = working.centreOnName ? nameShift(left + PADDING, right - PADDING) : 0;
+		int shift = working.centerOnName ? nameShift(left + PADDING, right - PADDING) : 0;
 
 		int rowY = plateTop + 4;
 		for (TagLayout.Row row : TagLayout.Row.values()) {
@@ -754,8 +756,9 @@ public final class TagEditor {
 						bottom - FOOTER_HEIGHT + 1, PANEL_BORDER);
 				graphics.fill(left + 1, bottom - FOOTER_HEIGHT + 1, right - 1, bottom - 1,
 						0x40101720);
-				trash(graphics, right - PADDING - 18, bottom - FOOTER_HEIGHT + 4, 18,
-						mouseX, mouseY);
+				int doorInset = (FOOTER_HEIGHT - 18) / 2;
+				trash(graphics, right - doorInset - 18, bottom - FOOTER_HEIGHT + doorInset,
+						18, mouseX, mouseY);
 				return;
 			}
 
@@ -830,7 +833,10 @@ public final class TagEditor {
 		// so a long panel scrolls underneath rather than over it.
 		graphics.fill(left + 1, footer, right - 1, footer + 1, PANEL_BORDER);
 		graphics.fill(left + 1, footer + 1, right - 1, bottom - 1, 0x40101720);
-		trash(graphics, right - PADDING - 18, footer + 4, 18, mouseX, mouseY);
+		// The same gap from the right edge as from the top and bottom of the
+		// footer, so it sits square in its corner.
+		int inset = (FOOTER_HEIGHT - 18) / 2;
+		trash(graphics, right - inset - 18, footer + inset, 18, mouseX, mouseY);
 	}
 
 	// ---------------------------------------------------------------- input
@@ -1022,7 +1028,7 @@ public final class TagEditor {
 			}
 			case "toggle.centre" -> {
 				remember();
-				working.centreOnName = !working.centreOnName;
+				working.centerOnName = !working.centerOnName;
 				changed();
 			}
 			case "toggle.duplicates" -> {
@@ -1155,17 +1161,66 @@ public final class TagEditor {
 		if (element.doorSmp) {
 			return ModeIcons.doorRaised();
 		}
-		TierList list = element.list == null ? TierList.PVPTIERS : element.list;
+		TierList list = listFor(element);
+		if (list == null) {
+			return null;
+		}
 		Gamemode mode = element.gamemode;
 		if (mode == null) {
-			List<Gamemode> modes = List.copyOf(list.gamemodes());
-			if (modes.isEmpty()) {
-				return null;
-			}
-			mode = modes.get(0);
+			// The mode the tier on show actually came from, not the first the
+			// list happens to declare: a Best element drawing an HT4 mace was
+			// showing the axe icon because axe sorts first.
+			mode = modeOf(list, element);
 		}
-		return ModeIcons.of(list, mode.key());
+		return mode == null ? null : ModeIcons.of(list, mode.key());
 	}
+
+	/**
+	 * Which list an element draws from.
+	 *
+	 * <p>A Best element has no list of its own, so it is the one holding the
+	 * tier the preview is showing; before anything is cached there is nothing
+	 * to go on, and the icon is left off rather than guessed at.
+	 */
+	private TierList listFor(TagLayout.Element element) {
+		if (element.list != null) {
+			return element.list;
+		}
+		if (previewPlayer == null) {
+			return null;
+		}
+		Tier shown = tierFor(element);
+		for (var entry : SpogTiersClient.cache().allLists(previewPlayer).entrySet()) {
+			PlayerTiers tiers = entry.getValue();
+			if (tiers == null) {
+				continue;
+			}
+			Tier best = tiers.best();
+			if (best != null && best.equals(shown)) {
+				return entry.getKey();
+			}
+		}
+		return null;
+	}
+
+	/** The gamemode the shown tier came from, or null when it is not known. */
+	private Gamemode modeOf(TierList list, TagLayout.Element element) {
+		if (previewPlayer == null) {
+			return null;
+		}
+		PlayerTiers tiers = SpogTiersClient.cache().get(previewPlayer, list);
+		if (tiers == null) {
+			return null;
+		}
+		Tier shown = tierFor(element);
+		for (var entry : tiers.all().entrySet()) {
+			if (entry.getValue().equals(shown)) {
+				return entry.getKey();
+			}
+		}
+		return tiers.bestMode();
+	}
+
 
 	/**
 	 * The tier an element would actually draw for the preview player.
