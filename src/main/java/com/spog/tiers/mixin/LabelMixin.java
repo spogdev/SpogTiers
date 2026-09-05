@@ -150,12 +150,21 @@ public class LabelMixin {
 	}
 
 	/**
-	 * One extra row, both text passes, at {@code y} font pixels.
+	 * One extra row, drawn the way vanilla draws a nameplate.
 	 *
-	 * <p>The backdrop rides on the pass vanilla puts it on: the see-through
-	 * one when there is one, otherwise the single solid one. The in-view pass
-	 * over a see-through pass carries none, or the two boxes would stack and
-	 * double the opacity.
+	 * <p>Both passes carry the backdrop, not just one. That looks like a bug
+	 * and is not: vanilla queues an opaque-backdrop plate on <em>both</em> its
+	 * lists, each with the same background colour, so the box is composited
+	 * twice and the plate is darker than one pass of it would be. A row that
+	 * painted its box once came out visibly lighter than the name beside it --
+	 * measurably so: with the plate red at half alpha, the plate reads
+	 * {@code E02B40} and a single-pass row {@code C1567F}.
+	 *
+	 * <p>Order matters as much as count. The see-through pass goes first,
+	 * carrying the faint text, and the in-view pass second with the solid
+	 * emissive text; that is the order {@code renderTranslucent} walks its two
+	 * lists in. Reversing them paints the second backdrop over the first
+	 * pass's glyphs, which is what buried the tier icons.
 	 */
 	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
 			Component text, float y, float shift, boolean seeThrough, int light,
@@ -171,7 +180,8 @@ public class LabelMixin {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
 					light, FAINT, background, 0);
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
-					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
+					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID,
+					background, 0);
 		} else {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					light, FAINT, background, 0);
