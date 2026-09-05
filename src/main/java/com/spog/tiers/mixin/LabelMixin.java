@@ -3,6 +3,7 @@ package com.spog.tiers.mixin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.spog.tiers.util.AboveLabel;
+import com.spog.tiers.util.NameShift;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -66,16 +67,14 @@ public class LabelMixin {
 			SubmitNodeCollector collector, CameraRenderState camera, int offset,
 			CallbackInfo ci) {
 		Component above = AboveLabel.get(state);
+		Component below = AboveLabel.getBelow(state);
 		Vec3 attachment = state.nameTagAttachment;
-		if (above == null || attachment == null) {
+		if ((above == null && below == null) || attachment == null) {
 			return;
 		}
 
 		Minecraft minecraft = Minecraft.getInstance();
 		Font font = minecraft.font;
-		int width = font.width(above);
-		float x = -width / 2.0f;
-		float y = offset + LINE_OFFSET;
 		boolean seeThrough = !state.isDiscrete;
 		int light = state.lightCoords;
 		int background = (int) (minecraft.gameRenderer.gameRenderState()
@@ -89,6 +88,50 @@ public class LabelMixin {
 		poseStack.mulPose(camera.orientation);
 		poseStack.scale(SCALE, -SCALE, SCALE);
 
+		// Centred over the name rather than over the whole plate, when asked:
+		// the middle row's own width includes its tiers, so a long tier on one
+		// side would otherwise push the other rows off to the side of the name.
+		float shift = nameShift(state, font);
+		if (above != null) {
+			line(collector, poseStack, font, above, offset + LINE_OFFSET, shift,
+					seeThrough, light, background);
+		}
+		// One line below the name rather than above it, by the same pitch, so
+		// the three rows are evenly spaced whichever of them are filled.
+		if (below != null) {
+			line(collector, poseStack, font, below, offset - LINE_OFFSET, shift,
+					seeThrough, light, background);
+		}
+		poseStack.popPose();
+	}
+
+	/**
+	 * How far the extra rows move to sit over the name, in font pixels.
+	 *
+	 * <p>Zero unless the layout asks for it. The name plate is centred on its
+	 * whole text, so the name's own middle is offset from that by half of
+	 * whatever sits either side of it; moving the other rows by the same
+	 * amount lines all three up on the name.
+	 */
+	private static float nameShift(EntityRenderState state, Font font) {
+		var config = com.spog.tiers.SpogTiersClient.config();
+		if (config == null || !config.tagLayout.centerOnName) {
+			return 0.0f;
+		}
+		Component before = NameShift.before(state);
+		Component after = NameShift.after(state);
+		int left = before == null ? 0 : font.width(before);
+		int right = after == null ? 0 : font.width(after);
+		return (left - right) / 2.0f;
+	}
+
+	/** One extra row, backdrop and both text passes, at {@code y} font pixels. */
+	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
+			Component text, float y, float shift, boolean seeThrough, int light,
+			int background) {
+		int width = font.width(text);
+		float x = -width / 2.0f + shift;
+
 		if ((background & 0xFF000000) != 0) {
 			// The box vanilla would draw for this text: a pixel of margin on
 			// the left and above, none on the right, nine rows of text below.
@@ -101,18 +144,17 @@ public class LabelMixin {
 					(pose, buffer) -> quad(pose, buffer, background, light, left, top, right, bottom));
 		}
 
-		FormattedCharSequence text = above.getVisualOrderText();
-		var ordered = collector.order(1);
+		FormattedCharSequence ordered = text.getVisualOrderText();
+		var queue = collector.order(1);
 		if (seeThrough) {
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.SEE_THROUGH,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.SEE_THROUGH,
 					light, FAINT, 0, 0);
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
-			ordered.submitText(poseStack, x, y, text, false, Font.DisplayMode.NORMAL,
+			queue.submitText(poseStack, x, y, ordered, false, Font.DisplayMode.NORMAL,
 					light, FAINT, 0, 0);
 		}
-		poseStack.popPose();
 	}
 
 	/** One backdrop quad, wound the way vanilla winds its own. */
