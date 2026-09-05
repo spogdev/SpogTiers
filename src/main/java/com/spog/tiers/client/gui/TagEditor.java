@@ -1400,10 +1400,11 @@ public final class TagEditor {
 	 */
 	private void colouredButton(GuiGraphicsExtractor graphics, String label, int x, int y,
 			int width, int mouseX, int mouseY, String id, Tint tint, String explains) {
-		// A shade shorter than a plain button, but not shorter than the plus
-		// beside them: at sixteen they read as squeezed next to it. The bottom
-		// edge moves rather than the top, so the row's tops stay in line.
-		int height = 17;
+		// Exactly as tall as the plus beside them, which is a square of the
+		// same row's height. A pixel short of it left their bottom edges
+		// visibly out of line along the row; the top edge is shared, so the
+		// difference showed up entirely at the bottom.
+		int height = 18;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
 		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
