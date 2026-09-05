@@ -330,7 +330,13 @@ public class SpogTiersConfig {
 				SpogTiers.LOGGER.warn("Could not read config, using defaults", e);
 			}
 		}
+		// Normalised before saving, like a loaded one: the layout starts null
+		// so that an upgrade can tell "never had one" from "has an empty one",
+		// and without this a fresh config was written with no layout at all --
+		// which Gson omits, so the editor's own saves had nothing to merge
+		// into and every tier element was lost on restart.
 		SpogTiersConfig fresh = new SpogTiersConfig();
+		fresh.normalise();
 		fresh.save();
 		return fresh;
 	}
