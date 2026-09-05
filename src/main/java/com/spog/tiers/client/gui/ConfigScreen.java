@@ -2,6 +2,7 @@ package com.spog.tiers.client.gui;
 
 import com.spog.tiers.SpogTiers;
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.Regions;
@@ -40,7 +41,8 @@ public class ConfigScreen extends Screen {
 	private enum Tab {
 		GENERAL("General"),
 		TIER_LISTS("Tierlists"),
-		NAMETAG("Nametag");
+		NAMETAG("Nametag"),
+		INTEGRATIONS("Integrations");
 
 		private final String title;
 
@@ -203,6 +205,8 @@ public class ConfigScreen extends Screen {
 					drawGeneral(graphics, left, originY, mouseX, mouseY);
 			case TIER_LISTS -> contentHeight =
 					drawTierLists(graphics, left, originY, right, mouseX, mouseY);
+			case INTEGRATIONS -> contentHeight =
+					drawIntegrations(graphics, left, originY, mouseX, mouseY);
 			// Not scrolled with the others: the editor is three fixed panels
 			// that fill the body, and its right panel scrolls on its own.
 			case NAMETAG -> contentHeight = 0;
@@ -345,6 +349,39 @@ public class ConfigScreen extends Screen {
 			}));
 			x += tabWidth + 4;
 		}
+	}
+
+	/**
+	 * Settings that only matter alongside another mod.
+	 *
+	 * <p>A section per mod, and each says plainly when the mod it is about is
+	 * not installed rather than offering a switch that would do nothing.
+	 */
+	private int drawIntegrations(DrawContext graphics, int left, int top,
+			int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
+
+		graphics.drawTextWithShadow(textRenderer, Text.literal("Nametag Tweaks"),
+				x, y, LABEL_COLOR);
+		y += textRenderer.fontHeight + 8;
+
+		if (!NametagTweaks.present()) {
+			graphics.drawTextWithShadow(textRenderer, Text.literal("Not installed"),
+					x, y, MUTED_COLOR);
+			return y + ROW_HEIGHT + CARD_PADDING - top;
+		}
+
+		y = drawSwitch(graphics, "Match Visual Adjustments", config.matchNametagTweaks,
+				x, y, () -> {
+					config.matchNametagTweaks = !config.matchNametagTweaks;
+					config.save();
+				},
+				"If the size, height and color adjustments to the nametag "
+						+ "should affect the other lines");
+
+		return y + CARD_PADDING - top;
 	}
 
 	private int drawGeneral(DrawContext graphics, int left, int top,

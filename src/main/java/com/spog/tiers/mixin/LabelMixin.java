@@ -1,5 +1,6 @@
 package com.spog.tiers.mixin;
 
+import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
 import net.minecraft.client.MinecraftClient;
@@ -65,33 +66,48 @@ public class LabelMixin {
 		if ((above == null && below == null) || attachment == null) {
 			return;
 		}
+		// Nothing without a name to hang off: when that mod is hiding the
+		// plate, rows floating on their own read as a bug.
+		if (NametagTweaks.hidden()) {
+			return;
+		}
 
 		MinecraftClient client = MinecraftClient.getInstance();
 		TextRenderer font = client.textRenderer;
 		boolean seeThrough = !state.sneaking;
 		int light = state.light;
-		int background = (int) (client.options.getTextBackgroundOpacity(0.25f) * 255.0f) << 24;
+		// The plate's own colour when that mod is setting one, so a row does
+		// not sit on vanilla's translucent black under a recoloured name.
+		int background = NametagTweaks.background(
+				(int) (client.options.getTextBackgroundOpacity(0.25f) * 255.0f) << 24);
 
 		// The same frame vanilla builds for the name: anchored at the label
 		// point, turned to face the camera, and scaled so that one unit is one
 		// font pixel with y running downwards.
+		// Nametag Tweaks resizes the plate by wrapping vanilla's own drawing,
+		// which our rows never go through: without this they stay at the old
+		// size while the middle line grows.
+		float tweakScale = NametagTweaks.scale();
 		matrices.push();
 		matrices.translate(attachment.x, attachment.y + 0.5, attachment.z);
 		matrices.multiply(camera.orientation);
-		matrices.scale(SCALE, -SCALE, SCALE);
+		matrices.scale(SCALE * tweakScale, -SCALE * tweakScale, SCALE * tweakScale);
 
 		// Centred over the name rather than over the whole plate, when asked:
 		// the middle row's own width includes its tiers, so a long tier on one
 		// side would otherwise push the other rows off to the side of the name.
 		float shift = nameShift(state, font);
+		// Subtracted the way the mod subtracts it from the plate's own height,
+		// and inside the scaled frame, so a raised plate takes its rows with it.
+		float raise = NametagTweaks.offset();
 		if (above != null) {
-			line(queue, matrices, font, above, LINE_OFFSET, shift,
+			line(queue, matrices, font, above, LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(queue, matrices, font, below, -LINE_OFFSET, shift,
+			line(queue, matrices, font, below, -LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		matrices.pop();
@@ -137,14 +153,17 @@ public class LabelMixin {
 		}
 
 		OrderedText ordered = text.asOrderedText();
+		// A shadow when the plate has one, so the rows are not the only text
+		// on the tag without it.
+		boolean shadow = NametagTweaks.textShadow();
 		var batch = queue.getBatchingQueue(1);
 		if (seeThrough) {
-			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.SEE_THROUGH,
+			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.SEE_THROUGH,
 					light, FAINT, 0, 0);
-			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.NORMAL,
+			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
 					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
-			batch.submitText(matrices, x, y, ordered, false, TextRenderer.TextLayerType.NORMAL,
+			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
 					light, FAINT, 0, 0);
 		}
 	}

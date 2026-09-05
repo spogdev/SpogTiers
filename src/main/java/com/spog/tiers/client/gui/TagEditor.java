@@ -1400,11 +1400,10 @@ public final class TagEditor {
 	 */
 	private void colouredButton(DrawContext graphics, String label, int x, int y,
 			int width, int mouseX, int mouseY, String id, Tint tint, String explains) {
-		// Shorter than a plain button, and shorter than the plus beside them:
-		// these sit in a row of controls rather than standing alone, and at
-		// full height they crowded it. The bottom edge comes up rather than
-		// the top going down, so the row's tops stay in line.
-		int height = 16;
+		// A shade shorter than a plain button, but not shorter than the plus
+		// beside them: at sixteen they read as squeezed next to it. The bottom
+		// edge moves rather than the top, so the row's tops stay in line.
+		int height = 17;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
 		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
