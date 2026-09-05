@@ -125,6 +125,13 @@ public final class TagEditor {
 		this.tierList = new Dropdown<>(value -> {
 			if (selected != null) {
 				selected.list = value;
+				// A mode the new list does not rank would resolve to nothing,
+				// so it falls back to that list's best rather than being kept
+				// as a setting that cannot work.
+				if (selected.gamemode != null
+						&& !modesFor(value).contains(selected.gamemode)) {
+					selected.gamemode = null;
+				}
 				changed();
 			}
 		});
@@ -181,8 +188,7 @@ public final class TagEditor {
 		// The dragged element rides the pointer, drawn last so it is over
 		// everything it might be dropped onto.
 		if (dragging != null && dragMoved) {
-			String text = preview(dragging);
-			int width = font.width(text) + 6;
+			int width = span(dragging);
 			int x = mouseX - width / 2;
 			int y = mouseY - PREVIEW_ROW / 2;
 			graphics.fill(x, y, x + width, y + PREVIEW_ROW, 0x90222A35);
@@ -298,14 +304,9 @@ public final class TagEditor {
 		List<TagLayout.Element> elements = working.row(row);
 		int textY = y + (PREVIEW_ROW - font.lineHeight) / 2;
 
-		// The row being dragged over is lit, so where a drop will land is
-		// visible before letting go.
 		boolean over = dragging != null && dragMoved
 				&& mouseY >= y && mouseY < y + PREVIEW_ROW
 				&& mouseX >= left && mouseX < right;
-		if (over) {
-			graphics.fill(left, y, right, y + PREVIEW_ROW, 0x20FFFFFF);
-		}
 
 		if (elements.isEmpty()) {
 			// Named rather than left blank, so an empty row still reads as a
@@ -316,14 +317,18 @@ public final class TagEditor {
 		}
 
 		// Centred, the way every row of a nameplate is drawn in the world.
+		// Measured with the same function that draws, so an icon is counted
+		// in: measuring the plain text while drawing an icon too pushed each
+		// row right by however wide its icons were, and rows with different
+		// icons ended up misaligned with each other.
 		int width = 0;
 		for (TagLayout.Element element : elements) {
-			width += font.width(preview(element)) + 6;
+			width += span(element);
 		}
 		int x = left + Math.max(4, ((right - left) - width) / 2);
 
 		for (TagLayout.Element element : elements) {
-			int span = font.width(preview(element)) + 6;
+			int span = span(element);
 			boolean hovered = mouseX >= x && mouseX < x + span
 					&& mouseY >= y && mouseY < y + PREVIEW_ROW;
 			boolean chosen = element == selected;
@@ -340,6 +345,48 @@ public final class TagEditor {
 			hits.add(new Hit(element, x, y, x + span, y + PREVIEW_ROW));
 			x += span;
 		}
+
+		// A caret exactly where the element would land, rather than lighting
+		// the whole row: the row says which line it goes on, the caret says
+		// where along it, which is the part a drop actually decides.
+		if (over) {
+			caret(graphics, dropX(row, left, right, mouseX), y);
+		}
+	}
+
+	/**
+	 * Where along a row a drop at {@code mouseX} would land, in pixels.
+	 *
+	 * <p>Worked from the same centring the row is drawn with, so the caret is
+	 * on the seam the element will actually be inserted at.
+	 */
+	private int dropX(TagLayout.Row row, int left, int right, int mouseX) {
+		List<TagLayout.Element> elements = new ArrayList<>(working.row(row));
+		elements.remove(dragging);
+		if (elements.isEmpty()) {
+			return left + Math.max(4, (right - left) / 2);
+		}
+
+		int width = 0;
+		for (TagLayout.Element element : elements) {
+			width += span(element);
+		}
+		int x = left + Math.max(4, ((right - left) - width) / 2);
+		for (TagLayout.Element element : elements) {
+			int span = span(element);
+			if (mouseX < x + span / 2) {
+				return x;
+			}
+			x += span;
+		}
+		return x;
+	}
+
+	/** The insertion mark shown while dragging. */
+	private void caret(GuiGraphicsExtractor graphics, int x, int y) {
+		graphics.fill(x - 1, y + 1, x + 1, y + PREVIEW_ROW - 1, ACCENT);
+		graphics.fill(x - 3, y + 1, x + 3, y + 2, ACCENT);
+		graphics.fill(x - 3, y + PREVIEW_ROW - 2, x + 3, y + PREVIEW_ROW - 1, ACCENT);
 	}
 
 	/**
@@ -352,16 +399,21 @@ public final class TagEditor {
 	private void drawElementText(GuiGraphicsExtractor graphics, TagLayout.Element element,
 			int x, int y, boolean chosen) {
 		if (element.kind == TagLayout.Kind.TIER) {
-			MutableComponent text = Component.empty();
-			Component icon = icon(element);
-			if (icon != null && SpogTiersClient.config().showTagIcons) {
-				text.append(icon).append(Component.literal(" "));
-			}
+			Component icon = SpogTiersClient.config().showTagIcons ? icon(element) : null;
 			Tier sample = sampleTier();
-			text.append(Component.literal(sample.label()));
-			graphics.text(font, text, x, y, chosen ? 0xFFFFFFFF : sample.color());
+			int cursor = x;
+			if (icon != null) {
+				// Drawn white and on its own: the glyphs are coloured artwork,
+				// and passing the tier colour through tinted them to it, so
+				// every list's icon came out the same shade as the label.
+				graphics.text(font, icon, cursor, y, 0xFFFFFFFF);
+				cursor += font.width(icon) + font.width(" ");
+			}
+			String label = sample.label();
+			graphics.text(font, Component.literal(label), cursor, y,
+					chosen ? 0xFFFFFFFF : sample.color());
 			if (chosen) {
-				underline(graphics, x, y, font.width(text));
+				underline(graphics, x, y, (cursor - x) + font.width(label));
 			}
 			return;
 		}
@@ -401,9 +453,6 @@ public final class TagEditor {
 		graphics.text(font, Component.literal(selected.title()), x, y, LABEL_COLOR);
 		y += font.lineHeight + 8;
 
-		graphics.text(font, Component.literal("Drag to move it"), x, y, MUTED_COLOR);
-		y += font.lineHeight + 10;
-
 		if (selected.kind == TagLayout.Kind.TIER) {
 			graphics.text(font, Component.literal("List"), x, y, MUTED_COLOR);
 			y += font.lineHeight + 4;
@@ -419,9 +468,14 @@ public final class TagEditor {
 
 			graphics.text(font, Component.literal("Gamemode"), x, y, MUTED_COLOR);
 			y += font.lineHeight + 4;
+			// Only the modes the chosen list actually ranks. Offering all of
+			// them let someone pick a mode their list has never heard of,
+			// which then resolved to nothing and looked like a broken tag.
+			// A Best element has no one list, so it offers every mode any
+			// enabled list ranks.
 			List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
 			modes.add(new Dropdown.Entry<>(null, "Best", null));
-			for (Gamemode mode : Gamemode.values()) {
+			for (Gamemode mode : modesFor(selected.list)) {
 				modes.add(new Dropdown.Entry<>(mode, mode.displayName(), null));
 			}
 			tierMode.setEntries(modes);
@@ -545,16 +599,16 @@ public final class TagEditor {
 			return true;
 		}
 
-		// Placed by where it was dropped along the row rather than appended:
-		// dropping between two elements should put it between them.
+		// Placed by where it was dropped along the row rather than appended,
+		// counted the same way the caret is positioned so the element lands
+		// where the mark said it would.
 		int at = 0;
-		List<TagLayout.Element> row = working.row(target);
-		for (TagLayout.Element element : row) {
+		for (TagLayout.Element element : working.row(target)) {
 			if (element == moved) {
 				continue;
 			}
 			Hit hit = hitFor(element);
-			if (hit != null && mouseX > (hit.left() + hit.right()) / 2.0) {
+			if (hit != null && mouseX >= (hit.left() + hit.right()) / 2.0) {
 				at++;
 			}
 		}
@@ -689,6 +743,25 @@ public final class TagEditor {
 
 	// ---------------------------------------------------------------- pieces
 
+	/**
+	 * How wide an element is drawn, its icon included.
+	 *
+	 * <p>The one measurement every part of the row uses -- centring, hit
+	 * boxes and the dragged ghost -- so what is measured is always what is
+	 * drawn.
+	 */
+	private int span(TagLayout.Element element) {
+		if (element.kind == TagLayout.Kind.TIER) {
+			Component icon = SpogTiersClient.config().showTagIcons ? icon(element) : null;
+			int width = font.width(sampleTier().label());
+			if (icon != null) {
+				width += font.width(icon) + font.width(" ");
+			}
+			return width + 6;
+		}
+		return font.width(preview(element)) + 6;
+	}
+
 	/** What an element reads as in the preview. */
 	private String preview(TagLayout.Element element) {
 		return switch (element.kind) {
@@ -705,6 +778,27 @@ public final class TagEditor {
 		String label = sampleTier().label();
 		return icon != null && SpogTiersClient.config().showTagIcons
 				? icon.getString() + " " + label : label;
+	}
+
+	/**
+	 * The gamemodes a tier element may be set to.
+	 *
+	 * <p>One list ranks only its own; a Best element is not tied to a list, so
+	 * it takes the union of every list's, which is what it will search.
+	 */
+	private List<Gamemode> modesFor(TierList list) {
+		if (list != null) {
+			return list.gamemodes();
+		}
+		List<Gamemode> all = new ArrayList<>();
+		for (TierList each : TierList.values()) {
+			for (Gamemode mode : each.gamemodes()) {
+				if (!all.contains(mode)) {
+					all.add(mode);
+				}
+			}
+		}
+		return all;
 	}
 
 	/** The icon a tier element would draw, or null when it has none. */
@@ -789,42 +883,59 @@ public final class TagEditor {
 		buttons.add(new Button(id, x, y, x + size, y + size));
 	}
 
-	/** The green square that adds an element. */
+	/**
+	 * The button that adds an element.
+	 *
+	 * <p>Built on the same fill, border and hover as every other button on
+	 * the screen, with a green cross rather than a green slab: a coloured
+	 * block read as a state, not as something to press.
+	 */
 	private void plus(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? 0xFF4CAF50 : ADD_FILL);
-		outline(graphics, x, y, x + size, y + size, 0xFF2E6B31);
-		// Drawn rather than lettered, so it is a symbol at any font.
-		int mid = size / 2;
-		graphics.fill(x + 4, y + mid, x + size - 4, y + mid + 1, 0xFFFFFFFF);
-		graphics.fill(x + mid, y + 4, x + mid + 1, y + size - 4, 0xFFFFFFFF);
+		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
+		outline(graphics, x, y, x + size, y + size, hovered ? 0xA05B6B7D : PANEL_BORDER);
+
+		int centre = size / 2;
+		int arm = 4;
+		graphics.fill(x + centre - arm, y + centre - 1, x + centre + arm + 1, y + centre + 1,
+				ADD_FILL);
+		graphics.fill(x + centre - 1, y + centre - arm, x + centre + 1, y + centre + arm + 1,
+				ADD_FILL);
 		buttons.add(new Button("create", x, y, x + size, y + size));
 	}
 
-	/** The red square that deletes the selected element. */
+	/**
+	 * The button that deletes the selected element.
+	 *
+	 * <p>A cross rather than a drawn bin: at this size a bin was a smudge,
+	 * and a cross in the danger colour says the same thing legibly.
+	 */
 	private void trash(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? 0xFFC1443C : DELETE_FILL);
-		outline(graphics, x, y, x + size, y + size, 0xFF7A2924);
+		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
+		outline(graphics, x, y, x + size, y + size, hovered ? 0xA05B6B7D : PANEL_BORDER);
 
-		// A lid, a handle and three staves: enough to read as a bin at 18px.
-		int white = 0xFFFFFFFF;
-		graphics.fill(x + 4, y + 5, x + size - 4, y + 6, white);
-		graphics.fill(x + 7, y + 3, x + size - 7, y + 4, white);
-		graphics.fill(x + 5, y + 6, x + size - 5, y + size - 4, 0x40FFFFFF);
-		graphics.fill(x + 7, y + 8, x + 8, y + size - 6, white);
-		graphics.fill(x + mid(size), y + 8, x + mid(size) + 1, y + size - 6, white);
-		graphics.fill(x + size - 8, y + 8, x + size - 7, y + size - 6, white);
+		// Two diagonals, a pixel at a time: there is no line primitive here.
+		int inset = 5;
+		int span = size - inset * 2;
+		for (int step = 0; step <= span; step++) {
+			int px = x + inset + step;
+			graphics.fill(px, y + inset + step, px + 1, y + inset + step + 1, DELETE_FILL);
+			graphics.fill(px, y + size - inset - step - 1, px + 1, y + size - inset - step,
+					DELETE_FILL);
+		}
 		buttons.add(new Button("delete", x, y, x + size, y + size));
 	}
 
-	private static int mid(int size) {
-		return size / 2;
-	}
+
+
+
+
+
 
 	/** A labelled switch, returning the y to carry on from. */
 	private int toggle(GuiGraphicsExtractor graphics, String label, boolean on, int x, int y,
