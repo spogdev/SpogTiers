@@ -1,6 +1,7 @@
 package com.spog.tiers.client.gui;
 
 import com.spog.tiers.SpogTiersClient;
+import com.spog.tiers.client.ClientCommands;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.config.TagLayout;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The nametag tab: a live tag in the middle, settings either side.
@@ -38,6 +40,19 @@ import java.util.UUID;
 public final class TagEditor {
 	/** How many steps back Undo can go. */
 	private static final int HISTORY = 32;
+
+	/**
+	 * Where preview name lookups run.
+	 *
+	 * <p>One thread, and a daemon: the lookups are occasional and a queue of
+	 * them is fine, but none should keep the game from closing.
+	 */
+	private static final java.util.concurrent.Executor LOOKUP =
+			java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+				Thread thread = new Thread(runnable, "SpogTiers preview lookup");
+				thread.setDaemon(true);
+				return thread;
+			});
 
 	private static final int PANEL_FILL = 0x50161B22;
 	private static final int PANEL_BORDER = 0x70323B47;
@@ -334,28 +349,54 @@ public final class TagEditor {
 	/**
 	 * Shows the preview as a different player.
 	 *
-	 * <p>Resolved through the tab list, which is the only name-to-id the
-	 * client has to hand without a lookup: someone not on the server keeps
-	 * the name in the preview but has no tiers to show, which is the honest
-	 * answer rather than a made-up one.
+	 * <p>The tab list first, which is free and covers everyone on the server.
+	 * Failing that the name goes to Mojang on a background thread, so any
+	 * account can be previewed, not only the ones currently online. The typed
+	 * name is shown either way; only the tiers wait on the answer.
+	 *
+	 * <p>Each lookup carries the name it was started for, and a late reply for
+	 * a name that has since been retyped is dropped: without that, typing
+	 * quickly could leave the preview showing whichever request happened to
+	 * finish last.
 	 */
 	private void previewAs(String name) {
 		previewName = name;
 		previewPlayer = null;
-		Minecraft client = Minecraft.getInstance();
-		if (client.getConnection() == null || name.isBlank()) {
+		String wanted = name.trim();
+		if (wanted.isEmpty()) {
 			return;
 		}
-		for (var entry : client.getConnection().getOnlinePlayers()) {
-			if (name.equalsIgnoreCase(entry.getProfile().name())) {
-				previewPlayer = entry.getProfile().id();
-				// Asked for while we are here, so the preview fills in rather
-				// than staying on the stand-in tier.
-				SpogTiersClient.service().requestNow(previewPlayer);
-				return;
+
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() != null) {
+			for (var entry : client.getConnection().getOnlinePlayers()) {
+				if (wanted.equalsIgnoreCase(entry.getProfile().name())) {
+					adopt(wanted, entry.getProfile().id());
+					return;
+				}
 			}
 		}
+
+		CompletableFuture
+				.supplyAsync(() -> ClientCommands.resolveProfile(wanted), LOOKUP)
+				.thenAcceptAsync(profile -> {
+					if (profile != null) {
+						adopt(wanted, profile.id());
+					}
+				}, client);
 	}
+
+	/** Takes a resolved id, unless the typed name has moved on since. */
+	private void adopt(String forName, UUID id) {
+		if (!forName.equalsIgnoreCase(previewName.trim())) {
+			return;
+		}
+		previewPlayer = id;
+		// Asked for while we are here, so the preview fills in rather than
+		// staying on the stand-in tier.
+		SpogTiersClient.service().requestNow(id);
+	}
+
 
 	/** The name box, when one is on screen, so the screen can drive it. */
 	public EditBox nameField() {
