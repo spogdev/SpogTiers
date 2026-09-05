@@ -85,9 +85,11 @@ public class LabelMixin {
 		int light = state.lightCoords;
 		// The plate's own colour when that mod is setting one, so a row does
 		// not sit on vanilla's translucent black under a recoloured name.
-		int background = NametagTweaks.background(
-				(int) (minecraft.gameRenderer.getGameRenderState()
-						.optionsRenderState.getBackgroundOpacity(0.25f) * 255.0f) << 24);
+		// Which of its two branches applies depends on the pass, so the
+		// choice is made per row rather than once here.
+		int vanillaBackground = (int) (minecraft.gameRenderer.getGameRenderState()
+				.optionsRenderState.getBackgroundOpacity(0.25f) * 255.0f) << 24;
+		int background = NametagTweaks.background(vanillaBackground, seeThrough);
 
 		// The same frame vanilla builds for the name: anchored at the label
 		// point, turned to face the camera, and scaled so that one unit is one
@@ -106,14 +108,19 @@ public class LabelMixin {
 		// the middle row's own width includes its tiers, so a long tier on one
 		// side would otherwise push the other rows off to the side of the name.
 		float shift = nameShift(state, font);
+		// The mod moves the plate by changing the y it hands the font, inside
+		// the nameplate's own renderer. Our rows go through a different path,
+		// so the same subtraction is applied here or they stay put while the
+		// plate rises.
+		float raise = NametagTweaks.offset();
 		if (above != null) {
-			line(collector, poseStack, font, above, offset + LINE_OFFSET, shift,
+			line(collector, poseStack, font, above, offset + LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(collector, poseStack, font, below, offset - LINE_OFFSET, shift,
+			line(collector, poseStack, font, below, offset - LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		poseStack.popPose();

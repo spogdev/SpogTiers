@@ -45,6 +45,7 @@ public final class NametagTweaks {
 	private static boolean present;
 	private static Object handler;
 	private static Method instance;
+	private static Field offsetField;
 	private static Field scaleField;
 	private static Field colourField;
 	private static Field shadowField;
@@ -66,11 +67,6 @@ public final class NametagTweaks {
 		return config != null && config.matchNametagTweaks && present();
 	}
 
-	// NB: no offset accessor. The mod moves the plate by changing the y it
-	// passes to the font, and our rows are positioned from that same argument
-	// -- vanilla hands us the value it was given -- so a raised plate already
-	// carries them. Adding it again shifted the rows off the plate and left
-	// their backdrops showing as two bars either side of the name.
 
 
 	/** The scale the nameplate is drawn at, or 1 when nothing applies. */
@@ -91,14 +87,19 @@ public final class NametagTweaks {
 	 * The backdrop colour to use behind a row, or {@code fallback} when the
 	 * mod is absent or not being followed.
 	 *
-	 * <p>Returned as ARGB, and clamped the way the mod clamps it rather than
-	 * taken whole: above an alpha of 32 it keeps the chosen hue but forces
-	 * the alpha down to 32, and only at 32 or below does the colour pass
-	 * through untouched. Reading {@code getRGB()} directly gave our rows the
-	 * user's own alpha, so a half-transparent plate sat over rows that were
-	 * either more solid or more faded than it.
+	 * <p>Follows the mod's own two branches exactly. On the see-through pass
+	 * the chosen colour is used whole. On the solid pass an alpha above 32 is
+	 * clamped down to 32, keeping the hue -- which is what stops an opaque
+	 * plate swallowing the name it sits behind.
+	 *
+	 * <p>Getting this wrong in either direction is visible: clamping always
+	 * made our rows fainter than the plate, and never clamping made them
+	 * more solid.
+	 *
+	 * @param seeThrough whether this row is being drawn on the pass that
+	 *     shows through walls
 	 */
-	public static int background(int fallback) {
+	public static int background(int fallback, boolean seeThrough) {
 		if (!following()) {
 			return fallback;
 		}
@@ -108,13 +109,33 @@ public final class NametagTweaks {
 		}
 		try {
 			Class<?> colour = value.getClass();
-			int alpha = (int) colour.getMethod("getAlpha").invoke(value);
 			int argb = (int) colour.getMethod("getRGB").invoke(value);
+			if (seeThrough) {
+				return argb;
+			}
+			int alpha = (int) colour.getMethod("getAlpha").invoke(value);
 			return alpha > ALPHA_CAP ? (ALPHA_CAP << 24) | (argb & 0xFFFFFF) : argb;
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			return fallback;
 		}
 	}
+
+	/**
+	 * How far the mod has moved the nameplate, in font pixels.
+	 *
+	 * <p>It subtracts this from the y it hands the font, but only inside the
+	 * nameplate's own renderer -- our rows are drawn through a different
+	 * path, so they need the same subtraction applied here or they stay put
+	 * while the plate moves.
+	 */
+	public static float offset() {
+		if (!following()) {
+			return 0.0f;
+		}
+		Object value = read(offsetField);
+		return value instanceof Integer offset ? offset : 0.0f;
+	}
+
 
 
 	/** Whether the mod wants a shadow under nameplate text. */
@@ -178,6 +199,7 @@ public final class NametagTweaks {
 			handler = config.getField("CONFIG").get(null);
 			instance = handler.getClass().getMethod("instance");
 			instance.setAccessible(true);
+			offsetField = config.getField("nametagOffset");
 			scaleField = config.getField("nametagScale");
 			colourField = config.getField("nametagColor");
 			shadowField = config.getField("nametagTextShadow");
