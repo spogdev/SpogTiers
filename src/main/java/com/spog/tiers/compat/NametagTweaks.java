@@ -206,11 +206,16 @@ public final class NametagTweaks {
 			removeField = config.getField("removeNametags");
 			hidePlayersInHudField = config.getField("hidePlayerNametagsInHiddenHud");
 			present = true;
-			SpogTiers.LOGGER.info("Nametag Tweaks found; extra tag rows will follow it");
+			// The values as read, once, so a log shows whether this is live
+			// and what it is seeing rather than leaving that to inference.
+			SpogTiers.LOGGER.info("Nametag Tweaks found: scale={} offset={} colour={} shadow={}",
+					read(scaleField), read(offsetField), read(colourField), read(shadowField));
 		} catch (ReflectiveOperationException | RuntimeException e) {
-			// Installed but not in the shape we expect, which a version bump
-			// can do at any time. Said once, at debug, and then left alone.
-			SpogTiers.LOGGER.debug("Nametag Tweaks present but unreadable", e);
+			// Installed but not in the shape we expect. Said at warn, not
+			// debug: a silent failure here looks exactly like the integration
+			// doing nothing, and was mistaken for that.
+			SpogTiers.LOGGER.warn("Nametag Tweaks is installed but could not be read; "
+					+ "tag rows will not follow it ({})", e.toString());
 		}
 	}
 
