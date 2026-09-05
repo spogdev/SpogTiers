@@ -548,7 +548,14 @@ public final class TagEditor {
 	/** One row of the preview, and the hit boxes for its elements. */
 	private void drawRow(GuiGraphicsExtractor graphics, TagLayout.Row row, int left, int y,
 			int right, int shift, int mouseX, int mouseY) {
-		List<TagLayout.Element> elements = working.row(row);
+		List<TagLayout.Element> elements = new ArrayList<>(working.row(row));
+		// The element being dragged leaves the row while it is in the air, so
+		// the rest close up and the caret sits on a real seam. Leaving its gap
+		// behind made the caret land inside a neighbour -- between a tier's
+		// icon and its label, most visibly.
+		if (dragging != null && dragMoved) {
+			elements.remove(dragging);
+		}
 		int textY = y + (PREVIEW_ROW - font.lineHeight) / 2;
 
 		boolean over = dragging != null && dragMoved
@@ -581,9 +588,7 @@ public final class TagEditor {
 			if (hovered && dragging == null) {
 				graphics.fill(x, y + 1, x + span, y + PREVIEW_ROW - 1, 0x18FFFFFF);
 			}
-			if (element != dragging || !dragMoved) {
-				drawElementText(graphics, element, x + 3, textY, chosen);
-			}
+			drawElementText(graphics, element, x + 3, textY, chosen);
 
 			hits.add(new Hit(element, x, y, x + span, y + PREVIEW_ROW));
 			x += span;
@@ -642,6 +647,9 @@ public final class TagEditor {
 			width += span(element);
 		}
 		int x = left + Math.max(4, ((right - left) - width) / 2);
+		// Seams only: the caret lands before or after a whole element, never
+		// part way through one, so it cannot appear between a tier's icon and
+		// its label.
 		for (TagLayout.Element element : elements) {
 			int span = span(element);
 			if (mouseX < x + span / 2) {
@@ -972,22 +980,25 @@ public final class TagEditor {
 					changed();
 				}
 			}
-			case "save" -> {
-				if (save()) {
-					closer.run();
-				}
+			case "done" -> closer.run();
+			case "undo" -> {
+				undo();
+				changed();
 			}
-			case "undo" -> undo();
-			case "cancel" -> {
+			case "revert" -> {
+				// Back to how the tag was when the tab was opened, saved as
+				// well: with edits committing immediately, undoing them has to
+				// commit too or the file keeps the abandoned arrangement.
+				remember();
 				working = original.copy();
 				selected = null;
-				complaint = null;
+				changed();
 			}
 			case "reset" -> {
 				remember();
 				working = TagLayout.defaults();
 				selected = null;
-				complaint = null;
+				changed();
 			}
 			case "toggle.enabled" -> {
 				config.enabled = !config.enabled;
@@ -1034,26 +1045,17 @@ public final class TagEditor {
 	}
 
 	/**
-	 * Commits the working copy, unless it has no name.
+	 * Commits the layout as it stands and tells the caller it moved.
 	 *
-	 * <p>Refused rather than corrected: silently adding a name back would
-	 * leave the editor showing something the user did not arrange.
+	 * <p>Every edit saves at once, so the tag in the world matches the editor
+	 * without anyone pressing anything. Revert is what puts it back, from the
+	 * copy taken when the tab was opened.
 	 */
-	private boolean save() {
-		if (!working.hasName()) {
-			complaint = "Needs a name element";
-			return false;
-		}
+	private void changed() {
+		complaint = null;
 		SpogTiersConfig config = SpogTiersClient.config();
 		config.tagLayout = working.copy();
 		config.save();
-		original = working.copy();
-		complaint = null;
-		return true;
-	}
-
-	private void changed() {
-		complaint = null;
 		if (onChange != null) {
 			onChange.run();
 		}
@@ -1259,11 +1261,13 @@ public final class TagEditor {
 		int gap = 6;
 		int undo = x - (width + gap) * 3;
 		int reset = x - (width + gap) * 2;
-		int cancel = x - (width + gap);
+		int revert = x - (width + gap);
 		colouredButton(graphics, "Undo", undo, y, width, mouseX, mouseY, "undo", BLUE);
 		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY, "reset", AMBER);
-		colouredButton(graphics, "Cancel", cancel, y, width, mouseX, mouseY, "cancel", RED);
-		colouredButton(graphics, "Save & Close", x, y, width, mouseX, mouseY, "save", GREEN);
+		colouredButton(graphics, "Revert", revert, y, width, mouseX, mouseY, "revert", RED);
+		// Done in the plain style, because it only closes: the layout is
+		// already saved by the time anyone reaches it.
+		pushButton(graphics, "Done", x, y, width, mouseX, mouseY, "done");
 	}
 
 	/**

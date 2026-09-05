@@ -169,8 +169,10 @@ public class ConfigScreen extends Screen {
 		if (active == Tab.NAMETAG) {
 			tagEditor.draw(graphics, left, bodyTop, right,
 					bodyTop + viewHeight, mouseX, mouseY);
+			// Lined up with the right panel's edge rather than the screen's
+			// margin, so the row of buttons ends where the panels above it do.
 			tagEditor.drawActions(graphics,
-					width - MARGIN - CARD_PADDING - DONE_WIDTH,
+					right - DONE_WIDTH,
 					height - MARGIN - CARD_PADDING - 14,
 					DONE_WIDTH, mouseX, mouseY);
 		}
