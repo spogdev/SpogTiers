@@ -49,14 +49,6 @@ public class LabelMixin {
 	/** Vanilla's nameplate scale: one font pixel is this many blocks. */
 	private static final float SCALE = 0.025f;
 
-	/**
-	 * How far the tag rises when something is drawn under the name, in blocks.
-	 *
-	 * <p>One line's worth at the nameplate's own scale: nine font pixels of
-	 * text and a pixel of backdrop margin, times {@link #SCALE}.
-	 */
-	private static final double BELOW_LIFT = 10.0 * SCALE;
-
 	/** Vanilla's text colour for the pass that shows through walls. */
 	private static final int FAINT = 0x80FFFFFF;
 
@@ -91,12 +83,7 @@ public class LabelMixin {
 		// point, turned to face the camera, and scaled so that one unit is one
 		// font pixel with y running downwards.
 		poseStack.pushPose();
-		// Lifted when a row hangs below the name, so the extra line clears the
-		// player's head instead of being drawn across it. The nameplate itself
-		// is drawn from the same attachment point, so raising the whole frame
-		// keeps the three rows together.
-		double lift = below == null ? 0.0 : BELOW_LIFT;
-		poseStack.translate(attachment.x, attachment.y + 0.5 + lift, attachment.z);
+		poseStack.translate(attachment.x, attachment.y + 0.5, attachment.z);
 		poseStack.mulPose(camera.orientation);
 		poseStack.scale(SCALE, -SCALE, SCALE);
 

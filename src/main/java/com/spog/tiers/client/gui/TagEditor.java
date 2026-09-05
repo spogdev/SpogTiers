@@ -46,12 +46,29 @@ public final class TagEditor {
 	private static final int ON_FILL = 0xFF4CAF50;
 	private static final int OFF_FILL = 0xFFC1443C;
 
-	/** The two coloured controls: add and delete. */
-	private static final int ADD_FILL = 0xFF4CAF50;
-	private static final int DELETE_FILL = 0xFFC1443C;
 
-	/** Reset starts the layout over, which is neither committing nor discarding. */
-	private static final int RESET_FILL = 0xFFD08A3E;
+	/**
+	 * A button's three shades, matching the general tab's ON and OFF.
+	 *
+	 * @param fill the panel behind the text
+	 * @param hovered the same, lifted, while the pointer is on it
+	 * @param border the edge, at mid brightness
+	 * @param text the label, a light tint of the same hue
+	 */
+	private record Tint(int fill, int hovered, int border, int text) {
+	}
+
+	/** Green: commits, and adds. The general tab's own ON colours. */
+	private static final Tint GREEN =
+			new Tint(0x5023351F, 0x8023351F, 0xA05F9A56, 0xFFA8E39B);
+
+	/** Red: discards, and deletes. Its OFF colours. */
+	private static final Tint RED =
+			new Tint(0x50241A1D, 0x80241A1D, 0xA0955A5A, 0xFFE0A0A0);
+
+	/** Amber: starts over, which is neither of the two. */
+	private static final Tint AMBER =
+			new Tint(0x50332813, 0x80332813, 0xA0A8813E, 0xFFE8C88A);
 
 	private static final int ROW_HEIGHT = 22;
 	private static final int PADDING = 10;
@@ -955,35 +972,34 @@ public final class TagEditor {
 		int gap = 6;
 		int reset = x - (width + gap) * 2;
 		int cancel = x - (width + gap);
-		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY,
-				"reset", RESET_FILL);
-		colouredButton(graphics, "Cancel", cancel, y, width, mouseX, mouseY,
-				"cancel", OFF_FILL);
-		colouredButton(graphics, "Save & Close", x, y, width, mouseX, mouseY,
-				"save", ON_FILL);
+		colouredButton(graphics, "Reset", reset, y, width, mouseX, mouseY, "reset", AMBER);
+		colouredButton(graphics, "Cancel", cancel, y, width, mouseX, mouseY, "cancel", RED);
+		colouredButton(graphics, "Save & Close", x, y, width, mouseX, mouseY, "save", GREEN);
 	}
 
-	/** A button carrying a colour, in the same shape as every other one. */
+	/**
+	 * A button in the general tab's ON/OFF style: a dark tinted fill, a
+	 * mid-brightness border and text in a light tint of the same hue.
+	 *
+	 * <p>Three shades of one colour rather than a solid block, which is what
+	 * makes those switches read as controls rather than as coloured labels.
+	 */
 	private void colouredButton(GuiGraphicsExtractor graphics, String label, int x, int y,
-			int width, int mouseX, int mouseY, String id, int colour) {
+			int width, int mouseX, int mouseY, String id, Tint tint) {
 		int height = 20;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
-		graphics.fill(x, y, x + width, y + height, shade(colour, hovered ? 0.85f : 0.6f));
-		outline(graphics, x, y, x + width, y + height, colour);
+		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
+		outline(graphics, x, y, x + width, y + height, tint.border());
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
-				y + (height - font.lineHeight) / 2, 0xFFFFFFFF);
+				y + (height - font.lineHeight) / 2, tint.text());
 		buttons.add(new Button(id, x, y, x + width, y + height));
 	}
 
-	/** A colour at a fraction of its brightness, alpha kept. */
-	private static int shade(int argb, float by) {
-		int r = (int) (((argb >> 16) & 0xFF) * by);
-		int g = (int) (((argb >> 8) & 0xFF) * by);
-		int b = (int) ((argb & 0xFF) * by);
-		return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
-	}
+
+
+
 
 	/** A small square choice, lit when it is the current one. */
 	private void pill(GuiGraphicsExtractor graphics, String label, int x, int y, int size,
@@ -999,50 +1015,52 @@ public final class TagEditor {
 	}
 
 	/**
-	 * The button that adds an element.
+	 * The button that adds an element, in the same style as an ON switch.
 	 *
-	 * <p>Built on the same fill, border and hover as every other button on
-	 * the screen, with a green cross rather than a green slab: a coloured
-	 * block read as a state, not as something to press.
+	 * <p>The cross is built outward from the button's centre with equal arms,
+	 * so both strokes share the middle pixel and it cannot lean.
 	 */
 	private void plus(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
-		outline(graphics, x, y, x + size, y + size, hovered ? 0xA05B6B7D : PANEL_BORDER);
+		graphics.fill(x, y, x + size, y + size, hovered ? GREEN.hovered() : GREEN.fill());
+		outline(graphics, x, y, x + size, y + size, GREEN.border());
 
-		int centre = size / 2;
-		int arm = 4;
-		graphics.fill(x + centre - arm, y + centre - 1, x + centre + arm + 1, y + centre + 1,
-				ADD_FILL);
-		graphics.fill(x + centre - 1, y + centre - arm, x + centre + 1, y + centre + arm + 1,
-				ADD_FILL);
+		int cx = x + size / 2;
+		int cy = y + size / 2;
+		int arm = size / 2 - 4;
+		graphics.fill(cx - arm, cy, cx + arm + 1, cy + 1, GREEN.text());
+		graphics.fill(cx, cy - arm, cx + 1, cy + arm + 1, GREEN.text());
 		buttons.add(new Button("create", x, y, x + size, y + size));
 	}
 
 	/**
-	 * The button that deletes the selected element.
+	 * The button that deletes the selected element, in the same style as an
+	 * OFF switch.
 	 *
-	 * <p>A cross rather than a drawn bin: at this size a bin was a smudge,
-	 * and a cross in the danger colour says the same thing legibly.
+	 * <p>The bin is drawn about the button's centre -- a handle, a lid and a
+	 * body with two staves -- each piece placed from the middle out, so it is
+	 * symmetrical whatever the button's size.
 	 */
 	private void trash(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
-		outline(graphics, x, y, x + size, y + size, hovered ? 0xA05B6B7D : PANEL_BORDER);
+		graphics.fill(x, y, x + size, y + size, hovered ? RED.hovered() : RED.fill());
+		outline(graphics, x, y, x + size, y + size, RED.border());
 
-		// Two diagonals, a pixel at a time: there is no line primitive here.
-		int inset = 5;
-		int span = size - inset * 2;
-		for (int step = 0; step <= span; step++) {
-			int px = x + inset + step;
-			graphics.fill(px, y + inset + step, px + 1, y + inset + step + 1, DELETE_FILL);
-			graphics.fill(px, y + size - inset - step - 1, px + 1, y + size - inset - step,
-					DELETE_FILL);
-		}
+		int ink = RED.text();
+		int cx = x + size / 2;
+		int top = y + size / 2 - 5;
+		graphics.fill(cx - 2, top - 2, cx + 2, top - 1, ink);
+		graphics.fill(cx - 5, top, cx + 5, top + 1, ink);
+		graphics.fill(cx - 4, top + 2, cx + 4, top + 3, ink);
+		graphics.fill(cx - 4, top + 2, cx - 3, top + 10, ink);
+		graphics.fill(cx + 3, top + 2, cx + 4, top + 10, ink);
+		graphics.fill(cx - 4, top + 9, cx + 4, top + 10, ink);
+		graphics.fill(cx - 1, top + 4, cx, top + 8, ink);
+		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
 		buttons.add(new Button("delete", x, y, x + size, y + size));
 	}
 
