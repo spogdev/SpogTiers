@@ -6,8 +6,6 @@ import com.spog.tiers.util.NameShift;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
@@ -24,13 +22,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Draws the above-name tag as its own line, stacked over the nameplate.
  *
- * <p>Drawn by hand rather than through {@code submitLabel}. A vanilla label
- * always paints its backdrop across the full width of its text, so the only
- * way to control that box was to pad the text -- and padding it out to the
- * name's width, which stopped the two lines' backdrops fighting, left a box
- * far wider than the tag inside it. Drawing our own quad sizes the box to the
- * icon and text exactly, and keeps it clear of the name's box by construction:
- * its bottom edge is the name's top edge, sharing pixels with nothing.
+ * <p>Drawn through {@code submitText} rather than {@code submitLabel}. The
+ * two look the same -- the same font, backdrop and pair of passes -- but a
+ * label command is what other mods hook to decorate a nameplate, and each
+ * of them would decorate every row: Essential paints its icon and padding on
+ * every label command it sees. A text command is nobody's nameplate.
+ *
+ * <p>The backdrop is the font's own, handed to it as the background colour
+ * rather than drawn as a separate quad. It has to be: text commands are drawn
+ * before custom geometry, so a quad of our own landed <em>over</em> the row.
+ * At vanilla's quarter-opaque black that only dimmed the text slightly; at
+ * the solid colours Nametag Tweaks allows it buried the row entirely, icon
+ * and all, and the row's colour read as the wrong shade through it.
  *
  * <p>Everything else copies vanilla's nameplate so the line looks like part
  * of it: the same anchor, camera billboarding and scale, the same backdrop
@@ -138,25 +141,28 @@ public class LabelMixin {
 		return (left - right) / 2.0f;
 	}
 
-	/** One extra row, backdrop and both text passes, at {@code y} font pixels. */
+	/**
+	 * One extra row, drawn the way vanilla draws a nameplate.
+	 *
+	 * <p>Both passes carry the backdrop, not just one. That looks like a bug
+	 * and is not: vanilla queues an opaque-backdrop label on <em>both</em> its
+	 * lists, each with the same background colour, so the box is composited
+	 * twice and the plate is darker than one pass of it would be. A row that
+	 * painted its box once came out visibly lighter than the name beside it --
+	 * measurably so: with the plate red at half alpha, the plate reads
+	 * {@code E02B40} and a single-pass row {@code C1567F}.
+	 *
+	 * <p>Order matters as much as count. The see-through pass goes first,
+	 * carrying the faint text, and the in-view pass second with the solid
+	 * emissive text; that is the order {@code LabelCommandRenderer.render}
+	 * walks its two lists in. Reversing them paints the second backdrop over
+	 * the first pass's glyphs, which is what buried the tier icons.
+	 */
 	private static void line(OrderedRenderCommandQueue queue, MatrixStack matrices,
 			TextRenderer font, Text text, float y, float shift, boolean seeThrough,
 			int light, int background) {
 		int width = font.getWidth(text);
 		float x = -width / 2.0f + shift;
-
-		if ((background & 0xFF000000) != 0) {
-			// The box vanilla would draw for this text: a pixel of margin on
-			// the left and above, none on the right, nine rows of text below.
-			float left = x - 1.0f;
-			float top = y - 1.0f;
-			float right = x + width;
-			float bottom = y + 9.0f;
-			queue.getBatchingQueue(0).submitCustom(matrices,
-					seeThrough ? RenderLayers.textBackgroundSeeThrough() : RenderLayers.textBackground(),
-					(matrix, buffer) -> quad(matrix, buffer, background, light, left, top, right, bottom));
-		}
-
 		OrderedText ordered = text.asOrderedText();
 		// A shadow when the plate has one, so the rows are not the only text
 		// on the tag without it.
@@ -164,21 +170,12 @@ public class LabelMixin {
 		var batch = queue.getBatchingQueue(1);
 		if (seeThrough) {
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.SEE_THROUGH,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
-					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, 0, 0);
+					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, background, 0);
 		} else {
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 		}
-	}
-
-	/** One backdrop quad, wound the way vanilla winds its own. */
-	private static void quad(MatrixStack.Entry matrix, VertexConsumer buffer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		buffer.vertex(matrix, left, top, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, left, bottom, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, right, bottom, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, right, top, 0.0f).color(colour).light(light);
 	}
 }

@@ -121,15 +121,29 @@ public final class NametagTweaks {
 	}
 
 	/**
-	 * How far the mod has moved the nameplate, in font pixels.
+	 * How far the mod has moved the nameplate, in font pixels, for our rows.
 	 *
 	 * <p>It subtracts this from the y it hands the font, but only inside the
 	 * nameplate's own renderer -- our rows are drawn through a different
 	 * path, so they need the same subtraction applied here or they stay put
-	 * while the plate moves.
+	 * while the plate moves. Zero when the user has asked the rows not to
+	 * follow.
 	 */
 	public static float offset() {
-		if (!following()) {
+		return following() ? plateOffset() : 0.0f;
+	}
+
+	/**
+	 * How far the mod has moved the nameplate, in font pixels, whenever it is
+	 * installed.
+	 *
+	 * <p>Not subject to the follow switch: this is the number the plate itself
+	 * is moved by, read so the rest of the plate can be moved with it. The
+	 * switch is about whether our rows copy the plate, not whether the plate
+	 * is drawn in one piece.
+	 */
+	public static float plateOffset() {
+		if (!present()) {
 			return 0.0f;
 		}
 		Object value = read(offsetField);
