@@ -37,6 +37,11 @@ public class ConfigScreen extends Screen {
 	private static final int CARD_BORDER = 0x70323B47;
 	private static final int ACCENT = 0xFF6FC3E8;
 
+	/** The sliding switch shared with the nametag editor. */
+	private static final int SLIDER_WIDTH = 22;
+	private static final int SLIDER_ON = 0xFF4CAF50;
+	private static final int SLIDER_OFF = 0xFFC1443C;
+
 	private enum Tab {
 		GENERAL("General"),
 		TIER_LISTS("Tierlists"),
@@ -332,7 +337,8 @@ public class ConfigScreen extends Screen {
 				() -> {
 					config.showPlacements = !config.showPlacements;
 					config.save();
-				});
+				},
+				"If placement rounds should be shown in the tier viewer");
 
 		y = drawSwitch(graphics, "Show Retired", config.showRetired, x, y,
 				() -> {
@@ -345,8 +351,7 @@ public class ConfigScreen extends Screen {
 				() -> {
 					config.showParticles = !config.showParticles;
 					config.save();
-				},
-				"Draw the embers around graded players");
+				});
 
 		return y + CARD_PADDING - top;
 	}
@@ -442,9 +447,11 @@ public class ConfigScreen extends Screen {
 	private int drawSwitch(GuiGraphicsExtractor graphics, String title, boolean on,
 			int x, int y, Runnable onClick, String description) {
 		graphics.text(font, Component.literal(title), x, y, LABEL_COLOR);
+		// The nametag editor's sliding switch rather than a lettered box, so
+		// the two tabs read the same way.
 		int toggleX = x + 118;
-		drawToggle(graphics, toggleX, y - 4, 44, on ? "ON" : "OFF", on);
-		zones.add(new Zone(toggleX, y - 4, toggleX + 44, y + 12, () -> {
+		drawSlider(graphics, toggleX, y - 2, on);
+		zones.add(new Zone(toggleX, y - 4, toggleX + SLIDER_WIDTH, y + 12, () -> {
 			onClick.run();
 			click();
 		}));
@@ -462,6 +469,17 @@ public class ConfigScreen extends Screen {
 			}
 		}
 		return y + ROW_HEIGHT;
+	}
+
+	/**
+	 * A sliding switch: green when on, red when off, with the knob at the
+	 * end it is set to. The same control the nametag editor draws.
+	 */
+	private void drawSlider(GuiGraphicsExtractor graphics, int x, int y, boolean on) {
+		int height = 12;
+		graphics.fill(x, y, x + SLIDER_WIDTH, y + height, on ? SLIDER_ON : SLIDER_OFF);
+		int knob = on ? x + SLIDER_WIDTH - 10 : x + 2;
+		graphics.fill(knob, y + 2, knob + 8, y + height - 2, 0xFFFFFFFF);
 	}
 
 	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,

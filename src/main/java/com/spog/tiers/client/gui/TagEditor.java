@@ -444,7 +444,7 @@ public final class TagEditor {
 		int x = left + PADDING;
 		int y = top + PADDING;
 
-		graphics.text(font, Component.literal("General"), x, y, LABEL_COLOR);
+		graphics.text(font, Component.literal("Settings"), x, y, LABEL_COLOR);
 		y += font.lineHeight + 6;
 		y = rule(graphics, left, right, y);
 
@@ -492,7 +492,7 @@ public final class TagEditor {
 		panel(graphics, left, top, right, bottom);
 
 		int y = top + PADDING;
-		graphics.text(font, Component.literal("Nametag"), left + PADDING, y, LABEL_COLOR);
+		graphics.text(font, Component.literal("Editor"), left + PADDING, y, LABEL_COLOR);
 		y += font.lineHeight + 8;
 
 		// A dark plate behind the rows, so the tag reads the way it does in
