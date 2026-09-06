@@ -1,6 +1,7 @@
 package com.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
@@ -9,6 +10,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -28,12 +31,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * of them would decorate every row: Essential paints its icon and padding on
  * every name-tag submit it sees. A text submit is nobody's nameplate.
  *
- * <p>The backdrop is the font's own, handed to it as the background colour
- * rather than drawn as a separate quad. It has to be: text submits are drawn
- * before custom geometry, so a quad of our own landed <em>over</em> the row.
- * At vanilla's quarter-opaque black that only dimmed the text slightly; at
- * the solid colours Nametag Tweaks allows it buried the row entirely, icon
- * and all, and the row's colour read as the wrong shade through it.
+ * <p>The backdrop is drawn as our own geometry rather than handed to the font
+ * as a background colour, and submitted at a lower order than the glyphs so it
+ * lands behind them. The font's own box cannot be used here: it is emitted
+ * once per text pass, and a second pass's box paints over icons the first pass
+ * already drew.
  *
  * <p>Everything else copies vanilla's nameplate so the line looks like part
  * of it: the same anchor, camera billboarding and scale, the same backdrop
@@ -150,39 +152,86 @@ public class LabelMixin {
 	}
 
 	/**
-	 * One extra row, drawn the way vanilla draws a nameplate.
+	 * One extra row: its backdrop as our own geometry, then both text passes.
 	 *
-	 * <p>Only the first pass carries the backdrop, though vanilla hands one to
-	 * both of its own. Ours cannot: vanilla's two passes are separate submits
-	 * flushed in two batches, so its second box lands under its second copy of
-	 * the text, while both of ours go through one queue -- the second box is
-	 * drawn after the first pass's glyphs and covers them. At a translucent
-	 * colour that only dimmed them; at an opaque one it erased the tier icons
-	 * outright, since they are drawn once and not repainted by the second
-	 * pass the way the text is.
+	 * <p>The backdrop cannot be the font's own. Every text render type shares
+	 * one buffer that is flushed whenever the type changes, so a batch is drawn
+	 * in submission order -- and the tier icons come from their own texture,
+	 * which makes them a separate flush from the letters beside them. A second
+	 * pass carrying a box therefore paints over icons the first pass had
+	 * already drawn, while the letters, redrawn by that same pass, survive.
+	 * That is why an opaque colour erased the icons and left the text.
 	 *
-	 * <p>The see-through pass goes first, carrying the box and the faint text,
-	 * and the in-view pass second with the solid emissive text over it. That
-	 * is the order {@code renderTranslucent} walks its two lists in.
+	 * <p>Drawn instead as two quads submitted before the glyphs, at a lower
+	 * order: {@code renderTranslucentFeatures} walks the orders in turn, and
+	 * custom geometry in one order runs before text in the next, so the box is
+	 * always behind what sits on it.
+	 *
+	 * <p>Two quads, not one, because vanilla queues an opaque-backdrop plate on
+	 * both of its lists. The see-through copy has no depth test and shows
+	 * through walls; the in-view copy is depth tested, and is what stops water
+	 * and hitbox lines drawn later from crossing the box. A row with only the
+	 * first had them cutting straight through it.
 	 */
 	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
 			Component text, float y, float shift, boolean seeThrough, int light,
 			int background) {
 		int width = font.width(text);
 		float x = -width / 2.0f + shift;
+
+		if ((background & 0xFF000000) != 0) {
+			// The box vanilla would draw for this text: a pixel of margin on
+			// the left and above, none on the right, nine rows of text below.
+			float left = x - 1.0f;
+			float top = y - 1.0f;
+			float right = x + width;
+			float bottom = y + 9.0f;
+			// Seen-through first and in-view second, the order the nameplate's
+			// own two lists are walked in.
+			if (seeThrough) {
+				backdrop(collector, poseStack, RenderTypes.textBackgroundSeeThrough(),
+						background, light, left, top, right, bottom);
+			}
+			backdrop(collector, poseStack, RenderTypes.textBackground(),
+					background, light, left, top, right, bottom);
+		}
+
 		FormattedCharSequence ordered = text.getVisualOrderText();
 		// A shadow when the plate has one, so the rows are not the only text
 		// on the tag without it.
 		boolean shadow = NametagTweaks.textShadow();
+		// A later order than the backdrop, so the glyphs land on top of it.
 		var queue = collector.order(1);
 		if (seeThrough) {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
-					light, FAINT, background, 0);
+					light, FAINT, 0, 0);
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
-					light, FAINT, background, 0);
+					light, FAINT, 0, 0);
 		}
+	}
+
+	/** One backdrop quad on one layer, at the default order. */
+	private static void backdrop(SubmitNodeCollector collector, PoseStack poseStack,
+			RenderType layer, int colour, int light,
+			float left, float top, float right, float bottom) {
+		collector.submitCustomGeometry(poseStack, layer,
+				(pose, buffer) -> quad(pose, buffer, colour, light, left, top, right, bottom));
+	}
+
+	/**
+	 * One backdrop quad, wound the way vanilla winds its own.
+	 *
+	 * <p>Anticlockwise from the top left. The other winding is silently
+	 * discarded: these layers cull back faces, with no error to say so.
+	 */
+	private static void quad(PoseStack.Pose pose, VertexConsumer buffer, int colour, int light,
+			float left, float top, float right, float bottom) {
+		buffer.addVertex(pose, left, top, 0.0f).setColor(colour).setLight(light);
+		buffer.addVertex(pose, left, bottom, 0.0f).setColor(colour).setLight(light);
+		buffer.addVertex(pose, right, bottom, 0.0f).setColor(colour).setLight(light);
+		buffer.addVertex(pose, right, top, 0.0f).setColor(colour).setLight(light);
 	}
 }
