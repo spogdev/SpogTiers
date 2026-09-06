@@ -6,9 +6,6 @@ import com.spog.tiers.util.NameShift;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
@@ -31,11 +28,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * of them would decorate every row: Essential paints its icon and padding on
  * every label command it sees. A text command is nobody's nameplate.
  *
- * <p>The backdrop is drawn as our own geometry rather than handed to the font
- * as a background colour, and submitted on an earlier batching queue than the
- * glyphs so it lands behind them. The font's own box cannot be used here: it
- * is emitted once per text pass, and a second pass's box paints over icons the
- * first pass already drew.
+ * <p>The backdrop is the font's own, carried by the first text pass only. A
+ * box on the second pass would paint over what the first drew, icons included.
  *
  * <p>Everything else copies vanilla's nameplate so the line looks like part
  * of it: the same anchor, camera billboarding and scale, the same backdrop
@@ -62,16 +56,6 @@ public class LabelMixin {
 	/** Vanilla's emission for the in-view pass, so text never sits in shadow. */
 	private static final int EMISSION = 2;
 
-	/**
-	 * How far behind the glyphs the backdrop sits, as vanilla puts its own.
-	 *
-	 * <p>Vanilla.s {@code UNDER_EFFECT_DEPTH}, copied rather than chosen. A box
-	 * level with the text is coplanar with it, and two coplanar surfaces fight
-	 * over the depth buffer: the text flickered as the camera moved. Sitting
-	 * behind also settles which one wins without relying on draw order, so an
-	 * icon cannot be painted over by a box that happens to be batched later.
-	 */
-	private static final float BACKDROP_DEPTH = -0.01f;
 
 	@Inject(method = "renderLabelIfPresent", at = @At("TAIL"))
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
@@ -157,23 +141,20 @@ public class LabelMixin {
 	/**
 	 * One extra row, drawn the way vanilla draws a nameplate.
 	 *
-	 * <p>The backdrop cannot be the font's own. Every text render layer shares
-	 * one buffer that is flushed whenever the layer changes, so a batch is
-	 * drawn in submission order -- and the tier icons come from their own
-	 * texture, which makes them a separate flush from the letters beside them.
-	 * A second pass carrying a box therefore paints over icons the first pass
-	 * had already drawn, while the letters, redrawn by that same pass, survive.
-	 * That is why an opaque colour erased the icons and left the text.
+	 * <p>The backdrop is handed to the font rather than drawn as our own
+	 * geometry. Both were tried, and the difference is which phase draws
+	 * them: the label commands are drawn before the text, and custom geometry
+	 * last of all. A depth-writing quad in that last phase went down after
+	 * every phase before it, so water behind a row was rejected against depth
+	 * the box had already written -- while the plate beside it, drawn on the
+	 * label phase and depth-sorted with the rest, composited over the water
+	 * properly.
 	 *
-	 * <p>Drawn instead as two quads submitted before the glyphs, on an earlier
-	 * batching queue: the queues are drawn in turn, so custom geometry on one
-	 * runs before text on the next and the box stays behind what sits on it.
-	 *
-	 * <p>Two quads, not one, because vanilla queues an opaque-backdrop label on
-	 * both of its lists. The see-through copy has no depth test and shows
-	 * through walls; the in-view copy is depth tested, and is what stops water
-	 * and hitbox lines drawn later from crossing the box. A row with only the
-	 * first had them cutting straight through it.
+	 * <p>Only the first pass carries it. The box spans the whole line, so a
+	 * second one paints over what the first pass drew; and every text render
+	 * layer shares a buffer flushed on each layer change, which makes the
+	 * tier icons -- from their own texture -- a separate flush for a later box
+	 * to land on. That is what buried the icons when both passes carried one.
 	 */
 	private static void line(OrderedRenderCommandQueue queue, MatrixStack matrices,
 			TextRenderer font, Text text, float y, float shift, boolean seeThrough,
@@ -181,84 +162,22 @@ public class LabelMixin {
 		int width = font.getWidth(text);
 		float x = -width / 2.0f + shift;
 
-		if ((background & 0xFF000000) != 0) {
-			// The box vanilla would draw for this text: a pixel of margin on
-			// the left and above, none on the right, nine rows of text below.
-			float left = x - 1.0f;
-			float top = y - 1.0f;
-			float right = x + width;
-			float bottom = y + 9.0f;
-			// Seen-through first and in-view second, the order the nameplate's
-			// own two lists are walked in.
-			//
-			// Both are drawn, and both are drawn fainter, because they land on
-			// top of one another: at the colour asked for, two passes composed
-			// to twice the darkness of the plate beside them. Measured against
-			// a sky of 78A7FF, the plate came out 5A7EC0 and a row 445F91 --
-			// one layer of vanilla's quarter-opaque black against two.
-			int split = halved(background);
-			if (seeThrough) {
-				backdrop(queue, matrices, RenderLayers.textBackgroundSeeThrough(),
-						split, light, left, top, right, bottom);
-			}
-			backdrop(queue, matrices, RenderLayers.textBackground(),
-					split, light, left, top, right, bottom);
-		}
-
 		OrderedText ordered = text.asOrderedText();
 		// A shadow when the plate has one, so the rows are not the only text
 		// on the tag without it.
 		boolean shadow = NametagTweaks.textShadow();
-		// A later queue than the backdrop, so the glyphs land on top of it.
-		var batch = queue.getBatchingQueue(1);
+		var batch = queue.getBatchingQueue(0);
+		// The font's own backdrop, on the first pass only -- see above for
+		// why it is not our own geometry, and why only one pass carries it.
 		if (seeThrough) {
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.SEE_THROUGH,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
 					LightmapTextureManager.applyEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
 			batch.submitText(matrices, x, y, ordered, shadow, TextRenderer.TextLayerType.NORMAL,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 		}
 	}
 
-	/**
-	 * The alpha one of two stacked passes needs to land on the asked-for one.
-	 *
-	 * <p>Two coats of alpha <i>b</i> leave 1-(1-b)², so a pass wanting to end
-	 * at <i>a</i> has to be drawn at 1-sqrt(1-a). At vanilla's quarter-opaque
-	 * black that is a little over an eighth each; at a fully opaque colour it
-	 * stays fully opaque, which is what keeps a solid plate solid.
-	 */
-	private static int halved(int colour) {
-		int alpha = colour >>> 24;
-		if (alpha >= 0xFF) {
-			return colour;
-		}
-		int split = Math.round((float) ((1.0 - Math.sqrt(1.0 - alpha / 255.0)) * 255.0));
-		return (split << 24) | (colour & 0xFFFFFF);
-	}
-
-	/** One backdrop quad on one layer, at the default order. */
-	/** One backdrop quad on one layer, on the earlier batching queue. */
-	private static void backdrop(OrderedRenderCommandQueue queue, MatrixStack matrices,
-			RenderLayer layer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		queue.getBatchingQueue(0).submitCustom(matrices, layer,
-				(matrix, buffer) -> quad(matrix, buffer, colour, light, left, top, right, bottom));
-	}
-
-	/**
-	 * One backdrop quad, wound the way vanilla winds its own.
-	 *
-	 * <p>Anticlockwise from the top left. The other winding is silently
-	 * discarded: these layers cull back faces, with no error to say so.
-	 */
-	private static void quad(MatrixStack.Entry matrix, VertexConsumer buffer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		buffer.vertex(matrix, left, top, BACKDROP_DEPTH).color(colour).light(light);
-		buffer.vertex(matrix, left, bottom, BACKDROP_DEPTH).color(colour).light(light);
-		buffer.vertex(matrix, right, bottom, BACKDROP_DEPTH).color(colour).light(light);
-		buffer.vertex(matrix, right, top, BACKDROP_DEPTH).color(colour).light(light);
-	}
 }
