@@ -1,81 +1,101 @@
 package com.spog.tiers.config;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.spog.tiers.SpogTiers;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.TierList;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.zip.DeflaterOutputStream;
-import java.util.zip.InflaterOutputStream;
+import java.util.Map;
 
 /**
  * A shareable code carrying one player's tag layout and the settings that
  * shape it.
  *
- * <p>The point is that a code outlives the version it was written by. Someone
- * on an older build has to be able to read a code from a newer one, and the
- * other way round, for as long as the two builds still mean the same thing by
- * a nametag. Three rules keep that true:
+ * <p>Plain readable text rather than anything packed or encoded. The data is
+ * nobody's secret -- it is a nametag someone wants to hand out -- so the only
+ * thing worth optimising is how short and how durable it is.
+ *
+ * <p>The point is that a code outlives the version that wrote it. Someone on
+ * an older build has to be able to read a code from a newer one, and the other
+ * way round, for as long as the two still mean the same thing by a nametag.
+ * Four rules keep that true:
  *
  * <ul>
- *   <li><b>Names, never ordinals.</b> Every enum travels as its own name, so
- *       inserting a value into {@link TierList} or {@link Gamemode} cannot
- *       silently turn someone's PvPTiers element into a SubTiers one. An
- *       unknown name is dropped rather than guessed at.
- *   <li><b>Unknown fields are ignored, missing fields keep their default.</b>
- *       A newer build writing a setting this one has never heard of costs
- *       nothing to read, and a setting added since the code was written keeps
- *       whatever this build ships as its default.
- *   <li><b>One number gates the whole thing.</b> {@link #FORMAT} only rises if
- *       a code stops being readable at all -- not for adding a field, which
- *       the two rules above already cover. A code from the future is refused
- *       with an explanation instead of being half-applied.
+ *   <li><b>Everything is named, nothing is positional.</b> Settings are
+ *       {@code key=value} and elements name their kind, so a field added in
+ *       the middle cannot shift the meaning of the ones after it.
+ *   <li><b>Enum values travel as their own names.</b> Inserting a value into
+ *       {@link TierList} or {@link Gamemode} cannot silently turn someone's
+ *       PvPTiers element into a SubTiers one.
+ *   <li><b>Unknown parts are skipped, missing parts keep this build's
+ *       default.</b> A newer build's extra setting costs an older one nothing,
+ *       and a setting added since a code was written is simply left alone.
+ *   <li><b>One number gates the whole thing.</b> {@link #FORMAT} rises only if
+ *       codes stop being readable at all -- never for adding a field, which
+ *       the rules above already cover.
  * </ul>
  *
- * <p>What is deliberately <em>not</em> in a code: cache and request tuning,
- * which is about someone's connection rather than their setup, and anything
- * identifying who exported it.
+ * <p>A code reads roughly:
+ * {@snippet : SPOG1 nm tb ch dl=PVPHQ T.T.best N.M R.M}
+ *
+ * <p>What is deliberately not in a code: cache and request tuning, which is
+ * about someone's connection rather than their setup, and anything saying who
+ * exported it.
  */
 public final class LayoutCode {
 	/**
-	 * How the payload is shaped, not what it contains.
+	 * How a code is shaped, not what it contains.
 	 *
-	 * <p>Raised only for a change that makes an old reader unable to make
-	 * sense of a code at all. Adding settings does not qualify: an older build
-	 * skips what it does not know, and a newer one defaults what is absent.
+	 * <p>Raised only for a change that leaves an old reader unable to make
+	 * sense of a code at all.
 	 */
 	private static final int FORMAT = 1;
 
-	/**
-	 * Marks a string as one of ours, and says which format follows.
-	 *
-	 * <p>In the text rather than the payload so a wrong or truncated paste can
-	 * be told apart from a code this build is too old for, and so the reason
-	 * given to the user is the true one.
-	 */
-	private static final String PREFIX = "SPOGTAG";
+	/** Marks a string as one of ours, and says which format follows. */
+	private static final String PREFIX = "SPOG";
 
-	private static final Gson GSON = new GsonBuilder().create();
+	/**
+	 * The on/off settings, by the short name each travels under.
+	 *
+	 * <p>Two letters rather than the field's own name, which is most of what
+	 * made codes long. The mapping is fixed: a name here is never reused for a
+	 * different setting, so an old code keeps meaning what it meant.
+	 */
+	private static final Map<String, Switch> SWITCHES = new LinkedHashMap<>();
+
+	/** One boolean setting, read and written by short name. */
+	private record Switch(java.util.function.Predicate<SpogTiersConfig> get,
+			java.util.function.BiConsumer<SpogTiersConfig, Boolean> set) {
+	}
+
+	static {
+		SWITCHES.put("nm", new Switch(c -> c.showNametags, (c, v) -> c.showNametags = v));
+		SWITCHES.put("tb", new Switch(c -> c.showTabList, (c, v) -> c.showTabList = v));
+		SWITCHES.put("ch", new Switch(c -> c.showInChat, (c, v) -> c.showInChat = v));
+		SWITCHES.put("td", new Switch(c -> c.tagDisplays, (c, v) -> c.tagDisplays = v));
+		SWITCHES.put("bt", new Switch(c -> c.showBestTier, (c, v) -> c.showBestTier = v));
+		SWITCHES.put("rt", new Switch(c -> c.showRetired, (c, v) -> c.showRetired = v));
+		SWITCHES.put("pl", new Switch(c -> c.showPlacements, (c, v) -> c.showPlacements = v));
+		SWITCHES.put("pa", new Switch(c -> c.showParticles, (c, v) -> c.showParticles = v));
+		SWITCHES.put("sp", new Switch(c -> c.showSeparators, (c, v) -> c.showSeparators = v));
+		SWITCHES.put("pd", new Switch(c -> c.preventDuplicateTiers,
+				(c, v) -> c.preventDuplicateTiers = v));
+		SWITCHES.put("xt", new Switch(c -> c.extraTierlists, (c, v) -> c.extraTierlists = v));
+		SWITCHES.put("cn", new Switch(c -> c.tagLayout != null && c.tagLayout.centerOnName,
+				(c, v) -> c.tagLayout.centerOnName = v));
+	}
 
 	private LayoutCode() {
 	}
 
 	/** What a code failed to be, for a message the user can act on. */
 	public enum Problem {
-		/** Not one of our codes at all: a stray paste, or truncated. */
+		/** Not one of our codes at all: a stray paste, or cut short. */
 		NOT_A_CODE("That is not a SpogTiers layout code"),
 		/** Ours, but written by a build whose format this one cannot read. */
 		TOO_NEW("That code is from a newer version of SpogTiers than this one"),
-		/** Ours and the right format, but the payload is damaged. */
+		/** Ours and the right format, but nothing usable in it. */
 		DAMAGED("That code is incomplete or damaged");
 
 		private final String message;
@@ -89,278 +109,300 @@ public final class LayoutCode {
 		}
 	}
 
-	/** Either the settings a code carried, or why it could not be read. */
-	public record Result(JsonObject payload, Problem problem) {
+	/** Either the parts a code carried, or why it could not be read. */
+	public record Result(List<String> parts, Problem problem) {
 		public boolean ok() {
-			return payload != null;
+			return parts != null;
 		}
 	}
 
 	/**
 	 * Writes the current layout and the settings that shape it as one code.
 	 *
-	 * <p>Deflated and Base64'd: a layout of any size is a few hundred bytes of
-	 * JSON, and a code someone has to paste into chat wants to be shorter than
-	 * that. The URL-safe alphabet without padding keeps it in one piece
-	 * wherever it is pasted -- Discord, a browser bar, a server's chat.
+	 * <p>Only what differs from a plain switch is written where it can be
+	 * left out: an element takes its row and nothing else unless it has more
+	 * to say. That is most of why a code is short.
 	 */
 	public static String write(SpogTiersConfig config) {
-		JsonObject root = new JsonObject();
-		root.add("layout", GSON.toJsonTree(config.tagLayout));
-		root.add("settings", settings(config));
+		List<String> parts = new ArrayList<>();
+		parts.add(PREFIX + FORMAT);
 
-		byte[] json = GSON.toJson(root).getBytes(StandardCharsets.UTF_8);
-		ByteArrayOutputStream packed = new ByteArrayOutputStream();
-		try (DeflaterOutputStream deflater = new DeflaterOutputStream(packed)) {
-			deflater.write(json);
-		} catch (java.io.IOException e) {
-			// Deflating a byte array in memory cannot fail for any reason the
-			// user could act on, so the code is simply not offered.
-			SpogTiers.LOGGER.warn("Could not write a layout code", e);
-			return null;
+		// Switches that are on travel as a bare name, off as name-with-slash.
+		// Nothing is shorter than a word that means itself.
+		SWITCHES.forEach((name, setting) ->
+				parts.add(setting.get().test(config) ? name : name + "/"));
+
+		parts.add("dl=" + config.displayList.name());
+		parts.add("dm=" + config.displayMode.name());
+		if (config.regionSlot != null) {
+			parts.add("rs=" + config.regionSlot.name());
 		}
-		return PREFIX + FORMAT + "-"
-				+ Base64.getUrlEncoder().withoutPadding().encodeToString(packed.toByteArray());
+		parts.add("so=" + config.sortOrder.name());
+		lists(parts, "tl", config.taggedLists);
+		lists(parts, "el", config.enabledLists);
+
+		if (config.tagLayout != null) {
+			for (TagLayout.Element element : config.tagLayout.elements) {
+				parts.add(element(element));
+			}
+		}
+		return String.join(" ", parts);
 	}
 
 	/**
 	 * Reads a code, or says why it could not be.
 	 *
-	 * <p>Whitespace is stripped first: a code that has been through chat or an
-	 * email tends to arrive with a line break in the middle of it, and
-	 * refusing that would look like the code was bad.
+	 * <p>Split on any run of whitespace, so a code that came through chat or
+	 * an email with a line break in the middle still reads.
 	 */
 	public static Result read(String code) {
-		if (code == null) {
+		if (code == null || code.isBlank()) {
 			return new Result(null, Problem.NOT_A_CODE);
 		}
-		String trimmed = code.replaceAll("\\s", "");
-		if (!trimmed.startsWith(PREFIX)) {
-			return new Result(null, Problem.NOT_A_CODE);
-		}
-		int dash = trimmed.indexOf('-');
-		if (dash < 0) {
+		String[] words = code.trim().split("\\s+");
+		String head = words[0];
+		if (!head.startsWith(PREFIX)) {
 			return new Result(null, Problem.NOT_A_CODE);
 		}
 		int format;
 		try {
-			format = Integer.parseInt(trimmed.substring(PREFIX.length(), dash));
+			format = Integer.parseInt(head.substring(PREFIX.length()));
 		} catch (NumberFormatException e) {
 			return new Result(null, Problem.NOT_A_CODE);
 		}
 		if (format > FORMAT) {
 			return new Result(null, Problem.TOO_NEW);
 		}
-
-		try {
-			byte[] packed = Base64.getUrlDecoder().decode(trimmed.substring(dash + 1));
-			ByteArrayOutputStream json = new ByteArrayOutputStream();
-			try (InflaterOutputStream inflater = new InflaterOutputStream(json)) {
-				inflater.write(packed);
-			}
-			JsonElement parsed = JsonParser.parseString(
-					json.toString(StandardCharsets.UTF_8));
-			if (!parsed.isJsonObject()) {
-				return new Result(null, Problem.DAMAGED);
-			}
-			return new Result(parsed.getAsJsonObject(), null);
-		} catch (IllegalArgumentException | java.io.IOException
-				| com.google.gson.JsonParseException e) {
+		if (words.length < 2) {
 			return new Result(null, Problem.DAMAGED);
 		}
+		return new Result(List.of(words).subList(1, words.length), null);
 	}
 
 	/**
 	 * Applies a code that {@link #read} accepted, and says what was dropped.
 	 *
-	 * <p>Everything is applied field by field rather than by deserialising
-	 * over the config, so a code written by a newer build cannot introduce a
-	 * setting this one does not understand, and a code missing a field leaves
-	 * that field alone. The layout is normalised afterwards, so a code that
-	 * has lost its name element or names a tier list this build does not have
-	 * still lands as something drawable.
+	 * <p>Part by part, skipping anything unrecognised: a code from a newer
+	 * build cannot introduce a setting this one does not understand, and one
+	 * from an older build leaves everything it never mentioned alone.
 	 *
 	 * @return a note on what could not be carried across, or null when all of
 	 *     it applied
 	 */
-	public static String apply(JsonObject payload, SpogTiersConfig config) {
+	public static String apply(List<String> parts, SpogTiersConfig config) {
 		List<String> dropped = new ArrayList<>();
+		TagLayout layout = new TagLayout();
+		boolean sawElement = false;
 
-		JsonElement layout = payload.get("layout");
-		if (layout != null && layout.isJsonObject()) {
-			config.tagLayout = layout(layout.getAsJsonObject(), dropped);
+		for (String part : parts) {
+			if (part.isEmpty()) {
+				continue;
+			}
+			int equals = part.indexOf('=');
+			if (equals > 0) {
+				value(part.substring(0, equals), part.substring(equals + 1), config, dropped);
+				continue;
+			}
+			String name = part.endsWith("/") ? part.substring(0, part.length() - 1) : part;
+			Switch setting = SWITCHES.get(name);
+			if (setting != null) {
+				// centerOnName lives on the layout being built, so it is held
+				// until that layout is the one in the config.
+				if (name.equals("cn")) {
+					layout.centerOnName = !part.endsWith("/");
+				} else {
+					setting.set().accept(config, !part.endsWith("/"));
+				}
+				continue;
+			}
+			TagLayout.Element element = element(part, dropped);
+			if (element != null) {
+				layout.elements.add(element);
+				sawElement = true;
+			}
 		}
 
-		JsonElement settings = payload.get("settings");
-		if (settings != null && settings.isJsonObject()) {
-			settings(settings.getAsJsonObject(), config);
+		if (sawElement) {
+			config.tagLayout = layout;
+		} else if (config.tagLayout != null) {
+			config.tagLayout.centerOnName = layout.centerOnName;
 		}
-
 		config.normalise();
 		config.save();
 		return dropped.isEmpty() ? null
 				: "Imported, without " + String.join(", ", dropped);
 	}
 
-	/** The settings a code carries, by name. */
-	private static JsonObject settings(SpogTiersConfig config) {
-		JsonObject out = new JsonObject();
-		out.addProperty("showNametags", config.showNametags);
-		out.addProperty("showTabList", config.showTabList);
-		out.addProperty("showInChat", config.showInChat);
-		out.addProperty("tagDisplays", config.tagDisplays);
-		out.addProperty("showBestTier", config.showBestTier);
-		out.addProperty("showRetired", config.showRetired);
-		out.addProperty("showPlacements", config.showPlacements);
-		out.addProperty("showParticles", config.showParticles);
-		out.addProperty("showSeparators", config.showSeparators);
-		out.addProperty("preventDuplicateTiers", config.preventDuplicateTiers);
-		out.addProperty("extraTierlists", config.extraTierlists);
-		out.addProperty("displayList", config.displayList.name());
-		out.addProperty("displayMode", config.displayMode.name());
-		if (config.regionSlot != null) {
-			out.addProperty("regionSlot", config.regionSlot.name());
-		}
-		out.addProperty("sortOrder", config.sortOrder.name());
-		out.add("taggedLists", lists(config.taggedLists));
-		out.add("enabledLists", lists(config.enabledLists));
-		return out;
-	}
-
-	/** Per-list switches, keyed by name so an added list cannot shift them. */
-	private static JsonObject lists(java.util.Map<TierList, Boolean> from) {
-		JsonObject out = new JsonObject();
-		if (from != null) {
-			from.forEach((list, on) -> {
-				if (list != null && on != null) {
-					out.addProperty(list.name(), on);
-				}
-			});
-		}
-		return out;
-	}
-
-	/** Reads the settings a code carries, leaving absent ones alone. */
-	private static void settings(JsonObject from, SpogTiersConfig config) {
-		config.showNametags = bool(from, "showNametags", config.showNametags);
-		config.showTabList = bool(from, "showTabList", config.showTabList);
-		config.showInChat = bool(from, "showInChat", config.showInChat);
-		config.tagDisplays = bool(from, "tagDisplays", config.tagDisplays);
-		config.showBestTier = bool(from, "showBestTier", config.showBestTier);
-		config.showRetired = bool(from, "showRetired", config.showRetired);
-		config.showPlacements = bool(from, "showPlacements", config.showPlacements);
-		config.showParticles = bool(from, "showParticles", config.showParticles);
-		config.showSeparators = bool(from, "showSeparators", config.showSeparators);
-		config.preventDuplicateTiers =
-				bool(from, "preventDuplicateTiers", config.preventDuplicateTiers);
-		config.extraTierlists = bool(from, "extraTierlists", config.extraTierlists);
-
-		TierList list = value(TierList.class, from, "displayList");
-		if (list != null) {
-			config.displayList = list;
-		}
-		Gamemode mode = value(Gamemode.class, from, "displayMode");
-		if (mode != null) {
-			config.displayMode = mode;
-		}
-		SpogTiersConfig.RegionSlot slot =
-				value(SpogTiersConfig.RegionSlot.class, from, "regionSlot");
-		if (slot != null) {
-			config.regionSlot = slot;
-		}
-		SpogTiersConfig.SortOrder order =
-				value(SpogTiersConfig.SortOrder.class, from, "sortOrder");
-		if (order != null) {
-			config.sortOrder = order;
-		}
-		lists(from, "taggedLists", config.taggedLists);
-		lists(from, "enabledLists", config.enabledLists);
-	}
-
-	/** Reads per-list switches, ignoring lists this build does not have. */
-	private static void lists(JsonObject from, String key,
-			java.util.Map<TierList, Boolean> into) {
-		JsonElement element = from.get(key);
-		if (element == null || !element.isJsonObject() || into == null) {
-			return;
-		}
-		for (var entry : element.getAsJsonObject().entrySet()) {
-			TierList list = constant(TierList.class, entry.getKey());
-			if (list != null && entry.getValue().isJsonPrimitive()) {
-				into.put(list, entry.getValue().getAsBoolean());
+	/** One element as text: kind, row, then only what it needs. */
+	private static String element(TagLayout.Element element) {
+		StringBuilder out = new StringBuilder();
+		out.append(switch (element.kind) {
+			case NAME -> "N";
+			case TIER -> "T";
+			case REGION -> "R";
+			case SEPARATOR -> "S";
+		});
+		out.append('.').append(switch (element.row) {
+			case TOP -> "T";
+			case MIDDLE -> "M";
+			case BOTTOM -> "B";
+		});
+		if (element.kind == TagLayout.Kind.TIER) {
+			if (element.doorSmp) {
+				out.append(".door");
+			} else if (element.best || element.list == null) {
+				out.append(".best");
+			} else {
+				out.append('.').append(element.list.name());
+			}
+			if (element.gamemode != null) {
+				out.append('.').append(element.gamemode.name());
+			}
+		} else if (element.kind == TagLayout.Kind.SEPARATOR) {
+			// The character by codepoint, so a code stays plain ASCII wherever
+			// it is pasted, and the colour only when it is not the usual one.
+			out.append('.').append(Integer.toHexString(
+					element.character == null || element.character.isEmpty()
+							? '|' : element.character.codePointAt(0)));
+			if (element.colour != 0x555555) {
+				out.append('.').append(Integer.toHexString(element.colour & 0xFFFFFF));
 			}
 		}
+		return out.toString();
 	}
 
-	/**
-	 * Rebuilds the layout, dropping elements this build cannot draw.
-	 *
-	 * <p>Element by element rather than through Gson, because an element
-	 * naming a tier list or gamemode that does not exist here would otherwise
-	 * deserialise to null and leave a blank in the middle of someone's tag.
-	 */
-	private static TagLayout layout(JsonObject from, List<String> dropped) {
-		TagLayout layout = new TagLayout();
-		layout.centerOnName = bool(from, "centerOnName", false);
-
-		JsonElement elements = from.get("elements");
-		if (elements == null || !elements.isJsonArray()) {
-			return layout;
+	/** One element back from text, or null when this build cannot draw it. */
+	private static TagLayout.Element element(String part, List<String> dropped) {
+		String[] bits = part.split("\\.");
+		TagLayout.Kind kind = switch (bits[0]) {
+			case "N" -> TagLayout.Kind.NAME;
+			case "T" -> TagLayout.Kind.TIER;
+			case "R" -> TagLayout.Kind.REGION;
+			case "S" -> TagLayout.Kind.SEPARATOR;
+			default -> null;
+		};
+		if (kind == null) {
+			// Either a kind this build has never heard of, or a setting from a
+			// newer one. Either way the rest of the tag is worth keeping.
+			note(dropped, "a part this version does not have");
+			return null;
 		}
-		for (JsonElement each : elements.getAsJsonArray()) {
-			if (!each.isJsonObject()) {
-				continue;
-			}
-			JsonObject object = each.getAsJsonObject();
-			TagLayout.Kind kind = value(TagLayout.Kind.class, object, "kind");
-			if (kind == null) {
-				// A kind this build has never heard of: the rest of the tag is
-				// still worth having, so only this piece is lost.
-				note(dropped, "an element this version does not have");
-				continue;
-			}
-			TagLayout.Element element = new TagLayout.Element();
-			element.kind = kind;
-			TagLayout.Row row = value(TagLayout.Row.class, object, "row");
-			element.row = row == null ? TagLayout.Row.MIDDLE : row;
-			element.best = bool(object, "best", false);
-			element.doorSmp = bool(object, "doorSmp", false);
-			element.character = string(object, "character", "|");
-			element.colour = number(object, "colour", 0x555555);
+		TagLayout.Element element = new TagLayout.Element();
+		element.kind = kind;
+		element.row = bits.length > 1 ? switch (bits[1]) {
+			case "T" -> TagLayout.Row.TOP;
+			case "B" -> TagLayout.Row.BOTTOM;
+			default -> TagLayout.Row.MIDDLE;
+		} : TagLayout.Row.MIDDLE;
 
-			TierList list = value(TierList.class, object, "list");
-			if (kind == TagLayout.Kind.TIER && !element.best && !element.doorSmp) {
+		if (kind == TagLayout.Kind.TIER && bits.length > 2) {
+			if (bits[2].equals("door")) {
+				element.doorSmp = true;
+			} else if (bits[2].equals("best")) {
+				element.best = true;
+			} else {
+				TierList list = constant(TierList.class, bits[2]);
 				if (list == null) {
-					// The element named a list this build does not have. Best
-					// across the lists it does have is the closest honest
-					// reading of "a tier here".
+					// A list this build does not have. Best across the ones it
+					// does is the closest honest reading of "a tier here".
 					note(dropped, "a tier list this version does not have");
 					element.best = true;
 				} else {
 					element.list = list;
 				}
-			} else if (list != null) {
-				element.list = list;
 			}
-			element.gamemode = value(Gamemode.class, object, "gamemode");
-			layout.elements.add(element);
+			if (bits.length > 3) {
+				element.gamemode = constant(Gamemode.class, bits[3]);
+			}
+		} else if (kind == TagLayout.Kind.TIER) {
+			element.best = true;
+		} else if (kind == TagLayout.Kind.SEPARATOR) {
+			element.character = bits.length > 2 ? character(bits[2]) : "|";
+			element.colour = bits.length > 3 ? number(bits[3], 0x555555) : 0x555555;
 		}
-		return layout;
+		return element;
+	}
+
+	/** Per-list switches, written only for the lists that are off. */
+	private static void lists(List<String> parts, String key,
+			Map<TierList, Boolean> from) {
+		if (from == null) {
+			return;
+		}
+		List<String> off = new ArrayList<>();
+		from.forEach((list, on) -> {
+			if (list != null && Boolean.FALSE.equals(on)) {
+				off.add(list.name());
+			}
+		});
+		// Only the exceptions: every list is on by default, so a code for the
+		// usual case says nothing at all about them.
+		if (!off.isEmpty()) {
+			parts.add(key + "=" + String.join("+", off));
+		}
+	}
+
+	/** One {@code key=value} part, ignoring keys this build does not know. */
+	private static void value(String key, String value, SpogTiersConfig config,
+			List<String> dropped) {
+		switch (key) {
+			case "dl" -> {
+				TierList list = constant(TierList.class, value);
+				if (list != null) {
+					config.displayList = list;
+				} else {
+					note(dropped, "a tier list this version does not have");
+				}
+			}
+			case "dm" -> {
+				Gamemode mode = constant(Gamemode.class, value);
+				if (mode != null) {
+					config.displayMode = mode;
+				}
+			}
+			case "rs" -> {
+				SpogTiersConfig.RegionSlot slot =
+						constant(SpogTiersConfig.RegionSlot.class, value);
+				if (slot != null) {
+					config.regionSlot = slot;
+				}
+			}
+			case "so" -> {
+				SpogTiersConfig.SortOrder order =
+						constant(SpogTiersConfig.SortOrder.class, value);
+				if (order != null) {
+					config.sortOrder = order;
+				}
+			}
+			case "tl" -> lists(value, config.taggedLists);
+			case "el" -> lists(value, config.enabledLists);
+			default -> {
+				// A setting from a newer build. Skipped in silence: saying so
+				// for every one of them would bury what actually went wrong.
+			}
+		}
+	}
+
+	/** Turns the lists a code names off, leaving the rest on. */
+	private static void lists(String value, Map<TierList, Boolean> into) {
+		if (into == null) {
+			return;
+		}
+		for (TierList list : TierList.values()) {
+			into.put(list, true);
+		}
+		for (String name : value.split("\\+")) {
+			TierList list = constant(TierList.class, name);
+			if (list != null) {
+				into.put(list, false);
+			}
+		}
 	}
 
 	private static void note(List<String> dropped, String what) {
 		if (!dropped.contains(what)) {
 			dropped.add(what);
 		}
-	}
-
-	/** One enum constant by name, or null when this build has no such value. */
-	private static <E extends Enum<E>> E value(Class<E> type, JsonObject from, String key) {
-		JsonElement element = from.get(key);
-		if (element == null || !element.isJsonPrimitive()) {
-			return null;
-		}
-		return constant(type, element.getAsString());
 	}
 
 	private static <E extends Enum<E>> E constant(Class<E> type, String name) {
@@ -371,25 +413,16 @@ public final class LayoutCode {
 		}
 	}
 
-	private static boolean bool(JsonObject from, String key, boolean fallback) {
-		JsonElement element = from.get(key);
-		return element != null && element.isJsonPrimitive()
-				? element.getAsBoolean() : fallback;
+	private static String character(String hex) {
+		int codepoint = number(hex, '|');
+		return codepoint <= 0 ? "|" : new String(Character.toChars(codepoint));
 	}
 
-	private static int number(JsonObject from, String key, int fallback) {
-		JsonElement element = from.get(key);
+	private static int number(String hex, int fallback) {
 		try {
-			return element != null && element.isJsonPrimitive()
-					? element.getAsInt() : fallback;
+			return Integer.parseInt(hex, 16);
 		} catch (NumberFormatException e) {
 			return fallback;
 		}
-	}
-
-	private static String string(JsonObject from, String key, String fallback) {
-		JsonElement element = from.get(key);
-		return element != null && element.isJsonPrimitive()
-				? element.getAsString() : fallback;
 	}
 }

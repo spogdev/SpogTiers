@@ -199,12 +199,19 @@ public class LabelMixin {
 			float bottom = y + 9.0f;
 			// Seen-through first and in-view second, the order the nameplate's
 			// own two lists are walked in.
+			//
+			// Both are drawn, and both are drawn fainter, because they land on
+			// top of one another: at the colour asked for, two passes composed
+			// to twice the darkness of the plate beside them. Measured against
+			// a sky of 78A7FF, the plate came out 5A7EC0 and a row 445F91 --
+			// one layer of vanilla's quarter-opaque black against two.
+			int split = halved(background);
 			if (seeThrough) {
 				backdrop(collector, poseStack, RenderTypes.textBackgroundSeeThrough(),
-						background, light, left, top, right, bottom);
+						split, light, left, top, right, bottom);
 			}
 			backdrop(collector, poseStack, RenderTypes.textBackground(),
-					background, light, left, top, right, bottom);
+					split, light, left, top, right, bottom);
 		}
 
 		FormattedCharSequence ordered = text.getVisualOrderText();
@@ -222,6 +229,23 @@ public class LabelMixin {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					light, FAINT, 0, 0);
 		}
+	}
+
+	/**
+	 * The alpha one of two stacked passes needs to land on the asked-for one.
+	 *
+	 * <p>Two coats of alpha <i>b</i> leave 1-(1-b)², so a pass wanting to end
+	 * at <i>a</i> has to be drawn at 1-sqrt(1-a). At vanilla's quarter-opaque
+	 * black that is a little over an eighth each; at a fully opaque colour it
+	 * stays fully opaque, which is what keeps a solid plate solid.
+	 */
+	private static int halved(int colour) {
+		int alpha = colour >>> 24;
+		if (alpha >= 0xFF) {
+			return colour;
+		}
+		int split = Math.round((float) ((1.0 - Math.sqrt(1.0 - alpha / 255.0)) * 255.0));
+		return (split << 24) | (colour & 0xFFFFFF);
 	}
 
 	/** One backdrop quad on one layer, at the default order. */
