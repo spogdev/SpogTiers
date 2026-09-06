@@ -1,7 +1,6 @@
 package com.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
@@ -11,7 +10,6 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -31,11 +29,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * of them would decorate every row: Essential paints its icon and padding on
  * every name-tag submit it sees. A text submit is nobody's nameplate.
  *
- * <p>The backdrop is drawn as our own geometry rather than handed to the font
- * as a background colour, and submitted at a lower order than the glyphs so it
- * lands behind them. The font's own box cannot be used here: it is emitted
- * once per text pass, and a second pass's box paints over icons the first pass
- * already drew.
+ * <p>The backdrop is the font's own, carried by the first text pass only. A
+ * box on the second pass would paint over what the first drew, icons included.
  *
  * <p>Everything else copies vanilla's nameplate so the line looks like part
  * of it: the same anchor, camera billboarding and scale, the same backdrop
@@ -65,16 +60,6 @@ public class LabelMixin {
 	/** Vanilla's emission for the in-view pass, so text never sits in shadow. */
 	private static final int EMISSION = 2;
 
-	/**
-	 * How far behind the glyphs the backdrop sits, as vanilla puts its own.
-	 *
-	 * <p>Vanilla's {@code UNDER_EFFECT_DEPTH}, copied rather than chosen. A box
-	 * level with the text is coplanar with it, and two coplanar surfaces fight
-	 * over the depth buffer: the text flickered as the camera moved. Sitting
-	 * behind also settles which one wins without relying on draw order, so an
-	 * icon cannot be painted over by a box that happens to be batched later.
-	 */
-	private static final float BACKDROP_DEPTH = -0.01f;
 
 	@Inject(method = "submitNameDisplay(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"
 			+ "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;"
@@ -163,26 +148,22 @@ public class LabelMixin {
 	}
 
 	/**
-	 * One extra row: its backdrop as our own geometry, then both text passes.
+	 * One extra row: both text passes, the first carrying the backdrop.
 	 *
-	 * <p>The backdrop cannot be the font's own. Every text render type shares
-	 * one buffer that is flushed whenever the type changes, so a batch is drawn
-	 * in submission order -- and the tier icons come from their own texture,
-	 * which makes them a separate flush from the letters beside them. A second
-	 * pass carrying a box therefore paints over icons the first pass had
-	 * already drawn, while the letters, redrawn by that same pass, survive.
-	 * That is why an opaque colour erased the icons and left the text.
+	 * <p>The backdrop is handed to the font rather than drawn as our own
+	 * geometry. Both were tried, and the difference is which phase draws
+	 * them: {@code renderTranslucentFeatures} runs the name tags, then the
+	 * text, and custom geometry last. A depth-writing quad in that last phase
+	 * went down after every phase before it, so water behind a row was
+	 * rejected against depth the box had already written -- while the plate
+	 * beside it, drawn on the name-tag phase and depth-sorted with the rest,
+	 * composited over the water properly.
 	 *
-	 * <p>Drawn instead as two quads submitted before the glyphs, at a lower
-	 * order: {@code renderTranslucentFeatures} walks the orders in turn, and
-	 * custom geometry in one order runs before text in the next, so the box is
-	 * always behind what sits on it.
-	 *
-	 * <p>Two quads, not one, because vanilla queues an opaque-backdrop plate on
-	 * both of its lists. The see-through copy has no depth test and shows
-	 * through walls; the in-view copy is depth tested, and is what stops water
-	 * and hitbox lines drawn later from crossing the box. A row with only the
-	 * first had them cutting straight through it.
+	 * <p>Only the first pass carries it. The box spans the whole line, so a
+	 * second one paints over what the first pass drew; and every text render
+	 * type shares a buffer flushed on each type change, which makes the tier
+	 * icons -- from their own texture -- a separate flush for a later box to
+	 * land on. That is what buried the icons when both passes carried one.
 	 */
 	private static void line(SubmitNodeCollector collector, PoseStack poseStack, Font font,
 			Component text, float y, float shift, boolean seeThrough, int light,
@@ -190,83 +171,39 @@ public class LabelMixin {
 		int width = font.width(text);
 		float x = -width / 2.0f + shift;
 
-		if ((background & 0xFF000000) != 0) {
-			// The box vanilla would draw for this text: a pixel of margin on
-			// the left and above, none on the right, nine rows of text below.
-			float left = x - 1.0f;
-			float top = y - 1.0f;
-			float right = x + width;
-			float bottom = y + 9.0f;
-			// Seen-through first and in-view second, the order the nameplate's
-			// own two lists are walked in.
-			//
-			// Both are drawn, and both are drawn fainter, because they land on
-			// top of one another: at the colour asked for, two passes composed
-			// to twice the darkness of the plate beside them. Measured against
-			// a sky of 78A7FF, the plate came out 5A7EC0 and a row 445F91 --
-			// one layer of vanilla's quarter-opaque black against two.
-			int split = halved(background);
-			if (seeThrough) {
-				backdrop(collector, poseStack, RenderTypes.textBackgroundSeeThrough(),
-						split, light, left, top, right, bottom);
-			}
-			backdrop(collector, poseStack, RenderTypes.textBackground(),
-					split, light, left, top, right, bottom);
-		}
-
 		FormattedCharSequence ordered = text.getVisualOrderText();
 		// A shadow when the plate has one, so the rows are not the only text
 		// on the tag without it.
 		boolean shadow = NametagTweaks.textShadow();
-		// A later order than the backdrop, so the glyphs land on top of it.
-		var queue = collector.order(1);
+		var queue = collector.order(0);
+		// The font's own backdrop, not a quad of ours.
+		//
+		// Ours was custom geometry, and the two are drawn by different
+		// phases: renderTranslucentFeatures runs the name tags, then the
+		// text, and custom geometry last of all. A depth-writing quad in that
+		// last phase went down after everything in the phases before it, so
+		// water behind the row was rejected against depth our box had already
+		// written -- while the plate beside it, drawn on the name-tag phase
+		// and sorted back to front with the rest of them, composited over the
+		// water correctly. That is the whole of the difference the two
+		// showed.
+		//
+		// Only the first pass carries it. The background is a box the width
+		// of the whole line, so a second pass carrying one paints over what
+		// the first pass drew -- and every text render type shares one
+		// buffer, so the tier icons, coming from their own texture, are a
+		// separate flush that a later box lands on top of. That is what used
+		// to bury the icons, and why the second pass is given nothing to
+		// draw behind it.
 		if (seeThrough) {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.SEE_THROUGH,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
 					LightCoordsUtil.lightCoordsWithEmission(light, EMISSION), SOLID, 0, 0);
 		} else {
 			queue.submitText(poseStack, x, y, ordered, shadow, Font.DisplayMode.NORMAL,
-					light, FAINT, 0, 0);
+					light, FAINT, background, 0);
 		}
 	}
 
-	/**
-	 * The alpha one of two stacked passes needs to land on the asked-for one.
-	 *
-	 * <p>Two coats of alpha <i>b</i> leave 1-(1-b)², so a pass wanting to end
-	 * at <i>a</i> has to be drawn at 1-sqrt(1-a). At vanilla's quarter-opaque
-	 * black that is a little over an eighth each; at a fully opaque colour it
-	 * stays fully opaque, which is what keeps a solid plate solid.
-	 */
-	private static int halved(int colour) {
-		int alpha = colour >>> 24;
-		if (alpha >= 0xFF) {
-			return colour;
-		}
-		int split = Math.round((float) ((1.0 - Math.sqrt(1.0 - alpha / 255.0)) * 255.0));
-		return (split << 24) | (colour & 0xFFFFFF);
-	}
-
-	/** One backdrop quad on one layer, at the default order. */
-	private static void backdrop(SubmitNodeCollector collector, PoseStack poseStack,
-			RenderType layer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		collector.submitCustomGeometry(poseStack, layer,
-				(pose, buffer) -> quad(pose, buffer, colour, light, left, top, right, bottom));
-	}
-
-	/**
-	 * One backdrop quad, wound the way vanilla winds its own.
-	 *
-	 * <p>Anticlockwise from the top left. The other winding is silently
-	 * discarded: these layers cull back faces, with no error to say so.
-	 */
-	private static void quad(PoseStack.Pose pose, VertexConsumer buffer, int colour, int light,
-			float left, float top, float right, float bottom) {
-		buffer.addVertex(pose, left, top, BACKDROP_DEPTH).setColor(colour).setLight(light);
-		buffer.addVertex(pose, left, bottom, BACKDROP_DEPTH).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, bottom, BACKDROP_DEPTH).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, top, BACKDROP_DEPTH).setColor(colour).setLight(light);
-	}
 }

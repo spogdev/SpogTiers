@@ -774,8 +774,11 @@ public final class TagEditor {
 		// is what a fixed position would do at a large GUI scale. The row
 		// reserves the line above itself for its message, so pushing it down
 		// has to leave room for that too.
+		// Its own height, not the row pitch: the buttons are shorter than
+		// ROW_HEIGHT, so measuring the gap with the pitch left more space
+		// under the row than the padding either side of it.
 		int room = complaint == null ? 0 : font.lineHeight + 3;
-		drawCodeRow(graphics, left, Math.max(y + room, bottom - PADDING - ROW_HEIGHT),
+		drawCodeRow(graphics, left, Math.max(y + room, bottom - PADDING - BUTTON_HEIGHT),
 				right, mouseX, mouseY);
 
 		// Save, Cancel and Reset are drawn where Done sits, by drawActions.
@@ -1137,6 +1140,17 @@ public final class TagEditor {
 	}
 
 	/**
+	 * Whether an element may be removed.
+	 *
+	 * <p>Everything but the name. A layout has to have exactly one, so
+	 * deleting it is a change that cannot be kept: {@code normalise} adds one
+	 * back when the config is next read.
+	 */
+	private static boolean deletable(TagLayout.Element element) {
+		return element.kind != TagLayout.Kind.NAME;
+	}
+
+	/**
 	 * Whether an element has anything to configure.
 	 *
 	 * <p>A name is the player's own and a region is read from their tier
@@ -1359,7 +1373,11 @@ public final class TagEditor {
 				changed();
 			}
 			case "delete" -> {
-				if (selected != null) {
+				// The name is not deletable. A tag without it draws no name
+				// at all, and normalise puts one back on the next start --
+				// so allowing the delete only meant losing whatever row and
+				// position the name had, and getting a default one back.
+				if (selected != null && deletable(selected)) {
 					remember();
 					working.elements.remove(selected);
 					selected = null;
@@ -1882,12 +1900,18 @@ public final class TagEditor {
 	 */
 	private void trash(GuiGraphicsExtractor graphics, int x, int y, int size,
 			int mouseX, int mouseY) {
-		boolean hovered = mouseX >= x && mouseX < x + size
+		// Greyed while the selection cannot be deleted, but still in red:
+		// a bin drawn in neutral grey reads as a different button, where a
+		// dimmed red one reads as the same button turned off.
+		boolean allowed = selected != null && deletable(selected);
+		boolean hovered = allowed && mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? RED.hovered() : RED.fill());
-		outline(graphics, x, y, x + size, y + size, hovered ? RED.text() : RED.border());
+		int fill = allowed ? (hovered ? RED.hovered() : RED.fill()) : dim(RED.fill());
+		int border = allowed ? (hovered ? RED.text() : RED.border()) : dim(RED.border());
+		graphics.fill(x, y, x + size, y + size, fill);
+		outline(graphics, x, y, x + size, y + size, border);
 
-		int ink = RED.text();
+		int ink = allowed ? RED.text() : dim(RED.text());
 		int cx = x + size / 2;
 		// A pixel below centre: the lid and handle sit above `top`, so
 		// measuring from the middle left the bin riding high in its button.
@@ -1902,10 +1926,23 @@ public final class TagEditor {
 		graphics.fill(cx - 4, top + 9, cx + 4, top + 10, ink);
 		graphics.fill(cx - 2, top + 4, cx - 1, top + 8, ink);
 		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
-		buttons.add(new Button("delete", x, y, x + size, y + size));
+		if (allowed) {
+			buttons.add(new Button("delete", x, y, x + size, y + size));
+		}
 		if (hovered) {
 			hoverButton = new Explained("Delete selected element", RED);
 		}
+	}
+
+	/**
+	 * A colour at a third of its strength, for a control that cannot be used.
+	 *
+	 * <p>The alpha is dropped rather than the hue washed towards grey, so a
+	 * disabled control keeps the colour that says which control it is.
+	 */
+	private static int dim(int colour) {
+		int alpha = (colour >>> 24) / 3;
+		return (alpha << 24) | (colour & 0xFFFFFF);
 	}
 
 
