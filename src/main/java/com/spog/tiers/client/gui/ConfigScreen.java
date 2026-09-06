@@ -227,6 +227,13 @@ public class ConfigScreen extends Screen {
 	 * separately since their open list is not a zone.
 	 */
 	private void requestPointerCursor(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+		// A text box first: it sits inside the same panel the rows do, so
+		// asking for the hand first would win and the box would never show
+		// the caret that says it can be typed in.
+		if (active == Tab.NAMETAG && tagEditor.isOverText(mouseX, mouseY)) {
+			graphics.requestCursor(CursorTypes.IBEAM);
+			return;
+		}
 		boolean over = false;
 		for (Dropdown<?> dropdown : dropdowns()) {
 			if (dropdown != null && dropdown.isHovered(font, mouseX, mouseY)) {
@@ -622,7 +629,7 @@ public class ConfigScreen extends Screen {
 					return true;
 				}
 			}
-			if (tagEditor.click(event.x(), event.y())) {
+			if (tagEditor.click(event, doubled)) {
 				click();
 				return true;
 			}
@@ -657,7 +664,7 @@ public class ConfigScreen extends Screen {
 	public boolean mouseDragged(net.minecraft.client.input.MouseButtonEvent event,
 			double dragX, double dragY) {
 		if (active == Tab.NAMETAG) {
-			tagEditor.drag(event.x(), event.y());
+			tagEditor.drag(event, dragX, dragY);
 		}
 		return super.mouseDragged(event, dragX, dragY);
 	}
