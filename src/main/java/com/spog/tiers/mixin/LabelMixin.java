@@ -65,6 +65,17 @@ public class LabelMixin {
 	/** Vanilla's emission for the in-view pass, so text never sits in shadow. */
 	private static final int EMISSION = 2;
 
+	/**
+	 * How far behind the glyphs the backdrop sits, as vanilla puts its own.
+	 *
+	 * <p>Vanilla's {@code UNDER_EFFECT_DEPTH}, copied rather than chosen. A box
+	 * level with the text is coplanar with it, and two coplanar surfaces fight
+	 * over the depth buffer: the text flickered as the camera moved. Sitting
+	 * behind also settles which one wins without relying on draw order, so an
+	 * icon cannot be painted over by a box that happens to be batched later.
+	 */
+	private static final float BACKDROP_DEPTH = -0.01f;
+
 	@Inject(method = "submitNameDisplay(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"
 			+ "Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;"
 			+ "Lnet/minecraft/client/renderer/state/level/CameraRenderState;I)V",
@@ -229,9 +240,9 @@ public class LabelMixin {
 	 */
 	private static void quad(PoseStack.Pose pose, VertexConsumer buffer, int colour, int light,
 			float left, float top, float right, float bottom) {
-		buffer.addVertex(pose, left, top, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, left, bottom, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, bottom, 0.0f).setColor(colour).setLight(light);
-		buffer.addVertex(pose, right, top, 0.0f).setColor(colour).setLight(light);
+		buffer.addVertex(pose, left, top, BACKDROP_DEPTH).setColor(colour).setLight(light);
+		buffer.addVertex(pose, left, bottom, BACKDROP_DEPTH).setColor(colour).setLight(light);
+		buffer.addVertex(pose, right, bottom, BACKDROP_DEPTH).setColor(colour).setLight(light);
+		buffer.addVertex(pose, right, top, BACKDROP_DEPTH).setColor(colour).setLight(light);
 	}
 }
