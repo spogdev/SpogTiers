@@ -345,8 +345,11 @@ public class ProfileScreen extends Screen {
 
 		// The rest of the embers, over the model now that it has drawn, so the
 		// effect wraps the player rather than sitting flat behind them.
-		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists
-				&& SpogTiersClient.config().showParticles) {
+		// Not gated on the Particles setting: that hides the aura in the world,
+		// where it sits on other players and is a matter of taste. Here it is
+		// part of how a graded profile looks, and turning it off left the card
+		// looking like the lookup had failed.
+		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
 					skinWidget.getX(), skinWidget.getY(),
 					skinWidget.getWidth(), skinWidget.getHeight(), true);
@@ -550,8 +553,8 @@ public class ProfileScreen extends Screen {
 		// Outside the panel transform, because the model is a widget in screen
 		// space rather than something drawn into the panel. Widgets render
 		// after this method, so the embers land behind the player.
-		if (skinWidget != null && SpogTiersClient.config().extraTierlists
-				&& SpogTiersClient.config().showParticles) {
+		// As above: the Particles setting is about the world, not this card.
+		if (skinWidget != null && SpogTiersClient.config().extraTierlists) {
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
 					skinWidget.getWidth(), skinWidget.getHeight(), false);
 		}
