@@ -3,6 +3,7 @@ package com.spog.tiers.client.gui;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ClientCommands;
 import com.spog.tiers.client.ModeIcons;
+import com.spog.tiers.config.LayoutCode;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.config.TagLayout;
 import com.spog.tiers.data.Gamemode;
@@ -606,13 +607,15 @@ public final class TagEditor {
 		int narrow = 56;
 		int gap = 6;
 		int barX = addX + addSize + gap * 2;
-		String[] labels = {"Undo", "Reset", "Revert"};
-		String[] ids = {"undo", "reset", "revert"};
-		Tint[] tints = {BLUE, AMBER, RED};
+		String[] labels = {"Undo", "Reset", "Revert", "Share", "Import"};
+		String[] ids = {"undo", "reset", "revert", "share", "import"};
+		Tint[] tints = {BLUE, AMBER, RED, GREEN, GREEN};
 		String[] explains = {
 			"Rolls back the most recent change",
 			"Resets the tag to default settings",
 			"Rolls back all changes done in this editing session",
+			"Copies a code for this tag and its settings, to send to someone",
+			"Loads a tag from a code on the clipboard",
 		};
 		int perRow = fitPerRow(right - PADDING - barX, narrow, gap, labels.length);
 		if (perRow < labels.length) {
@@ -1101,6 +1104,8 @@ public final class TagEditor {
 				selected = null;
 				changed();
 			}
+			case "share" -> share();
+			case "import" -> paste();
 			case "toggle.enabled" -> {
 				config.enabled = !config.enabled;
 				config.save();
@@ -1152,6 +1157,54 @@ public final class TagEditor {
 	 * without anyone pressing anything. Revert is what puts it back, from the
 	 * copy taken when the tab was opened.
 	 */
+	/**
+	 * Puts a code for this tag and its settings on the clipboard.
+	 *
+	 * <p>The clipboard rather than a file or a screen full of text: a code is
+	 * only useful once it is somewhere it can be sent to someone, and every
+	 * way of sending it starts with a paste.
+	 */
+	private void share() {
+		String code = LayoutCode.write(SpogTiersClient.config());
+		if (code == null) {
+			complaint = "Could not build a code for this tag";
+			return;
+		}
+		Minecraft.getInstance().keyboardHandler.setClipboard(code);
+		complaint = "Code copied -- paste it to share this tag";
+	}
+
+	/**
+	 * Loads a tag from a code on the clipboard.
+	 *
+	 * <p>Read from the clipboard rather than typed into a box: the codes run
+	 * to a couple of hundred characters, which nobody is going to retype, and
+	 * anyone who has been sent one already has it copied.
+	 *
+	 * <p>The current tag is remembered first, so an import that turns out to
+	 * be someone else's taste is one Undo away rather than a loss.
+	 */
+	private void paste() {
+		String clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
+		LayoutCode.Result result = LayoutCode.read(clipboard);
+		if (!result.ok()) {
+			complaint = result.problem().message();
+			return;
+		}
+		remember();
+		SpogTiersConfig config = SpogTiersClient.config();
+		String note = LayoutCode.apply(result.payload(), config);
+		// Re-read from the config rather than trusting what went in: apply
+		// normalises, so what is drawn has to be what was actually kept.
+		working = config.tagLayout.copy();
+		original = working.copy();
+		selected = null;
+		if (onChange != null) {
+			onChange.run();
+		}
+		complaint = note == null ? "Tag imported" : note;
+	}
+
 	private void changed() {
 		complaint = null;
 		SpogTiersConfig config = SpogTiersClient.config();
