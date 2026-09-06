@@ -92,7 +92,7 @@ public final class LayoutCode {
 	/** What a code failed to be, for a message the user can act on. */
 	public enum Problem {
 		/** Not one of our codes at all: a stray paste, or cut short. */
-		NOT_A_CODE("That is not a SpogTiers layout code"),
+		NOT_A_CODE("Invalid code"),
 		/** Ours, but written by a build whose format this one cannot read. */
 		TOO_NEW("That code is from a newer version of SpogTiers than this one"),
 		/** Ours and the right format, but nothing usable in it. */
