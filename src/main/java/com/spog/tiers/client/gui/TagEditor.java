@@ -146,6 +146,9 @@ public final class TagEditor {
 	private String previewName = "";
 	private EditBox nameField;
 
+	/** The box a shared code is pasted into. */
+	private EditBox codeField;
+
 	/** Which element the right panel is showing, or null for none. */
 	private TagLayout.Element selected;
 
@@ -317,6 +320,12 @@ public final class TagEditor {
 		if (field != null && field.isFocused()) {
 			return field.keyPressed(event);
 		}
+		// The code box takes the keys before Delete is read as "remove the
+		// selected element": someone editing a code expects Backspace to edit
+		// it, not to take a piece off their tag.
+		if (codeField != null && codeField.isFocused()) {
+			return codeField.keyPressed(event);
+		}
 		// Delete and Backspace both remove: which one people reach for
 		// depends on their keyboard, and neither means anything else here.
 		if ((event.key() == 261 || event.key() == 259) && selected != null) {
@@ -326,10 +335,13 @@ public final class TagEditor {
 		return false;
 	}
 
-	/** Typing, when the name box has focus. */
+	/** Typing, when either box has focus. */
 	public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
 		EditBox field = nameField();
-		return field != null && field.isFocused() && field.charTyped(event);
+		if (field != null && field.isFocused()) {
+			return field.charTyped(event);
+		}
+		return codeField != null && codeField.isFocused() && codeField.charTyped(event);
 	}
 
 	/** Every dropdown, so the screen can route clicks and overlays to them. */
@@ -429,6 +441,31 @@ public final class TagEditor {
 		SpogTiersClient.service().requestNow(id);
 	}
 
+
+	/**
+	 * The box a code is pasted into, built on first use and then moved.
+	 *
+	 * <p>Made here rather than by the screen because it belongs to this row
+	 * and nothing else needs to know it exists. Rebuilt only when the width
+	 * changes, so what someone has typed survives a resize.
+	 */
+	private void codeField(int x, int y, int width) {
+		if (codeField == null || codeField.getWidth() != width) {
+			String kept = codeField == null ? "" : codeField.getValue();
+			codeField = new EditBox(font, x, y, width, ROW_HEIGHT - 4,
+					Component.literal("Layout code"));
+			// Long enough for any code this build writes, with room for codes
+			// a later one might write.
+			codeField.setMaxLength(2048);
+			codeField.setValue(kept);
+		}
+		codeField.setPosition(x, y);
+	}
+
+	/** The code box, so the screen can route typing to it. */
+	public EditBox codeBox() {
+		return codeField;
+	}
 
 	/** The name box, when one is on screen, so the screen can drive it. */
 	public EditBox nameField() {
@@ -607,15 +644,13 @@ public final class TagEditor {
 		int narrow = 56;
 		int gap = 6;
 		int barX = addX + addSize + gap * 2;
-		String[] labels = {"Undo", "Reset", "Revert", "Share", "Import"};
-		String[] ids = {"undo", "reset", "revert", "share", "import"};
-		Tint[] tints = {BLUE, AMBER, RED, GREEN, GREEN};
+		String[] labels = {"Undo", "Reset", "Revert"};
+		String[] ids = {"undo", "reset", "revert"};
+		Tint[] tints = {BLUE, AMBER, RED};
 		String[] explains = {
 			"Rolls back the most recent change",
 			"Resets the tag to default settings",
 			"Rolls back all changes done in this editing session",
-			"Copies a code for this tag and its settings, to send to someone",
-			"Loads a tag from a code on the clipboard",
 		};
 		int perRow = fitPerRow(right - PADDING - barX, narrow, gap, labels.length);
 		if (perRow < labels.length) {
@@ -631,7 +666,25 @@ public final class TagEditor {
 					tints[i], explains[i]);
 		}
 		y += (labels.length - 1) / perRow * (ROW_HEIGHT + 4);
-		y += ROW_HEIGHT + 8;
+		y += ROW_HEIGHT + 6;
+
+		// A row of its own under the buttons: a box to paste a code into, the
+		// button that reads it, and the one that writes a new code out. The
+		// box is where it is because importing starts with a paste, and Export
+		// sits beside it because the two are the same job in either direction.
+		int codeButton = 52;
+		int codeGap = 6;
+		int boxWidth = Math.max(60,
+				right - PADDING - (left + PADDING) - (codeButton + codeGap) * 2);
+		codeField(left + PADDING, y, boxWidth);
+		codeField.extractWidgetRenderState(graphics, mouseX, mouseY, 0.0f);
+		int importX = left + PADDING + boxWidth + codeGap;
+		colouredButton(graphics, "Import", importX, y, codeButton, mouseX, mouseY,
+				"import", GREEN, "Loads the tag from the code in the box");
+		colouredButton(graphics, "Export", importX + codeButton + codeGap, y, codeButton,
+				mouseX, mouseY, "export", BLUE,
+				"Puts a code for this tag in the box, and on the clipboard");
+		y += ROW_HEIGHT + 6;
 
 		if (complaint != null) {
 			graphics.text(font, Component.literal(complaint), left + PADDING, y, OFF_FILL);
@@ -952,6 +1005,16 @@ public final class TagEditor {
 				return true;
 			}
 		}
+		if (codeField != null) {
+			boolean inside = mouseX >= codeField.getX()
+					&& mouseX < codeField.getX() + codeField.getWidth()
+					&& mouseY >= codeField.getY()
+					&& mouseY < codeField.getY() + codeField.getHeight();
+			codeField.setFocused(inside);
+			if (inside) {
+				return true;
+			}
+		}
 		for (Button button : buttons) {
 			if (mouseX >= button.left() && mouseX < button.right()
 					&& mouseY >= button.top() && mouseY < button.bottom()) {
@@ -1104,7 +1167,7 @@ public final class TagEditor {
 				selected = null;
 				changed();
 			}
-			case "share" -> share();
+			case "export" -> share();
 			case "import" -> paste();
 			case "toggle.enabled" -> {
 				config.enabled = !config.enabled;
@@ -1170,6 +1233,12 @@ public final class TagEditor {
 			complaint = "Could not build a code for this tag";
 			return;
 		}
+		// Into the box as well as the clipboard: the box is where someone
+		// looks to see that it worked, and having it there means it can be
+		// re-copied by hand if the clipboard call went nowhere.
+		if (codeField != null) {
+			codeField.setValue(code);
+		}
 		Minecraft.getInstance().keyboardHandler.setClipboard(code);
 		complaint = "Code copied -- paste it to share this tag";
 	}
@@ -1185,15 +1254,20 @@ public final class TagEditor {
 	 * be someone else's taste is one Undo away rather than a loss.
 	 */
 	private void paste() {
-		String clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
-		LayoutCode.Result result = LayoutCode.read(clipboard);
+		// What is in the box, falling back to the clipboard when it is empty:
+		// someone who has just copied a code can press Import without pasting
+		// it first, and someone who typed one in gets theirs.
+		String typed = codeField == null ? "" : codeField.getValue().trim();
+		String code = typed.isEmpty()
+				? Minecraft.getInstance().keyboardHandler.getClipboard() : typed;
+		LayoutCode.Result result = LayoutCode.read(code);
 		if (!result.ok()) {
 			complaint = result.problem().message();
 			return;
 		}
 		remember();
 		SpogTiersConfig config = SpogTiersClient.config();
-		String note = LayoutCode.apply(result.payload(), config);
+		String note = LayoutCode.apply(result.parts(), config);
 		// Re-read from the config rather than trusting what went in: apply
 		// normalises, so what is drawn has to be what was actually kept.
 		working = config.tagLayout.copy();
