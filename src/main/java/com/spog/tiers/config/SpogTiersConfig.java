@@ -371,7 +371,14 @@ public class SpogTiersConfig {
 		return element;
 	}
 
-	private void normalise() {
+	/**
+	 * Repairs a config read from somewhere less trusted than our own writer.
+	 *
+	 * <p>Package-visible rather than private because an imported layout code
+	 * arrives in the same state a hand-edited file does: possibly missing the
+	 * name element, possibly naming a list this build does not have.
+	 */
+	void normalise() {
 		if (enabledLists == null) {
 			enabledLists = defaultLists();
 		} else {
