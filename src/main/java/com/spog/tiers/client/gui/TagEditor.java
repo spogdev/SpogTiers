@@ -606,7 +606,7 @@ public final class TagEditor {
 		Tint tint = hoverButton.tint();
 		int boxWidth = font.width(text) + 12;
 		int boxHeight = font.lineHeight + 12;
-		int boxX = Math.min(mouseX + 12, screenWidth - boxWidth - 4);
+		int boxX = Tooltips.x(mouseX, boxWidth, screenWidth);
 		int boxY = Math.clamp(mouseY - 8, 4, screenHeight - boxHeight - 4);
 
 		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, tint.border());
@@ -1002,10 +1002,19 @@ public final class TagEditor {
 			// Centred both ways: with nothing to show, text tucked into the
 			// top corner reads as a panel that failed to draw rather than one
 			// that is deliberately empty.
-			String empty = "Nothing selected";
-			graphics.text(font, Component.literal(empty),
-					left + (right - left - font.width(empty)) / 2,
-					top + (bottom - top - font.lineHeight) / 2, MUTED_COLOR);
+			middle(graphics, "Nothing selected", left, top, right, bottom);
+			scrollMax = 0;
+			return;
+		}
+
+		// Some kinds have nothing to configure. Saying so in the same place
+		// as "Nothing selected" is what distinguishes a panel with no options
+		// from one that failed to draw: an empty panel under a selected
+		// element otherwise looks like the editor lost track of it.
+		if (!hasOptions(selected)) {
+			middle(graphics, "This element type has no metadata",
+					left, top, right, bottom);
+			drawElementFooter(graphics, left, right, bottom, mouseX, mouseY);
 			scrollMax = 0;
 			return;
 		}
@@ -1033,13 +1042,7 @@ public final class TagEditor {
 			// between, so the second dropdown would only offer nothing.
 			if (selected.doorSmp) {
 				scrollMax = Math.max(0, (y + scroll) - (bottom - FOOTER_HEIGHT) + PADDING);
-				graphics.fill(left + 1, bottom - FOOTER_HEIGHT, right - 1,
-						bottom - FOOTER_HEIGHT + 1, PANEL_BORDER);
-				graphics.fill(left + 1, bottom - FOOTER_HEIGHT + 1, right - 1, bottom - 1,
-						0x40101720);
-				int doorInset = (FOOTER_HEIGHT - 18) / 2;
-				trash(graphics, right - doorInset - 18, bottom - FOOTER_HEIGHT + doorInset,
-						18, mouseX, mouseY);
+				drawElementFooter(graphics, left, right, bottom, mouseX, mouseY);
 				return;
 			}
 
@@ -1112,12 +1115,58 @@ public final class TagEditor {
 
 		// The footer, and delete pinned to its right. Drawn after the content
 		// so a long panel scrolls underneath rather than over it.
+		drawElementFooter(graphics, left, right, bottom, mouseX, mouseY);
+	}
+
+	/**
+	 * The element panel's footer, with delete pinned to its right.
+	 *
+	 * <p>Its own method because three paths out of the panel end here and
+	 * each had its own copy, which is how the Door SMP branch came to draw a
+	 * bin a pixel out from the others.
+	 */
+	private void drawElementFooter(GuiGraphicsExtractor graphics, int left, int right,
+			int bottom, int mouseX, int mouseY) {
+		int footer = bottom - FOOTER_HEIGHT;
 		graphics.fill(left + 1, footer, right - 1, footer + 1, PANEL_BORDER);
 		graphics.fill(left + 1, footer + 1, right - 1, bottom - 1, 0x40101720);
 		// The same gap from the right edge as from the top and bottom of the
 		// footer, so it sits square in its corner.
 		int inset = (FOOTER_HEIGHT - 18) / 2;
 		trash(graphics, right - inset - 18, footer + inset, 18, mouseX, mouseY);
+	}
+
+	/**
+	 * Whether an element has anything to configure.
+	 *
+	 * <p>A name is the player's own and a region is read from their tier
+	 * data, so neither has a setting to offer; a tier picks a list and a mode,
+	 * and a separator picks a character and a colour.
+	 */
+	private static boolean hasOptions(TagLayout.Element element) {
+		return element.kind == TagLayout.Kind.TIER
+				|| element.kind == TagLayout.Kind.SEPARATOR;
+	}
+
+	/**
+	 * A line of muted text in the middle of a panel, wrapped to its width.
+	 *
+	 * <p>Wrapped rather than drawn straight: the panel is a fixed share of
+	 * the screen, so at a large GUI scale it is only a few words wide and a
+	 * sentence written across it ran out past its right-hand edge. Each line
+	 * is centred on its own, which is what keeps a wrapped block looking
+	 * deliberate rather than ragged.
+	 */
+	private void middle(GuiGraphicsExtractor graphics, String message, int left, int top,
+			int right, int bottom) {
+		List<net.minecraft.util.FormattedCharSequence> lines =
+				font.split(Component.literal(message), right - left - PADDING * 2);
+		int y = top + (bottom - top - lines.size() * font.lineHeight) / 2;
+		for (var line : lines) {
+			graphics.text(font, line, left + (right - left - font.width(line)) / 2, y,
+					MUTED_COLOR);
+			y += font.lineHeight;
+		}
 	}
 
 	// ---------------------------------------------------------------- input
@@ -1854,6 +1903,9 @@ public final class TagEditor {
 		graphics.fill(cx - 2, top + 4, cx - 1, top + 8, ink);
 		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
 		buttons.add(new Button("delete", x, y, x + size, y + size));
+		if (hovered) {
+			hoverButton = new Explained("Delete selected element", RED);
+		}
 	}
 
 

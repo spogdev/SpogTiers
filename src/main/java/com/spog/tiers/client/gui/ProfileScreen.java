@@ -1564,7 +1564,7 @@ public class ProfileScreen extends Screen {
 
 		// Keep the tooltip on screen rather than letting it run off an edge.
 		// Placed in screen space, then the box is drawn scaled from there.
-		int boxX = Math.min(mouseX + 12, width - drawnWidth - 4);
+		int boxX = Tooltips.x(mouseX, drawnWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - drawnHeight - 4);
 
 		graphics.pose().pushMatrix();
@@ -1693,7 +1693,7 @@ public class ProfileScreen extends Screen {
 		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
 		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
 
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
@@ -1717,7 +1717,7 @@ public class ProfileScreen extends Screen {
 
 		// This one hangs off a card header, so it matches the cards as well.
 		float scale = cardScale;
-		int boxX = Math.min(mouseX + 12, width - Math.round(boxWidth * scale) - 4);
+		int boxX = Tooltips.x(mouseX, Math.round(boxWidth * scale), width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - Math.round(boxHeight * scale) - 4);
 
 		graphics.pose().pushMatrix();
@@ -1737,7 +1737,7 @@ public class ProfileScreen extends Screen {
 
 		int boxWidth = font.width(name) + TOOLTIP_PADDING * 2;
 		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
@@ -1753,7 +1753,7 @@ public class ProfileScreen extends Screen {
 
 		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
 		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
