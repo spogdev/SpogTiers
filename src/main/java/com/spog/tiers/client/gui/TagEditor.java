@@ -55,8 +55,19 @@ public final class TagEditor {
 				return thread;
 			});
 
-	/** How tall the code box is, matching the switches beside it. */
-	private static final int CODE_HEIGHT = 14;
+	/**
+	 * How tall a coloured button is.
+	 *
+	 * <p>Exactly as tall as the plus beside them, which is a square of the
+	 * same row's height. A pixel short of it left their bottom edges visibly
+	 * out of line along the row; the top edge is shared, so the difference
+	 * showed up entirely at the bottom.
+	 *
+	 * <p>Shared with the code box so the two cannot drift apart: they sit on
+	 * the same line, where any difference in height reads as one of them
+	 * being wrong.
+	 */
+	private static final int BUTTON_HEIGHT = 18;
 
 	/**
 	 * The gap between the card's border and the text inside it.
@@ -488,7 +499,11 @@ public final class TagEditor {
 	private void codeField(int x, int y, int width) {
 		if (codeField == null || codeField.getWidth() != width) {
 			String kept = codeField == null ? "" : codeField.getText();
-			codeField = new TextFieldWidget(font, x, y, width, CODE_HEIGHT,
+			// As tall as one line of text, not as tall as the card: an
+			// unbordered box draws from its own top-left, so its height is
+			// only its hit rectangle, and the card is hit-tested here
+			// instead.
+			codeField = new TextFieldWidget(font, x, y, width, font.fontHeight,
 					Text.literal("Layout code"));
 			// Vanilla's own box is a white outline on black, which is the one
 			// thing on this screen that does not look like the rest of it.
@@ -518,14 +533,14 @@ public final class TagEditor {
 		// placed where the glyphs should land and the card is drawn around
 		// it. Sizing the box to the card instead left the text against the
 		// top edge.
-		int textY = y + (CODE_HEIGHT - font.fontHeight) / 2;
+		int textY = y + (BUTTON_HEIGHT - font.fontHeight) / 2;
 		codeField(x + CODE_INSET, textY, width - CODE_INSET * 2);
 		boolean focused = codeField.isFocused();
-		graphics.fill(x, y, x + width, y + CODE_HEIGHT, PANEL_FILL);
-		outline(graphics, x, y, x + width, y + CODE_HEIGHT,
+		graphics.fill(x, y, x + width, y + BUTTON_HEIGHT, PANEL_FILL);
+		outline(graphics, x, y, x + width, y + BUTTON_HEIGHT,
 				focused ? ACCENT : PANEL_BORDER);
 		codeField.renderWidget(graphics, mouseX, mouseY, 0.0f);
-		codeBox = new Button("code", x, y, x + width, y + CODE_HEIGHT);
+		codeBox = new Button("code", x, y, x + width, y + BUTTON_HEIGHT);
 	}
 
 	/** The code box, so the screen can route typing to it. */
@@ -692,19 +707,6 @@ public final class TagEditor {
 
 		y = plateTop + plateHeight + 10;
 
-		// What the code buttons had to say, on a line of its own above the
-		// controls rather than beside the box that produced it. Down at the
-		// foot of the pane it was the last thing on a crowded edge and went
-		// unread; here it has the full width of the column. It is drawn
-		// before the row below is placed so that row moves down as a whole,
-		// keeping the creator and the buttons on the same line as each
-		// other, and only when there is something to say.
-		if (complaint != null) {
-			graphics.drawTextWithShadow(font, Text.literal(complaint), left + PADDING, y,
-					complaintGood ? GOOD_FILL : OFF_FILL);
-			y += font.fontHeight + 4;
-		}
-
 		// Pick a kind and press plus; it lands at the end of the middle row
 		// where it can be seen and then dragged.
 		// A second name would draw the player's name twice with no way to
@@ -769,9 +771,12 @@ public final class TagEditor {
 		// moving it. At the bottom it is always in the same place.
 		// Except when the buttons above have wrapped far enough down to reach
 		// it -- then it follows them instead of being drawn over them, which
-		// is what a fixed position would do at a large GUI scale.
-		drawCodeRow(graphics, left, Math.max(y, bottom - PADDING - ROW_HEIGHT), right,
-				mouseX, mouseY);
+		// is what a fixed position would do at a large GUI scale. The row
+		// reserves the line above itself for its message, so pushing it down
+		// has to leave room for that too.
+		int room = complaint == null ? 0 : font.fontHeight + 3;
+		drawCodeRow(graphics, left, Math.max(y + room, bottom - PADDING - ROW_HEIGHT),
+				right, mouseX, mouseY);
 
 		// Save, Cancel and Reset are drawn where Done sits, by drawActions.
 	}
@@ -788,25 +793,34 @@ public final class TagEditor {
 	 */
 	private void drawCodeRow(DrawContext graphics, int left, int y, int right,
 			int mouseX, int mouseY) {
+		// What the last press had to say, directly above the box it came
+		// from. Beside the buttons at the top of the pane it was too far from
+		// what caused it to read as an answer to it.
+		if (complaint != null) {
+			graphics.drawTextWithShadow(font, Text.literal(complaint), left + PADDING,
+					y - font.fontHeight - 3, complaintGood ? GOOD_FILL : OFF_FILL);
+		}
+
 		int codeGap = 6;
 		// Narrower than the row above: three buttons and a box share this
 		// width where that row shares it between three buttons alone.
 		int codeButton = 44;
 		int span = right - PADDING - (left + PADDING);
 		int boxWidth = Math.max(40, span - (codeButton + codeGap) * 3);
-		int boxY = y + (ROW_HEIGHT - CODE_HEIGHT) / 2;
-		drawCodeField(graphics, left + PADDING, boxY, boxWidth, mouseX, mouseY);
+		drawCodeField(graphics, left + PADDING, y, boxWidth, mouseX, mouseY);
 
 		int x = left + PADDING + boxWidth + codeGap;
+		// No explanation on Clear: the word says the whole of what it does,
+		// and a tooltip over a row this tight was in the way more than it
+		// was any help.
 		colouredButton(graphics, "Clear", x, y, codeButton, mouseX, mouseY,
-				"clear", AMBER, "Empties the code box");
+				"clear", AMBER, null);
 		x += codeButton + codeGap;
 		colouredButton(graphics, "Import", x, y, codeButton, mouseX, mouseY,
 				"import", GREEN, "Loads the tag from the code in the box");
 		x += codeButton + codeGap;
 		colouredButton(graphics, "Export", x, y, codeButton, mouseX, mouseY,
-				"export", BLUE,
-				"Puts a code for this tag in the box, and on the clipboard");
+				"export", BLUE, "Generate a code for your tag layout");
 	}
 
 	/** One row of the preview, and the hit boxes for its elements. */
@@ -1134,7 +1148,11 @@ public final class TagEditor {
 					&& event.y() >= codeBox.top() && event.y() < codeBox.bottom();
 			codeField.setFocused(inside);
 			if (inside) {
-				codeField.mouseClicked(event, doubled);
+				// onClick rather than mouseClicked: that checks the widget's
+				// own rectangle first, which is only the line of text, so a
+				// press on the card's padding would be dropped and the caret
+				// would not move.
+				codeField.onClick(event, doubled);
 				return true;
 			}
 		}
@@ -1740,11 +1758,7 @@ public final class TagEditor {
 	 */
 	private void colouredButton(DrawContext graphics, String label, int x, int y,
 			int width, int mouseX, int mouseY, String id, Tint tint, String explains) {
-		// Exactly as tall as the plus beside them, which is a square of the
-		// same row's height. A pixel short of it left their bottom edges
-		// visibly out of line along the row; the top edge is shared, so the
-		// difference showed up entirely at the bottom.
-		int height = 18;
+		int height = BUTTON_HEIGHT;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
 		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
