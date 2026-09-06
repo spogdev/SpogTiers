@@ -55,6 +55,17 @@ public final class TagEditor {
 				return thread;
 			});
 
+	/** How tall the code box is, matching the switches beside it. */
+	private static final int CODE_HEIGHT = 14;
+
+	/**
+	 * The gap between the card's border and the text inside it.
+	 *
+	 * <p>Without it the first character sat on the border, which no other
+	 * field on this screen does.
+	 */
+	private static final int CODE_INSET = 4;
+
 	private static final int PANEL_FILL = 0x50161B22;
 	private static final int PANEL_BORDER = 0x70323B47;
 	private static final int LABEL_COLOR = 0xFFB9C4D0;
@@ -65,6 +76,14 @@ public final class TagEditor {
 	/** A switch reads as on or off by colour, not by position alone. */
 	private static final int ON_FILL = 0xFF4CAF50;
 	private static final int OFF_FILL = 0xFFC1443C;
+
+	/**
+	 * The colour a message that worked is written in.
+	 *
+	 * <p>The green a switch's text uses when it is on, so "it worked" reads
+	 * the same here as it does everywhere else on this screen.
+	 */
+	private static final int GOOD_FILL = 0xFFA8E39B;
 
 
 	/**
@@ -149,11 +168,24 @@ public final class TagEditor {
 	/** The box a shared code is pasted into. */
 	private TextFieldWidget codeField;
 
+	/** Where that box was drawn, for hit-testing and the text cursor. */
+	private Button codeBox;
+
 	/** Which element the right panel is showing, or null for none. */
 	private TagLayout.Element selected;
 
 	/** Set when a save is refused, and cleared by the next change. */
 	private String complaint;
+
+	/**
+	 * Whether {@link #complaint} is good news rather than a refusal.
+	 *
+	 * <p>The same line carries both -- "Code copied!" and "That is not a
+	 * layout code" appear in the same place -- so the colour is what tells
+	 * them apart. Red for a refusal is the older meaning and stays the
+	 * default; anything that worked has to say so.
+	 */
+	private boolean complaintGood;
 
 	/** What to explain under the pointer this frame, or null. */
 	private String hover;
@@ -367,6 +399,10 @@ public final class TagEditor {
 		hits.clear();
 		buttons.clear();
 		bands.clear();
+		// Cleared with the rest: the code box is only where it was last
+		// drawn, and on a tab that does not draw it a stale rectangle would
+		// still take clicks.
+		codeBox = null;
 		hover = null;
 		hoverButton = null;
 
@@ -452,14 +488,44 @@ public final class TagEditor {
 	private void codeField(int x, int y, int width) {
 		if (codeField == null || codeField.getWidth() != width) {
 			String kept = codeField == null ? "" : codeField.getText();
-			codeField = new TextFieldWidget(font, x, y, width, ROW_HEIGHT - 4,
+			codeField = new TextFieldWidget(font, x, y, width, CODE_HEIGHT,
 					Text.literal("Layout code"));
+			// Vanilla's own box is a white outline on black, which is the one
+			// thing on this screen that does not look like the rest of it.
+			// Its border is turned off and the card behind it is drawn here
+			// instead, in the same fill and border every panel uses.
+			codeField.setDrawsBackground(false);
+			codeField.setEditableColor(TEXT_COLOR);
+			codeField.setPlaceholder(Text.literal("Paste a code"));
 			// Long enough for any code this build writes, with room for codes
 			// a later one might write.
 			codeField.setMaxLength(2048);
 			codeField.setText(kept);
 		}
 		codeField.setPosition(x, y);
+	}
+
+	/**
+	 * Draws the card behind the code box, and the box on top of it.
+	 *
+	 * <p>The border lights to the accent while it has focus, which is how
+	 * everything else on this screen shows what typing will reach.
+	 */
+	private void drawCodeField(DrawContext graphics, int x, int y, int width,
+			int mouseX, int mouseY) {
+		// An unbordered box draws its text at its own top-left with no inset
+		// of its own -- vanilla only insets a bordered one -- so the box is
+		// placed where the glyphs should land and the card is drawn around
+		// it. Sizing the box to the card instead left the text against the
+		// top edge.
+		int textY = y + (CODE_HEIGHT - font.fontHeight) / 2;
+		codeField(x + CODE_INSET, textY, width - CODE_INSET * 2);
+		boolean focused = codeField.isFocused();
+		graphics.fill(x, y, x + width, y + CODE_HEIGHT, PANEL_FILL);
+		outline(graphics, x, y, x + width, y + CODE_HEIGHT,
+				focused ? ACCENT : PANEL_BORDER);
+		codeField.renderWidget(graphics, mouseX, mouseY, 0.0f);
+		codeBox = new Button("code", x, y, x + width, y + CODE_HEIGHT);
 	}
 
 	/** The code box, so the screen can route typing to it. */
@@ -471,6 +537,21 @@ public final class TagEditor {
 	public TextFieldWidget nameField() {
 		return selected != null && selected.kind == TagLayout.Kind.NAME
 				&& nameField != null && nameField.visible ? nameField : null;
+	}
+
+	/**
+	 * Whether the pointer is over a box that takes typing.
+	 *
+	 * <p>Asked separately from {@link #isOverControl} because these two want
+	 * different cursors: a button wants the hand, a text box wants the caret.
+	 */
+	public boolean isOverText(int mouseX, int mouseY) {
+		if (codeBox != null && mouseX >= codeBox.left() && mouseX < codeBox.right()
+				&& mouseY >= codeBox.top() && mouseY < codeBox.bottom()) {
+			return true;
+		}
+		TextFieldWidget field = nameField();
+		return field != null && inside(field, mouseX, mouseY);
 	}
 
 	/** Whether the pointer is over anything clickable, for the cursor. */
@@ -611,6 +692,19 @@ public final class TagEditor {
 
 		y = plateTop + plateHeight + 10;
 
+		// What the code buttons had to say, on a line of its own above the
+		// controls rather than beside the box that produced it. Down at the
+		// foot of the pane it was the last thing on a crowded edge and went
+		// unread; here it has the full width of the column. It is drawn
+		// before the row below is placed so that row moves down as a whole,
+		// keeping the creator and the buttons on the same line as each
+		// other, and only when there is something to say.
+		if (complaint != null) {
+			graphics.drawTextWithShadow(font, Text.literal(complaint), left + PADDING, y,
+					complaintGood ? GOOD_FILL : OFF_FILL);
+			y += font.fontHeight + 4;
+		}
+
 		// Pick a kind and press plus; it lands at the end of the middle row
 		// where it can be seen and then dragged.
 		// A second name would draw the player's name twice with no way to
@@ -660,6 +754,7 @@ public final class TagEditor {
 			y += ROW_HEIGHT + 4;
 			perRow = fitPerRow(right - PADDING - barX, narrow, gap, labels.length);
 		}
+
 		for (int i = 0; i < labels.length; i++) {
 			colouredButton(graphics, labels[i], barX + i % perRow * (narrow + gap),
 					y + i / perRow * (ROW_HEIGHT + 4), narrow, mouseX, mouseY, ids[i],
@@ -668,29 +763,50 @@ public final class TagEditor {
 		y += (labels.length - 1) / perRow * (ROW_HEIGHT + 4);
 		y += ROW_HEIGHT + 6;
 
-		// A row of its own under the buttons: a box to paste a code into, the
-		// button that reads it, and the one that writes a new code out. The
-		// box is where it is because importing starts with a paste, and Export
-		// sits beside it because the two are the same job in either direction.
-		int codeButton = 52;
-		int codeGap = 6;
-		int boxWidth = Math.max(60,
-				right - PADDING - (left + PADDING) - (codeButton + codeGap) * 2);
-		codeField(left + PADDING, y, boxWidth);
-		codeField.renderWidget(graphics, mouseX, mouseY, 0.0f);
-		int importX = left + PADDING + boxWidth + codeGap;
-		colouredButton(graphics, "Import", importX, y, codeButton, mouseX, mouseY,
-				"import", GREEN, "Loads the tag from the code in the box");
-		colouredButton(graphics, "Export", importX + codeButton + codeGap, y, codeButton,
-				mouseX, mouseY, "export", BLUE,
-				"Puts a code for this tag in the box, and on the clipboard");
-		y += ROW_HEIGHT + 6;
-
-		if (complaint != null) {
-			graphics.drawTextWithShadow(font, Text.literal(complaint), left + PADDING, y, OFF_FILL);
-		}
+		// Sharing is pinned to the foot of the pane rather than following the
+		// buttons down it: it is the one thing here that is not editing, and
+		// the rows above it change height as elements are added, which kept
+		// moving it. At the bottom it is always in the same place.
+		// Except when the buttons above have wrapped far enough down to reach
+		// it -- then it follows them instead of being drawn over them, which
+		// is what a fixed position would do at a large GUI scale.
+		drawCodeRow(graphics, left, Math.max(y, bottom - PADDING - ROW_HEIGHT), right,
+				mouseX, mouseY);
 
 		// Save, Cancel and Reset are drawn where Done sits, by drawActions.
+	}
+
+	/**
+	 * The sharing row: a box to paste a code into, and the three buttons that
+	 * work on it.
+	 *
+	 * <p>Clear, Import, Export, left to right. Clear is beside the box it
+	 * empties, and Import next to it because that is the order the job runs
+	 * in -- paste, then load. Export is last because it writes rather than
+	 * reads, and putting it under the pointer that just pressed Import would
+	 * overwrite the code someone had only just pasted.
+	 */
+	private void drawCodeRow(DrawContext graphics, int left, int y, int right,
+			int mouseX, int mouseY) {
+		int codeGap = 6;
+		// Narrower than the row above: three buttons and a box share this
+		// width where that row shares it between three buttons alone.
+		int codeButton = 44;
+		int span = right - PADDING - (left + PADDING);
+		int boxWidth = Math.max(40, span - (codeButton + codeGap) * 3);
+		int boxY = y + (ROW_HEIGHT - CODE_HEIGHT) / 2;
+		drawCodeField(graphics, left + PADDING, boxY, boxWidth, mouseX, mouseY);
+
+		int x = left + PADDING + boxWidth + codeGap;
+		colouredButton(graphics, "Clear", x, y, codeButton, mouseX, mouseY,
+				"clear", AMBER, "Empties the code box");
+		x += codeButton + codeGap;
+		colouredButton(graphics, "Import", x, y, codeButton, mouseX, mouseY,
+				"import", GREEN, "Loads the tag from the code in the box");
+		x += codeButton + codeGap;
+		colouredButton(graphics, "Export", x, y, codeButton, mouseX, mouseY,
+				"export", BLUE,
+				"Puts a code for this tag in the box, and on the clipboard");
 	}
 
 	/** One row of the preview, and the hit boxes for its elements. */
@@ -993,28 +1109,37 @@ public final class TagEditor {
 	// ---------------------------------------------------------------- input
 
 	/** @return true when the click was handled here */
-	public boolean click(double mouseX, double mouseY) {
+	public boolean click(net.minecraft.client.gui.Click event, boolean doubled) {
 		// Focus follows the click: inside the box it takes typing, outside it
 		// gives it back so Delete removes an element again.
 		TextFieldWidget field = nameField();
 		if (field != null) {
-			boolean inside = mouseX >= field.getX() && mouseX < field.getX() + field.getWidth()
-					&& mouseY >= field.getY() && mouseY < field.getY() + field.getHeight();
+			boolean inside = inside(field, event.x(), event.y());
 			field.setFocused(inside);
 			if (inside) {
+				// Handed the click itself, not just the focus: that is what
+				// puts the caret where it was clicked and starts a
+				// selection, so text can be dragged over and a double click
+				// takes a word.
+				field.mouseClicked(event, doubled);
 				return true;
 			}
 		}
 		if (codeField != null) {
-			boolean inside = mouseX >= codeField.getX()
-					&& mouseX < codeField.getX() + codeField.getWidth()
-					&& mouseY >= codeField.getY()
-					&& mouseY < codeField.getY() + codeField.getHeight();
+			// The card's border, not the box inside it: the inset between
+			// the two is part of the field as far as clicking goes, and
+			// missing by two pixels reads as the box being broken.
+			boolean inside = codeBox != null
+					&& event.x() >= codeBox.left() && event.x() < codeBox.right()
+					&& event.y() >= codeBox.top() && event.y() < codeBox.bottom();
 			codeField.setFocused(inside);
 			if (inside) {
+				codeField.mouseClicked(event, doubled);
 				return true;
 			}
 		}
+		double mouseX = event.x();
+		double mouseY = event.y();
 		for (Button button : buttons) {
 			if (mouseX >= button.left() && mouseX < button.right()
 					&& mouseY >= button.top() && mouseY < button.bottom()) {
@@ -1037,6 +1162,33 @@ public final class TagEditor {
 			}
 		}
 		return false;
+	}
+
+	/** Whether a point is within a box's bounds. */
+	private static boolean inside(TextFieldWidget box, double x, double y) {
+		return x >= box.getX() && x < box.getX() + box.getWidth()
+				&& y >= box.getY() && y < box.getY() + box.getHeight();
+	}
+
+	/**
+	 * Tracks a held element, or extends a selection in a focused box.
+	 *
+	 * <p>Called while the button is down.
+	 */
+	public void drag(net.minecraft.client.gui.Click event,
+			double dragX, double dragY) {
+		// A box with focus owns the drag: it is selecting text, and nothing
+		// on the tag is being moved.
+		TextFieldWidget field = nameField();
+		if (field != null && field.isFocused()) {
+			field.mouseDragged(event, dragX, dragY);
+			return;
+		}
+		if (codeField != null && codeField.isFocused()) {
+			codeField.mouseDragged(event, dragX, dragY);
+			return;
+		}
+		drag(event.x(), event.y());
 	}
 
 	/** Tracks a held element. Called while the button is down. */
@@ -1169,6 +1321,7 @@ public final class TagEditor {
 			}
 			case "export" -> share();
 			case "import" -> paste();
+			case "clear" -> clear();
 			case "toggle.enabled" -> {
 				config.enabled = !config.enabled;
 				config.save();
@@ -1221,6 +1374,34 @@ public final class TagEditor {
 	 * copy taken when the tab was opened.
 	 */
 	/**
+	 * Empties the code box.
+	 *
+	 * <p>Its own button because clearing a couple of hundred characters by
+	 * hand is a held Backspace, and because the box falls back to the
+	 * clipboard when it is empty -- so emptying it is also how you tell
+	 * Import to use what you have just copied.
+	 */
+	private void clear() {
+		if (codeField != null) {
+			codeField.setText("");
+			codeField.setFocused(true);
+		}
+		complaint = null;
+	}
+
+	/** Says something went well, in green. */
+	private void report(String message) {
+		complaint = message;
+		complaintGood = true;
+	}
+
+	/** Says something was refused, in red. */
+	private void refuse(String message) {
+		complaint = message;
+		complaintGood = false;
+	}
+
+	/**
 	 * Puts a code for this tag and its settings on the clipboard.
 	 *
 	 * <p>The clipboard rather than a file or a screen full of text: a code is
@@ -1230,7 +1411,7 @@ public final class TagEditor {
 	private void share() {
 		String code = LayoutCode.write(SpogTiersClient.config());
 		if (code == null) {
-			complaint = "Could not build a code for this tag";
+			refuse("Could not build a code for this tag");
 			return;
 		}
 		// Into the box as well as the clipboard: the box is where someone
@@ -1240,7 +1421,7 @@ public final class TagEditor {
 			codeField.setText(code);
 		}
 		MinecraftClient.getInstance().keyboard.setClipboard(code);
-		complaint = "Code copied -- paste it to share this tag";
+		report("Code copied!");
 	}
 
 	/**
@@ -1262,7 +1443,7 @@ public final class TagEditor {
 				? MinecraftClient.getInstance().keyboard.getClipboard() : typed;
 		LayoutCode.Result result = LayoutCode.read(code);
 		if (!result.ok()) {
-			complaint = result.problem().message();
+			refuse(result.problem().message());
 			return;
 		}
 		remember();
@@ -1276,7 +1457,7 @@ public final class TagEditor {
 		if (onChange != null) {
 			onChange.run();
 		}
-		complaint = note == null ? "Tag imported" : note;
+		report(note == null ? "Tag imported" : note);
 	}
 
 	private void changed() {
