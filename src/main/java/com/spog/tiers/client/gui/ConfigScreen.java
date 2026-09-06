@@ -757,7 +757,7 @@ public class ConfigScreen extends Screen {
 			int mouseX, int mouseY) {
 		int boxWidth = textRenderer.getWidth(text) + 12;
 		int boxHeight = textRenderer.fontHeight + 12;
-		int boxX = Math.min(mouseX + 12, width - boxWidth - 4);
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, CARD_BORDER);
