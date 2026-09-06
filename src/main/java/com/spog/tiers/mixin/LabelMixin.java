@@ -62,6 +62,17 @@ public class LabelMixin {
 	/** Vanilla's emission for the in-view pass, so text never sits in shadow. */
 	private static final int EMISSION = 2;
 
+	/**
+	 * How far behind the glyphs the backdrop sits, as vanilla puts its own.
+	 *
+	 * <p>Vanilla.s {@code UNDER_EFFECT_DEPTH}, copied rather than chosen. A box
+	 * level with the text is coplanar with it, and two coplanar surfaces fight
+	 * over the depth buffer: the text flickered as the camera moved. Sitting
+	 * behind also settles which one wins without relying on draw order, so an
+	 * icon cannot be painted over by a box that happens to be batched later.
+	 */
+	private static final float BACKDROP_DEPTH = -0.01f;
+
 	@Inject(method = "renderLabelIfPresent", at = @At("TAIL"))
 	private void spogtiers$submitAboveLabel(EntityRenderState state, MatrixStack matrices,
 			OrderedRenderCommandQueue queue, CameraRenderState camera, CallbackInfo ci) {
@@ -220,9 +231,9 @@ public class LabelMixin {
 	 */
 	private static void quad(MatrixStack.Entry matrix, VertexConsumer buffer, int colour, int light,
 			float left, float top, float right, float bottom) {
-		buffer.vertex(matrix, left, top, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, left, bottom, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, right, bottom, 0.0f).color(colour).light(light);
-		buffer.vertex(matrix, right, top, 0.0f).color(colour).light(light);
+		buffer.vertex(matrix, left, top, BACKDROP_DEPTH).color(colour).light(light);
+		buffer.vertex(matrix, left, bottom, BACKDROP_DEPTH).color(colour).light(light);
+		buffer.vertex(matrix, right, bottom, BACKDROP_DEPTH).color(colour).light(light);
+		buffer.vertex(matrix, right, top, BACKDROP_DEPTH).color(colour).light(light);
 	}
 }
