@@ -54,6 +54,9 @@ public class ConfigScreen extends Screen {
 	private final Screen parent;
 	private Tab active = Tab.GENERAL;
 
+	/** Hidden on the nametag tab, which has its own session controls. */
+	private PanelButton doneButton;
+
 	/** Click targets rebuilt every frame, so painting and hit-testing agree. */
 	private final List<Zone> zones = new ArrayList<>();
 
@@ -156,12 +159,18 @@ public class ConfigScreen extends Screen {
 			click();
 		});
 
-		addDrawableChild(new PanelButton(
-				width - MARGIN - CARD_PADDING - 90,
+		// The nametag tab ends a session rather than just closing a screen, so
+		// it puts its own Save & Close, Cancel and Reset here instead. Done is
+		// only shown on the tabs that have nothing to commit -- left visible,
+		// it sat underneath the editor's own row and showed as a second one.
+		doneButton = new PanelButton(
+				width - MARGIN - CARD_PADDING - DONE_WIDTH,
 				height - MARGIN - CARD_PADDING - 14,
-				90, 20,
+				DONE_WIDTH, 20,
 				Text.literal("Done"),
-				button -> close()));
+				button -> close());
+		addDrawableChild(doneButton);
+		doneButton.visible = active != Tab.NAMETAG;
 	}
 
 	/** Vanilla's UI click, so the panel feels like the rest of the game. */
@@ -351,6 +360,9 @@ public class ConfigScreen extends Screen {
 					// Cancel undoes this visit rather than every visit since
 					// the screen was opened.
 					tagEditor.open();
+				}
+				if (doneButton != null) {
+					doneButton.visible = tab != Tab.NAMETAG;
 				}
 				click();
 			}));
