@@ -64,7 +64,7 @@ public class ProfileScreen extends Screen {
 	 * centred on a 20-pixel face, so a line placed one line-height under the
 	 * name still overlapped the bottom of it.
 	 */
-	private static final int DISCORD_DROP = 3;
+	private static final int DISCORD_DROP = 6;
 
 	/**
 	 * How much taller the header is when a Discord account is shown.

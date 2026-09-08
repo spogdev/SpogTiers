@@ -985,26 +985,6 @@ public final class TagEditor {
 	 */
 	private void drawElementText(DrawContext graphics, TagLayout.Element element,
 			int x, int y, boolean chosen) {
-		if (element.kind == TagLayout.Kind.DISCORD) {
-			// The same two pieces the tag draws, so the preview is not a
-			// different shape from the thing it is previewing.
-			Text icon = SpogTiersClient.config().showTagIcons
-					? ModeIcons.discord() : null;
-			int cursor = x;
-			if (icon != null) {
-				// White, like the tier icons: the artwork carries its own
-				// colour, and tinting repainted it.
-				graphics.drawTextWithShadow(font, icon, cursor, y, 0xFFFFFFFF);
-				cursor += font.getWidth(icon) + font.getWidth(" ");
-			}
-			String label = discordPreview();
-			graphics.drawTextWithShadow(font, Text.literal(label), cursor, y,
-					chosen ? 0xFFFFFFFF : colour(element));
-			if (chosen) {
-				underline(graphics, x, y, (cursor - x) + font.getWidth(label));
-			}
-			return;
-		}
 		if (element.kind == TagLayout.Kind.TIER) {
 			Text icon = SpogTiersClient.config().showTagIcons ? icon(element) : null;
 			Tier sample = tierFor(element);
@@ -1621,16 +1601,6 @@ public final class TagEditor {
 			}
 			return width + 6;
 		}
-		// The mark counts towards the width, or the element's hit box stops
-		// short of what it draws and the last of the name cannot be grabbed.
-		if (element.kind == TagLayout.Kind.DISCORD) {
-			int width = font.getWidth(discordPreview());
-			if (SpogTiersClient.config().showTagIcons) {
-				Text icon = ModeIcons.discord();
-				width += font.getWidth(icon) + font.getWidth(" ");
-			}
-			return width + 6;
-		}
 		return font.getWidth(preview(element)) + 6;
 	}
 
@@ -1659,7 +1629,6 @@ public final class TagEditor {
 			case NAME -> previewName.isBlank() ? "Player" : previewName;
 			case REGION -> region();
 			case SEPARATOR -> element.character;
-			case DISCORD -> discordPreview();
 			case TIER -> tierPreview(element);
 		};
 	}
@@ -1801,22 +1770,8 @@ public final class TagEditor {
 			case NAME -> 0xFFFFFFFF;
 			case REGION -> 0xFF89F19C;
 			case SEPARATOR -> 0xFF000000 | element.colour;
-			case DISCORD -> 0xFF000000 | com.spog.tiers.data.DiscordAccount.BLURPLE;
 			case TIER -> colourFor(element);
 		};
-	}
-
-	/**
-	 * What the Discord element reads as in the preview.
-	 *
-	 * <p>A stand-in when the preview player has linked nothing, or has not
-	 * answered yet: the editor is showing what the element does, and an empty
-	 * preview would look like a broken element rather than an unlinked player.
-	 */
-	private String discordPreview() {
-		com.spog.tiers.data.DiscordAccount account = previewPlayer == null
-				? null : SpogTiersClient.service().discord(previewPlayer);
-		return account != null && account.named() ? account.label() : "discord";
 	}
 
 	/** The preview player's region where it is known, else a stand-in. */
