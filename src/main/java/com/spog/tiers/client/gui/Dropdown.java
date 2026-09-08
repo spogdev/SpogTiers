@@ -244,8 +244,18 @@ public class Dropdown<T> {
 		return out;
 	}
 
+	/**
+	 * Whether a point is inside a box, its right and bottom edges excluded.
+	 *
+	 * <p>Exclusive at the far edges because the list's rows are laid end to
+	 * end: one ends exactly where the next begins, so an inclusive test
+	 * matched both on the pixel they share and lit two rows at once. The
+	 * fills are drawn on the same half-open convention, so this is what makes
+	 * the highlight agree with the box that was drawn -- and with the row a
+	 * click lands on, which uses this same test.
+	 */
 	private static boolean contains(int mouseX, int mouseY, int left, int top, int w, int h) {
-		return mouseX >= left && mouseX <= left + w && mouseY >= top && mouseY <= top + h;
+		return mouseX >= left && mouseX < left + w && mouseY >= top && mouseY < top + h;
 	}
 
 	private static void frame(DrawContext graphics, int left, int top, int right,

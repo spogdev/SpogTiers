@@ -271,11 +271,25 @@ public class ConfigScreen extends Screen {
 	 * separately since their open list is not a zone.
 	 */
 	private void requestPointerCursor(DrawContext graphics, int mouseX, int mouseY) {
-		// A text box first: it sits inside the same panel the rows do, so
+		// A held element first: while one is on the pointer it does not
+		// matter what the pointer happens to be over, the hand stays shut
+		// until it is let go.
+		if (active == Tab.NAMETAG && tagEditor.isHoldingElement()) {
+			graphics.setCursor(hand(HandCursors.closed()));
+			return;
+		}
+		// A text box next: it sits inside the same panel the rows do, so
 		// asking for the hand first would win and the box would never show
 		// the caret that says it can be typed in.
 		if (active == Tab.NAMETAG && tagEditor.isOverText(mouseX, mouseY)) {
 			graphics.setCursor(StandardCursors.IBEAM);
+			return;
+		}
+		// An element that can be picked up, before the buttons: an element is
+		// dragged where a button is pressed, and the open hand is what says
+		// so before anyone tries it.
+		if (active == Tab.NAMETAG && tagEditor.isOverElement(mouseX, mouseY)) {
+			graphics.setCursor(hand(HandCursors.open()));
 			return;
 		}
 		boolean over = false;
@@ -299,6 +313,18 @@ public class ConfigScreen extends Screen {
 		if (over) {
 			graphics.setCursor(StandardCursors.POINTING_HAND);
 		}
+	}
+
+	/**
+	 * One of our own hands, or the pointing hand when it could not be built.
+	 *
+	 * <p>GLFW has no open or grabbing hand of its own, so ours are made from
+	 * images and can fail on a driver that refuses them. The pointing hand at
+	 * least still says the thing under it can be used.
+	 */
+	private static net.minecraft.client.gui.cursor.Cursor hand(
+			net.minecraft.client.gui.cursor.Cursor cursor) {
+		return cursor != null ? cursor : StandardCursors.POINTING_HAND;
 	}
 
 	/** Every dropdown on the active tab. */
@@ -478,13 +504,18 @@ public class ConfigScreen extends Screen {
 			boolean tagged = config.isTagged(list);
 
 			int toggleWidth = 92;
+			// The height drawToggle actually draws. Measured rather than
+			// written out again: a zone a pixel short of its box left the
+			// bottom row of each switch dead to both hover and click.
+			int toggleHeight = textRenderer.fontHeight + 8;
 			int resultsX = right - CARD_PADDING - toggleWidth;
 			int tagsX = resultsX - toggleWidth - 6;
 
 			drawToggle(graphics, tagsX, y - 4, toggleWidth,
 					tagged ? "SHOWN TAGS" : "HIDDEN TAGS", tagged, shown);
 			if (shown) {
-				zones.add(new Zone(tagsX, y - 4, tagsX + toggleWidth, y + 12, () -> {
+				zones.add(new Zone(tagsX, y - 4, tagsX + toggleWidth,
+						y - 4 + toggleHeight, () -> {
 					config.setTagged(list, !tagged);
 					config.save();
 					click();
@@ -493,7 +524,8 @@ public class ConfigScreen extends Screen {
 
 			drawToggle(graphics, resultsX, y - 4, toggleWidth,
 					shown ? "SHOWN RESULTS" : "HIDDEN RESULTS", shown, true);
-			zones.add(new Zone(resultsX, y - 4, resultsX + toggleWidth, y + 12, () -> {
+			zones.add(new Zone(resultsX, y - 4, resultsX + toggleWidth,
+					y - 4 + toggleHeight, () -> {
 				config.setEnabled(list, !shown);
 				config.save();
 				click();
