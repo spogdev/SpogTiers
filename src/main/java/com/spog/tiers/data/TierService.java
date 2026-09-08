@@ -251,13 +251,36 @@ public class TierService {
 			discord.put(uuid, id.isEmpty()
 					? DiscordAccount.NONE
 					: new DiscordAccount(id, nullable(root, "username"),
-							nullable(root, "displayName")));
+							nullable(root, "displayName"), others(root)));
 			discordFetchedAt.put(uuid, System.currentTimeMillis());
 		} catch (Exception e) {
 			SpogTiers.LOGGER.debug("Could not read a Discord account ({})", e.toString());
 		} finally {
 			discordPending.remove(uuid);
 		}
+	}
+
+	/**
+	 * The accounts the two tierlists disagreed about, when they did.
+	 *
+	 * <p>Absent from the response for the usual case, where both lists named
+	 * the same account, so an empty list is the normal answer.
+	 */
+	private static List<DiscordAccount> others(JsonObject root) {
+		JsonElement others = root.get("others");
+		if (others == null || !others.isJsonArray()) {
+			return List.of();
+		}
+		List<DiscordAccount> found = new ArrayList<>();
+		for (JsonElement element : others.getAsJsonArray()) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject one = element.getAsJsonObject();
+			found.add(new DiscordAccount(string(one, "id"), nullable(one, "username"),
+					nullable(one, "displayName")));
+		}
+		return List.copyOf(found);
 	}
 
 	/**

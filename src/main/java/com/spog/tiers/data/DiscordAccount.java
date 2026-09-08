@@ -9,11 +9,23 @@ package com.spog.tiers.data;
  * name is a normal answer, not a broken one -- there is simply nothing worth
  * drawing for it.
  *
+ * <p>Two tierlists publish a linked id and they do not always agree -- a
+ * player can link a different account to each. When they disagree the others
+ * are carried here rather than one being chosen, and every name is shown.
+ *
  * @param id the Discord snowflake, never null for a linked account
  * @param username their handle, or null when it could not be resolved
  * @param displayName the name they show, or null; falls back to the handle
+ * @param others accounts a second list linked that the first disagreed with,
+ *     normally empty
  */
-public record DiscordAccount(String id, String username, String displayName) {
+public record DiscordAccount(String id, String username, String displayName,
+		java.util.List<DiscordAccount> others) {
+
+	/** The usual shape: one account, nothing disagreeing with it. */
+	public DiscordAccount(String id, String username, String displayName) {
+		this(id, username, displayName, java.util.List.of());
+	}
 	/**
 	 * Discord's brand colour, which the mark and the name beside it share.
 	 *
@@ -29,6 +41,33 @@ public record DiscordAccount(String id, String username, String displayName) {
 	/** Whether there is a name here worth drawing. */
 	public boolean named() {
 		return label() != null;
+	}
+
+	/**
+	 * Every name to draw, joined as the one line the tag shows.
+	 *
+	 * <p>Comma separated when the lists disagreed, so "spogdev, _spog" reads
+	 * as one player with two linked accounts rather than as two players. An
+	 * account whose name could not be resolved is skipped rather than drawn
+	 * as a bare snowflake, which would say nothing.
+	 */
+	public String labels() {
+		StringBuilder out = new StringBuilder();
+		String first = label();
+		if (first != null) {
+			out.append(first);
+		}
+		for (DiscordAccount other : others) {
+			String label = other.label();
+			if (label == null || label.equals(first)) {
+				continue;
+			}
+			if (!out.isEmpty()) {
+				out.append(", ");
+			}
+			out.append(label);
+		}
+		return out.isEmpty() ? null : out.toString();
 	}
 
 	/**
