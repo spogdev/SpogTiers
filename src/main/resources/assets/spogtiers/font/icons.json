@@ -575,6 +575,15 @@
       "chars": [
         ""
       ]
+    },
+    {
+      "type": "bitmap",
+      "file": "spogtiers:gui/discord/logo.png",
+      "ascent": 8,
+      "height": 9,
+      "chars": [
+        ""
+      ]
     }
   ]
 }
