@@ -26,9 +26,15 @@ public final class HandCursors {
 	/** The size of each cursor, in pixels. */
 	private static final int SIZE = 24;
 
-	/** Where the click lands within the image. */
-	private static final int HOT_X = 10;
-	private static final int HOT_Y = 8;
+	/**
+	 * Where the click lands within the image.
+	 *
+	 * <p>The middle of the palm, which both hands share: the fingers move
+	 * between the two and the palm does not, so the point under the pointer
+	 * does not shift as the hand closes.
+	 */
+	private static final int HOT_X = 11;
+	private static final int HOT_Y = 9;
 
 	private static boolean built;
 	private static Cursor open;
@@ -134,26 +140,25 @@ public final class HandCursors {
 
 	/** Fingers up: this can be picked up. */
 	private static final String[] OPEN = {
-		"        ##              ",
-		"       #..#             ",
-		"       #..#  ##         ",
-		"  ##   #..# #..#        ",
-		" #..#  #..# #..#  ##    ",
-		" #..#  #..# #..# #..#   ",
-		" #..## #..# #..# #..#   ",
-		" #..#.##..#.#..#.#..#   ",
-		" #..#.#..#.#..#.#..##   ",
-		"  #..#..............#   ",
-		"  #.................#   ",
-		"   #................#   ",
+		"                        ",
+		"                        ",
+		"          ##            ",
+		"      ##  #.#  ##       ",
+		"     #.#  #.#  #.#  ##  ",
+		"     #.#  #.#  #.#  #.# ",
+		" ##  #.#  #.#  #.#  #.# ",
+		"#..# #.####.####.####.# ",
+		"#...##................# ",
+		"#.....................# ",
+		" #....................# ",
+		" #....................# ",
+		"  #...................# ",
+		"  #..................#  ",
+		"   #.................#  ",
 		"   #................#   ",
 		"    #..............#    ",
 		"    #..............#    ",
-		"     #............#     ",
-		"     #...........#      ",
-		"      #.........#       ",
-		"      #.........#       ",
-		"      ###########       ",
+		"    ################    ",
 	};
 
 	/** Fingers curled: this is being held. */
