@@ -601,7 +601,7 @@ public class ProfileScreen extends Screen {
 	 */
 	private void drawDiscord(GuiGraphicsExtractor graphics, int x, int y) {
 		DiscordAccount account = discordAccount();
-		if (account == null || !account.named()) {
+		if (account == null || account.labels() == null) {
 			return;
 		}
 		Font font = this.font;
@@ -611,7 +611,10 @@ public class ProfileScreen extends Screen {
 		Component mark = ModeIcons.discord();
 		graphics.text(font, mark, cursor, y, 0xFFFFFFFF);
 		cursor += font.width(mark) + 3;
-		graphics.text(font, Component.literal(account.label()), cursor, y,
+		// Every linked name, not just the first: the two tierlists disagree
+		// for some players, and showing one would be picking a winner between
+		// them on no evidence.
+		graphics.text(font, Component.literal(account.labels()), cursor, y,
 				0xFF000000 | DiscordAccount.BLURPLE);
 	}
 
@@ -623,7 +626,9 @@ public class ProfileScreen extends Screen {
 	/** The extra height the header needs for a Discord line, or zero. */
 	private int discordRoom() {
 		DiscordAccount account = discordAccount();
-		return account != null && account.named() ? DISCORD_ROW : 0;
+		// The same test the drawing uses, or the header would reserve a row
+		// nothing lands in, or draw into one it never reserved.
+		return account != null && account.labels() != null ? DISCORD_ROW : 0;
 	}
 
 	/**
