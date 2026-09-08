@@ -6,6 +6,7 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
+import com.spog.tiers.data.DiscordAccount;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
 import com.spog.tiers.data.PlayerGrade;
@@ -52,6 +53,19 @@ public class ProfileScreen extends Screen {
 	private static final int MARGIN = 10;
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
+
+	/** The gap under the name row, before the model starts. */
+	private static final int HEADER_GAP = 12;
+
+	/**
+	 * How much taller the header is when a Discord account is shown.
+	 *
+	 * <p>Reserved from the moment there is a name to draw, and given back when
+	 * there is not: the answer arrives a frame or two after the screen opens,
+	 * and a header that grew on arrival would shove the model down as you
+	 * watched.
+	 */
+	private static final int DISCORD_ROW = 11;
 	/**
 	 * The profile panel's width in GUI space, and the share of the window it
 	 * is allowed to grow to.
@@ -208,12 +222,12 @@ public class ProfileScreen extends Screen {
 		// band, so the history yields rather than being drawn over.
 		historyBottom = cardBottom - CARD_PADDING - 20 - HISTORY_BUTTON_GAP;
 		historyTop = Math.max(
-				cardTop + CARD_PADDING + FACE_SIZE + 12 + 80 + 8,
+				cardTop + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom() + 80 + 8,
 				historyBottom - historyBandHeight());
 
 		// Fit the model to whatever is left between the header and the history,
 		// so it never spills out of the profile card.
-		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + 12;
+		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom();
 		int skinBottom = historyTop - 8;
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
@@ -548,6 +562,11 @@ public class ProfileScreen extends Screen {
 			gradeColor = grade.foreground();
 		}
 
+		// The linked Discord account, under the name rather than beside it:
+		// the name row already carries the region and the grade, and a handle
+		// is longer than either.
+		drawDiscord(graphics, nameX, nameY + font.lineHeight + 2);
+
 		graphics.pose().popMatrix();
 
 		// Outside the panel transform, because the model is a widget in screen
@@ -558,6 +577,40 @@ public class ProfileScreen extends Screen {
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
 					skinWidget.getWidth(), skinWidget.getHeight(), false);
 		}
+	}
+
+	/**
+	 * The player's linked Discord account, mark and name.
+	 *
+	 * <p>Drawn only once the answer is in and only when there is a name: most
+	 * players have linked nothing, and the mark on its own would say a player
+	 * has an account we simply cannot name.
+	 */
+	private void drawDiscord(GuiGraphicsExtractor graphics, int x, int y) {
+		DiscordAccount account = discordAccount();
+		if (account == null || !account.named()) {
+			return;
+		}
+		Font font = this.font;
+		int cursor = x;
+		// White, not blurple: the glyph is coloured artwork and tinting it
+		// would repaint it. The name beside it carries the colour instead.
+		Component mark = ModeIcons.discord();
+		graphics.text(font, mark, cursor, y, 0xFFFFFFFF);
+		cursor += font.width(mark) + 3;
+		graphics.text(font, Component.literal(account.label()), cursor, y,
+				0xFF000000 | DiscordAccount.BLURPLE);
+	}
+
+	/** The account to draw, or null while it is unknown or absent. */
+	private DiscordAccount discordAccount() {
+		return target == null ? null : SpogTiersClient.service().discord(target);
+	}
+
+	/** The extra height the header needs for a Discord line, or zero. */
+	private int discordRoom() {
+		DiscordAccount account = discordAccount();
+		return account != null && account.named() ? DISCORD_ROW : 0;
 	}
 
 	/**
