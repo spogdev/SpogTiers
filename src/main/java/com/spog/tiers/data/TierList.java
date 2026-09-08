@@ -14,7 +14,10 @@ public enum TierList {
 	PVPHQ("pvphq", "PVPHQ", "https://pvphq.com/api/v1/players/", true),
 	PVPTIERS("pvptiers", "PvPTiers", "https://pvptiers.com/api/profile/", false),
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/profile/", false),
-	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/profile/", false),
+	// v2, with tests asked for: v1 was deprecated with a stated removal date of
+	// 1 June 2026, and only v2 publishes who tested a placement. The flag takes
+	// no value, which is why it hangs off the end of the path.
+	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/v2/profile/", false, "?tests"),
 	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false),
 	CATPVP("catpvp", "CatPVP", "https://catpvp.net/player/", true);
 
@@ -22,12 +25,25 @@ public enum TierList {
 	private final String displayName;
 	private final String endpoint;
 	private final boolean dashedUuid;
+	/** Appended after the uuid, for a list whose request carries a flag. */
+	private final String suffix;
 
 	TierList(String key, String displayName, String endpoint, boolean dashedUuid) {
+		this(key, displayName, endpoint, dashedUuid, "");
+	}
+
+	TierList(String key, String displayName, String endpoint, boolean dashedUuid,
+			String suffix) {
 		this.key = key;
 		this.displayName = displayName;
 		this.endpoint = endpoint;
 		this.dashedUuid = dashedUuid;
+		this.suffix = suffix;
+	}
+
+	/** What follows the uuid in a request to this list, usually nothing. */
+	public String suffix() {
+		return suffix;
 	}
 
 	public String key() {
