@@ -103,6 +103,12 @@ public class TierService {
 	 * background scanning, and each list runs on its own thread here.
 	 */
 	private final ExecutorService priority;
+	/**
+	 * Where the per-list requests run.
+	 *
+	 * <p>Deliberately not {@link #priority}: see the constructor.
+	 */
+	private final ExecutorService fanout;
 	private final HttpClient http;
 	/** How long each list took to answer its last lookup, in milliseconds. */
 	private final Map<TierList, Integer> responseMillis = new ConcurrentHashMap<>();
@@ -164,6 +170,18 @@ public class TierService {
 		});
 		this.priority = Executors.newFixedThreadPool(8, runnable -> {
 			Thread thread = new Thread(runnable, "SpogTiers Priority");
+			thread.setDaemon(true);
+			return thread;
+		});
+		// The per-list requests run here rather than on `priority`, because
+		// the task that starts them is itself a `priority` task and waits for
+		// them to finish. Sharing one pool means a parent holding a thread
+		// while its children queue behind it for the same threads: with a few
+		// players looked up at once the pool fills with waiting parents and
+		// nothing can make progress. Unbounded and cached, since these are
+		// idle on a socket rather than busy, and they end when the requests do.
+		this.fanout = Executors.newCachedThreadPool(runnable -> {
+			Thread thread = new Thread(runnable, "SpogTiers Fetch");
 			thread.setDaemon(true);
 			return thread;
 		});
@@ -427,7 +445,7 @@ public class TierService {
 					SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
 				}
 				return false;
-			}, priority));
+			}, fanout));
 		}
 
 		boolean any = false;
@@ -1465,5 +1483,6 @@ public class TierService {
 	public void shutdown() {
 		workers.shutdownNow();
 		priority.shutdownNow();
+		fanout.shutdownNow();
 	}
 }
