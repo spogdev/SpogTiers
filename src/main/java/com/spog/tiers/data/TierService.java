@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -556,7 +557,8 @@ public class TierService {
 			return fetchCatPvp(list, uuid);
 		}
 		String id = list.usesDashedUuid() ? uuid.toString() : uuid.toString().replace("-", "");
-		HttpRequest request = HttpRequest.newBuilder(URI.create(list.endpoint() + id))
+		HttpRequest request = HttpRequest.newBuilder(
+						URI.create(list.endpoint() + id + list.suffix()))
 				.header("Accept", "application/json")
 				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
 				.timeout(Duration.ofSeconds(10))
@@ -781,6 +783,11 @@ public class TierService {
 			return result;
 		}
 
+		// Who tested each placement, when the list publishes it. Only MCTiers
+		// does, and only for tests recent enough to still be in its history,
+		// so most gamemodes have none.
+		Map<String, String> testers = testers(root);
+
 		for (var entry : rankings.getAsJsonObject().entrySet()) {
 			if (!entry.getValue().isJsonObject()) {
 				continue;
@@ -814,9 +821,46 @@ public class TierService {
 			}
 			result.detail(label, new TierDetail(
 					value.has("attained") ? value.get("attained").getAsLong() : 0L,
-					0, 0, 0, 0, "", 0, peak));
+					0, 0, 0, 0, "", 0, peak,
+					testers.getOrDefault(entry.getKey(), "")));
 		}
 		return result;
+	}
+
+	/**
+	 * The tester behind each gamemode's placement, keyed by gamemode slug.
+	 *
+	 * <p>Read from the test history the profile carries when it is asked for.
+	 * The list runs newest first, so the first entry seen for a gamemode is
+	 * the one that produced the tier on show and later ones are its history.
+	 *
+	 * <p>Empty whenever the list does not publish tests, which is every list
+	 * but MCTiers, and whenever a placement is older than the history reaches.
+	 */
+	private static Map<String, String> testers(JsonObject root) {
+		JsonElement tests = root.get("tests");
+		if (tests == null || !tests.isJsonArray()) {
+			return Map.of();
+		}
+		Map<String, String> found = new HashMap<>();
+		for (JsonElement element : tests.getAsJsonArray()) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject test = element.getAsJsonObject();
+			JsonElement tester = test.get("tester");
+			if (tester == null || !tester.isJsonObject()) {
+				continue;
+			}
+			String name = string(tester.getAsJsonObject(), "name");
+			String mode = string(test, "gamemode");
+			if (!name.isEmpty() && !mode.isEmpty()) {
+				// Only the newest per gamemode: putIfAbsent rather than put,
+				// since the list arrives newest first.
+				found.putIfAbsent(mode, name);
+			}
+		}
+		return found;
 	}
 
 	/**
@@ -891,7 +935,8 @@ public class TierService {
 					intOr(value, "tierProgress", 0),
 					value.has("hasTr") && value.get("hasTr").getAsBoolean(),
 					intOr(value, "wins", 0),
-					intOr(value, "losses", 0)));
+					intOr(value, "losses", 0),
+					""));
 		}
 		return result;
 	}
