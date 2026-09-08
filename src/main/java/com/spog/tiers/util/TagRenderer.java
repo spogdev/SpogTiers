@@ -4,6 +4,7 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.config.SpogTiersConfig;
 import com.spog.tiers.config.TagLayout;
+import com.spog.tiers.data.DiscordAccount;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.PlayerGrade;
 import com.spog.tiers.data.PlayerTiers;
@@ -175,6 +176,7 @@ public final class TagRenderer {
 				case NAME -> name;
 				case REGION -> regionFor(uuid);
 				case SEPARATOR -> null;
+				case DISCORD -> discordFor(uuid);
 				case TIER -> {
 					Resolved tier = resolveTier(uuid, element, shown);
 					if (tier == null) {
@@ -497,6 +499,34 @@ public final class TagRenderer {
 
 	/** A winning tier along with the list it came from. */
 	private record Best(TierList list, PlayerTiers tiers, Tier tier) {
+	}
+
+	/**
+	 * The Discord account a player has linked, as mark and name.
+	 *
+	 * <p>Null until the answer arrives, and null for the many players who have
+	 * linked nothing: an element that cannot draw contributes nothing to its
+	 * row, which is what keeps a row from appearing as an empty backdrop while
+	 * a lookup is still out.
+	 *
+	 * <p>The mark is a glyph from our own font rather than a blit, because a
+	 * nameplate is a Component and a Component carries only text. It is drawn
+	 * unstyled so it keeps the colour baked into its texture, while the name
+	 * beside it is coloured to match.
+	 */
+	private static Text discordFor(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		DiscordAccount account = SpogTiersClient.service().discord(uuid);
+		if (account == null || !account.named()) {
+			return null;
+		}
+		MutableText out = Text.empty();
+		if (config.showTagIcons) {
+			out.append(ModeIcons.discord()).append(glyphGap());
+		}
+		out.append(Text.literal(account.label())
+				.withColor(DiscordAccount.BLURPLE));
+		return out;
 	}
 
 	/**

@@ -44,6 +44,15 @@ public final class ModeIcons {
 	 */
 	private static final int DOOR_RAISED_CODEPOINT = 0xE03F;
 
+	/**
+	 * The Discord mark, for the row that carries a linked account.
+	 *
+	 * <p>The colour is baked into the texture rather than tinted at draw time:
+	 * a bitmap glyph takes the style's colour, and leaving it to that would
+	 * let a row's own colour repaint the logo.
+	 */
+	private static final int DISCORD_CODEPOINT = 0xE040;
+
 
 	/**
 	 * Modes per list, in the same sorted order the font generator walked, so
@@ -105,6 +114,12 @@ public final class ModeIcons {
 	/** The door for a nametag, sitting a pixel higher than {@link #door()}. */
 	public static Text doorRaised() {
 		return Text.literal(Character.toString(DOOR_RAISED_CODEPOINT))
+				.setStyle(Style.EMPTY.withFont(FONT));
+	}
+
+	/** The Discord mark, raised to sit level with the text beside it. */
+	public static Text discord() {
+		return Text.literal(Character.toString(DISCORD_CODEPOINT))
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 
