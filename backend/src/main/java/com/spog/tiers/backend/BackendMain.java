@@ -56,11 +56,15 @@ public final class BackendMain {
 		GradeStore grades = GradeStore.load(dataDir.resolve("grades.json"));
 		GraderStore graders = GraderStore.load(dataDir.resolve("graders.json"));
 		MojangNames names = new MojangNames();
+		// Built before the bot and told about it afterwards: the API starts
+		// first, and a Discord lookup asked for before the bot is up answers
+		// with the linked id alone rather than failing.
+		DiscordNames discord = new DiscordNames();
 
 		// The API comes up first and is useful on its own, so a missing or
 		// rejected Discord token degrades to a read-only service rather than
 		// taking the mod's tier lookups down with it.
-		Javalin http = new HttpApi(grades, names).build();
+		Javalin http = new HttpApi(grades, names, discord).build();
 		http.start(host, port);
 		LOG.info("Door SMP API listening on {}:{}", host, port);
 
@@ -73,6 +77,9 @@ public final class BackendMain {
 		} else {
 			try {
 				jda = new DiscordBot(grades, graders, names).start(token);
+				// The same client the commands run on, lent to the resolver:
+				// one login, one rate-limit budget, and no second token.
+				discord.bot(jda);
 			} catch (Exception e) {
 				LOG.error("could not start the Discord bot ({}); continuing API-only",
 						e.toString());

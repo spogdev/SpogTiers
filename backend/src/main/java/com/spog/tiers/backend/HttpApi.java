@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The read-only HTTP API the mod talks to.
@@ -32,14 +33,27 @@ public final class HttpApi {
 	/** How long a client may cache a grade. Grades change rarely. */
 	private static final String CACHE_CONTROL = "public, max-age=300";
 
+	/** How long a client may cache a Discord answer. Handles change rarely. */
+	private static final String DISCORD_CACHE_CONTROL = "public, max-age=1800";
+
+	/**
+	 * How long the server will wait on a Discord lookup before giving up.
+	 *
+	 * <p>Two network hops sit behind it, and a caller drawing a nameplate
+	 * would rather have a quick "not yet" than a held connection.
+	 */
+	private static final long DISCORD_TIMEOUT_SECONDS = 8;
+
 	private final GradeStore grades;
 	private final MojangNames names;
+	private final DiscordNames discord;
 	private final Map<String, int[]> hits = new ConcurrentHashMap<>();
 	private final Map<String, Long> windowStart = new ConcurrentHashMap<>();
 
-	public HttpApi(GradeStore grades, MojangNames names) {
+	public HttpApi(GradeStore grades, MojangNames names, DiscordNames discord) {
 		this.grades = grades;
 		this.names = names;
+		this.discord = discord;
 	}
 
 	/** Build the server. The caller starts it, so startup order stays in one place. */
@@ -57,10 +71,12 @@ public final class HttpApi {
 
 		app.get("/health", ctx -> ctx.json(Map.of(
 				"status", "ok",
-				"grades", grades.size())));
+				"grades", grades.size(),
+				"discord", discord.stats())));
 
 		app.get("/api/v1/grade/{uuid}", this::byUuid);
 		app.get("/api/v1/grade/name/{name}", this::byName);
+		app.get("/api/v1/discord/{uuid}", this::discordByUuid);
 
 		app.exception(Exception.class, (e, ctx) -> {
 			LOG.error("unhandled error serving {}", ctx.path(), e);
@@ -96,6 +112,46 @@ public final class HttpApi {
 			return;
 		}
 		respond(ctx, id);
+	}
+
+	/**
+	 * The Discord account linked to a player, by UUID.
+	 *
+	 * <p>Answers 404 for a player with nothing linked, matching the grade
+	 * routes: the mod already reads 404 from us as "nothing here" rather than
+	 * as a failure, and most players have linked nothing.
+	 *
+	 * <p>Handled with Javalin's future support so the request thread is
+	 * released while the two hops behind it run.
+	 */
+	private void discordByUuid(Context ctx) {
+		UUID id;
+		try {
+			id = MojangNames.undashed(ctx.pathParam("uuid"));
+		} catch (IllegalArgumentException e) {
+			ctx.status(400).json(Map.of("error", "malformed uuid"));
+			return;
+		}
+		ctx.future(() -> discord.lookup(id)
+				.completeOnTimeout(null, DISCORD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+				.thenAccept(account -> {
+					if (account == null) {
+						ctx.status(404)
+								.header("Cache-Control", DISCORD_CACHE_CONTROL)
+								.json(Map.of("error", "no linked discord"));
+						return;
+					}
+					JsonObject out = new JsonObject();
+					out.addProperty("uuid", id.toString());
+					out.addProperty("id", account.id());
+					// Both may be absent: the id resolves from SubTiers alone,
+					// while naming it needs the bot, which the server runs
+					// without when no token was given.
+					out.addProperty("username", account.username());
+					out.addProperty("displayName", account.displayName());
+					ctx.header("Cache-Control", DISCORD_CACHE_CONTROL);
+					ctx.contentType("application/json").result(out.toString());
+				}));
 	}
 
 	private void respond(Context ctx, UUID id) {
