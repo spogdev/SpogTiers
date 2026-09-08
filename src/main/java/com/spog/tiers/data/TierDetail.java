@@ -24,19 +24,37 @@ public record TierDetail(
 		int tierPoints,
 		boolean reportsTierPoints,
 		int wins,
-		int losses) {
+		int losses,
+		String tester) {
 
 	/** Tier points always run to this, whatever the tier. */
 	public static final int TIER_POINT_TARGET = 100;
 
 	public static final TierDetail EMPTY =
-			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false, 0, 0);
+			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false, 0, 0, "");
 
 	/** The shape the other providers use, which report no placement games. */
 	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
 			int tierCeiling, String nextTier, int peakPoints, Tier peak) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
-				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0);
+				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, "");
+	}
+
+	/** The shape above, plus the tester who gave the placement. */
+	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
+			int tierCeiling, String nextTier, int peakPoints, Tier peak, String tester) {
+		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
+				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, tester);
+	}
+
+	/**
+	 * Whether a tester is known for this placement.
+	 *
+	 * <p>Only MCTiers publishes one, and only for placements recent enough to
+	 * still be in its test history, so most rows have none.
+	 */
+	public boolean hasTester() {
+		return tester != null && !tester.isBlank();
 	}
 
 	/** The shape PVPHQ used before win/loss counts were carried. */
@@ -46,7 +64,7 @@ public record TierDetail(
 			int tierPoints, boolean reportsTierPoints) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
 				peakPoints, peak, placementGames, placementTarget, testGames,
-				testTarget, tierPoints, reportsTierPoints, 0, 0);
+				testTarget, tierPoints, reportsTierPoints, 0, 0, "");
 	}
 
 	/** True when the list reports a played record for this ranking. */

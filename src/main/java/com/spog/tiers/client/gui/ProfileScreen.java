@@ -1615,6 +1615,14 @@ public class ProfileScreen extends Screen {
 			lines.add(new Line(label, peak.color()));
 		}
 
+		// Who gave the placement, last: it is provenance rather than part of
+		// the ranking, and it reads as a footnote under the numbers it
+		// explains. Only MCTiers publishes this, and only while the test is
+		// recent enough to still be in its history, so most rows have none.
+		if (detail.hasTester()) {
+			lines.add(new Line("Tested by " + detail.tester(), MUTED_COLOR));
+		}
+
 		int textWidth = 0;
 		for (Line line : lines) {
 			textWidth = Math.max(textWidth, font.width(line.text()));
