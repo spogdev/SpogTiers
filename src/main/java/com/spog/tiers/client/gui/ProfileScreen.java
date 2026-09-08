@@ -58,6 +58,15 @@ public class ProfileScreen extends Screen {
 	private static final int HEADER_GAP = 12;
 
 	/**
+	 * How far below the face row the Discord line sits.
+	 *
+	 * <p>Clear of the face rather than tucked against it: the name row is
+	 * centred on a 20-pixel face, so a line placed one line-height under the
+	 * name still overlapped the bottom of it.
+	 */
+	private static final int DISCORD_DROP = 3;
+
+	/**
 	 * How much taller the header is when a Discord account is shown.
 	 *
 	 * <p>Reserved from the moment there is a name to draw, and given back when
@@ -65,7 +74,7 @@ public class ProfileScreen extends Screen {
 	 * and a header that grew on arrival would shove the model down as you
 	 * watched.
 	 */
-	private static final int DISCORD_ROW = 11;
+	private static final int DISCORD_ROW = DISCORD_DROP + 9 + 2;
 	/**
 	 * The profile panel's width in GUI space, and the share of the window it
 	 * is allowed to grow to.
@@ -565,7 +574,11 @@ public class ProfileScreen extends Screen {
 		// The linked Discord account, under the name rather than beside it:
 		// the name row already carries the region and the grade, and a handle
 		// is longer than either.
-		drawDiscord(graphics, nameX, nameY + textRenderer.fontHeight + 2);
+		//
+		// Aligned to the face rather than to the name, so the mark starts on
+		// the panel's own left edge and the two rows read as a block instead
+		// of the lower one being indented under the upper.
+		drawDiscord(graphics, innerX, y + FACE_SIZE + DISCORD_DROP);
 
 		graphics.getMatrices().popMatrix();
 
