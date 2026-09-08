@@ -241,7 +241,6 @@ public final class LayoutCode {
 			case TIER -> "T";
 			case REGION -> "R";
 			case SEPARATOR -> "S";
-			case DISCORD -> "D";
 		});
 		out.append('.').append(switch (element.row) {
 			case TOP -> "T";
@@ -280,7 +279,6 @@ public final class LayoutCode {
 			case "T" -> TagLayout.Kind.TIER;
 			case "R" -> TagLayout.Kind.REGION;
 			case "S" -> TagLayout.Kind.SEPARATOR;
-			case "D" -> TagLayout.Kind.DISCORD;
 			default -> null;
 		};
 		if (kind == null) {

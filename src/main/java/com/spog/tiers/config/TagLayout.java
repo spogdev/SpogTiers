@@ -51,15 +51,7 @@ public class TagLayout {
 		/** The player's region code. */
 		REGION("Region"),
 		/** A character between two other elements. */
-		SEPARATOR("Separator"),
-		/**
-		 * The player's linked Discord account.
-		 *
-		 * <p>Last in the enum on purpose: a layout code names its kinds, but
-		 * anything reading one by ordinal -- including an older build of this
-		 * mod -- keeps the four it already knew where they were.
-		 */
-		DISCORD("Discord");
+		SEPARATOR("Separator");
 
 		private final String title;
 
@@ -164,7 +156,6 @@ public class TagLayout {
 				case NAME -> "Name";
 				case REGION -> "Region";
 				case SEPARATOR -> "Separator";
-				case DISCORD -> "Discord";
 				case TIER -> {
 					if (doorSmp) {
 						yield "Tier: Door SMP";
