@@ -12,6 +12,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -42,8 +44,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class DiscordNames {
 	private static final Logger LOG = LoggerFactory.getLogger(DiscordNames.class);
 
-	/** The only tierlist that publishes a linked Discord id. */
+	/** The two tierlists that publish a linked Discord id. */
 	private static final String SUBTIERS_PROFILE = "https://subtiers.net/api/profile/";
+	private static final String MCTIERS_PROFILE = "https://mctiers.com/api/v2/profile/";
 
 	/**
 	 * How long an answer is trusted.
@@ -58,8 +61,20 @@ public final class DiscordNames {
 	/** How long a "nothing linked" answer is trusted, before asking again. */
 	private static final long MISS_TTL_MILLIS = 15 * 60 * 1000L;
 
-	/** What we know about one player's Discord account, if anything. */
-	public record Account(String id, String username, String displayName) {
+	/**
+	 * What we know about one player's Discord account, if anything.
+	 *
+	 * <p>{@code others} carries the accounts a second list linked that the
+	 * first did not agree with. It is normally empty: the two lists agree for
+	 * most players, and disagreement means the player linked different
+	 * accounts to each, which is a real thing that happens and not an error
+	 * either side can be blamed for.
+	 */
+	public record Account(String id, String username, String displayName,
+			List<Account> others) {
+		public Account(String id, String username, String displayName) {
+			this(id, username, displayName, List.of());
+		}
 	}
 
 	private record Cached(Account value, long atMillis) {
@@ -97,7 +112,13 @@ public final class DiscordNames {
 	/**
 	 * The Discord account linked to a player, or null when there is none.
 	 *
-	 * <p>Asynchronous to the end: both hops are network round trips, and
+	 * <p>Both lists are asked, concurrently. Where they agree -- which is the
+	 * usual case -- the answer is that one account. Where they disagree the
+	 * player has linked a different account to each, and both are returned
+	 * rather than one being picked: choosing between them would mean deciding
+	 * which list is more current, which neither publishes and we cannot know.
+	 *
+	 * <p>Asynchronous to the end: every hop is a network round trip, and
 	 * blocking on them would tie up a request thread for their duration.
 	 */
 	public CompletableFuture<Account> lookup(UUID uuid) {
@@ -108,11 +129,16 @@ public final class DiscordNames {
 		if (hit != null && hit.fresh()) {
 			return CompletableFuture.completedFuture(hit.value());
 		}
-		return CompletableFuture
-				.supplyAsync(() -> linkedId(uuid))
-				.thenCompose(id -> id == null
-						? CompletableFuture.completedFuture((Account) null)
-						: resolve(id))
+		// Side by side rather than one after the other: they are independent,
+		// and asking in sequence would double the wait for no benefit.
+		// Each list fails on its own. Letting one failure through would lose
+		// the other list's answer as well, which turns "one site is down"
+		// into "this player has linked nothing" -- and that would then be
+		// cached as a miss.
+		CompletableFuture<String> fromSub = source(SUBTIERS_PROFILE, uuid);
+		CompletableFuture<String> fromMc = source(MCTIERS_PROFILE, uuid);
+		return fromSub.thenCombine(fromMc, DiscordNames::distinct)
+				.thenCompose(this::resolveAll)
 				.handle((account, error) -> {
 					if (error != null) {
 						LOG.debug("could not resolve a Discord account for {} ({})",
@@ -127,9 +153,70 @@ public final class DiscordNames {
 				});
 	}
 
-	/** The snowflake SubTiers has on file, or null if it has none. */
-	private String linkedId(UUID uuid) {
-		String url = SUBTIERS_PROFILE + uuid.toString().replace("-", "");
+	/** One list's answer, with its own failure swallowed to null. */
+	private CompletableFuture<String> source(String endpoint, UUID uuid) {
+		return CompletableFuture
+				.supplyAsync(() -> linkedId(endpoint, uuid))
+				.exceptionally(error -> {
+					LOG.debug("{} would not answer for {} ({})",
+							endpoint, uuid, error.toString());
+					return null;
+				});
+	}
+
+	/**
+	 * The distinct ids two lists reported, in a stable order.
+	 *
+	 * <p>Nulls drop out, and an id both lists gave appears once -- agreement
+	 * is the common case and has to collapse to a single account rather than
+	 * being reported as two identical ones.
+	 */
+	private static List<String> distinct(String first, String second) {
+		List<String> ids = new ArrayList<>(2);
+		for (String id : new String[] {first, second}) {
+			if (id != null && !ids.contains(id)) {
+				ids.add(id);
+			}
+		}
+		return ids;
+	}
+
+	/**
+	 * Every id resolved, folded into one account carrying the rest.
+	 *
+	 * <p>The first is the answer and any others hang off it, so a caller that
+	 * only wants a name can ignore the difference entirely.
+	 */
+	private CompletableFuture<Account> resolveAll(List<String> ids) {
+		if (ids.isEmpty()) {
+			return CompletableFuture.completedFuture(null);
+		}
+		List<CompletableFuture<Account>> pending = new ArrayList<>(ids.size());
+		for (String id : ids) {
+			pending.add(resolve(id));
+		}
+		return CompletableFuture
+				.allOf(pending.toArray(new CompletableFuture[0]))
+				.thenApply(ignored -> {
+					List<Account> found = new ArrayList<>(pending.size());
+					for (CompletableFuture<Account> one : pending) {
+						Account account = one.join();
+						if (account != null) {
+							found.add(account);
+						}
+					}
+					if (found.isEmpty()) {
+						return null;
+					}
+					Account first = found.get(0);
+					return new Account(first.id(), first.username(), first.displayName(),
+							List.copyOf(found.subList(1, found.size())));
+				});
+	}
+
+	/** The snowflake one list has on file, or null if it has none. */
+	private String linkedId(String profileEndpoint, UUID uuid) {
+		String url = profileEndpoint + uuid.toString().replace("-", "");
 		HttpRequest request = HttpRequest.newBuilder(URI.create(url))
 				.header("Accept", "application/json")
 				.header("User-Agent", "DoorSMP-Backend/1.0")
@@ -139,14 +226,14 @@ public final class DiscordNames {
 		try {
 			HttpResponse<String> response =
 					http.send(request, HttpResponse.BodyHandlers.ofString());
-			// 404 is SubTiers' answer for a player it has never seen, which is
+			// 404 is a list's answer for a player it has never seen, which is
 			// most of them, and is not a failure.
 			if (response.statusCode() == 404) {
 				return null;
 			}
 			if (response.statusCode() != 200) {
 				throw new IllegalStateException(
-						"subtiers returned HTTP " + response.statusCode());
+						profileEndpoint + " returned HTTP " + response.statusCode());
 			}
 			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 			if (!root.has("discord_id") || root.get("discord_id").isJsonNull()) {

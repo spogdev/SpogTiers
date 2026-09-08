@@ -1,5 +1,6 @@
 package com.spog.tiers.backend;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -144,11 +145,25 @@ public final class HttpApi {
 					JsonObject out = new JsonObject();
 					out.addProperty("uuid", id.toString());
 					out.addProperty("id", account.id());
-					// Both may be absent: the id resolves from SubTiers alone,
-					// while naming it needs the bot, which the server runs
-					// without when no token was given.
+					// Both may be absent: the id resolves from the tierlists
+					// alone, while naming it needs the bot, which the server
+					// runs without when no token was given.
 					out.addProperty("username", account.username());
 					out.addProperty("displayName", account.displayName());
+					// The accounts the two lists disagreed about, when they
+					// did. Normally empty, and left out entirely then rather
+					// than sent as an empty array a client has to check.
+					if (!account.others().isEmpty()) {
+						JsonArray others = new JsonArray();
+						for (DiscordNames.Account other : account.others()) {
+							JsonObject entry = new JsonObject();
+							entry.addProperty("id", other.id());
+							entry.addProperty("username", other.username());
+							entry.addProperty("displayName", other.displayName());
+							others.add(entry);
+						}
+						out.add("others", others);
+					}
 					ctx.header("Cache-Control", DISCORD_CACHE_CONTROL);
 					ctx.contentType("application/json").result(out.toString());
 				}));
