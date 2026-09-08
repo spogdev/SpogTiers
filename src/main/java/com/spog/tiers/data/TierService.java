@@ -66,6 +66,16 @@ public class TierService {
 	 */
 	private static final String GRADE_ENDPOINT = "https://doorsmptl.spog.dev/api/v1/grade/";
 
+	/**
+	 * Discord accounts, from the same service.
+	 *
+	 * <p>It is the backend that holds the bot token, so it is the backend that
+	 * can turn the id SubTiers publishes into a name. The mod ships no
+	 * credential and could not do this itself.
+	 */
+	private static final String DISCORD_ENDPOINT =
+			"https://doorsmptl.spog.dev/api/v1/discord/";
+
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
 			"HT1", "LT1", "MT1", "HT2", "MT2", "LT2", "HT3", "MT3", "LT3",
@@ -126,6 +136,21 @@ public class TierService {
 	 */
 	private final Map<UUID, PlayerGrade> grades = new ConcurrentHashMap<>();
 	private final Map<UUID, Long> gradeFetchedAt = new ConcurrentHashMap<>();
+
+	/**
+	 * Discord accounts, cached the same way grades are.
+	 *
+	 * <p>Kept far longer than a tier: a handle changes far less often than one
+	 * is asked for, and every miss costs the backend a call against a rate
+	 * limit its grading commands share.
+	 */
+	private final Map<UUID, DiscordAccount> discord = new ConcurrentHashMap<>();
+	private final Map<UUID, Long> discordFetchedAt = new ConcurrentHashMap<>();
+	private final java.util.Set<UUID> discordPending =
+			java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/** How long a Discord answer is kept before asking again. */
+	private static final long DISCORD_TTL_MILLIS = 60 * 60 * 1000L;
 	private final Set<UUID> gradePending = ConcurrentHashMap.newKeySet();
 
 	public TierService(SpogTiersConfig config, TierCache cache) {
@@ -159,7 +184,92 @@ public class TierService {
 	public void refresh(UUID uuid) {
 		cache.invalidate(uuid);
 		gradeFetchedAt.remove(uuid);
+		discordFetchedAt.remove(uuid);
 		requestNow(uuid);
+	}
+
+	/**
+	 * This player's linked Discord account, or null while it is unknown.
+	 *
+	 * <p>Shaped exactly like {@link #grade}: called from the render thread, so
+	 * it answers from the map and fetches in the background, and the next
+	 * frame picks the answer up.
+	 *
+	 * @return the account, {@link DiscordAccount#NONE} when they have linked
+	 *     nothing, or null while the answer is still unknown
+	 */
+	public DiscordAccount discord(UUID uuid) {
+		if (uuid == null) {
+			return null;
+		}
+		DiscordAccount known = discord.get(uuid);
+		Long fetchedAt = discordFetchedAt.get(uuid);
+		boolean stale = fetchedAt == null
+				|| System.currentTimeMillis() - fetchedAt > DISCORD_TTL_MILLIS;
+		if (stale && discordPending.add(uuid)) {
+			priority.submit(() -> fetchDiscord(uuid));
+		}
+		return known;
+	}
+
+	/**
+	 * Reads one Discord account from our own service.
+	 *
+	 * <p>Quiet on failure, like the grade fetch beside it: a name under a
+	 * nameplate is a nice-to-have, and an unreachable service should cost that
+	 * line and nothing else.
+	 */
+	private void fetchDiscord(UUID uuid) {
+		try {
+			HttpRequest request = HttpRequest.newBuilder(
+							URI.create(DISCORD_ENDPOINT + uuid))
+					.header("Accept", "application/json")
+					.header("User-Agent", "SpogTiers/1.0 (MinecraftClient mod)")
+					.timeout(Duration.ofSeconds(10))
+					.GET()
+					.build();
+			HttpResponse<String> response =
+					http.send(request, HttpResponse.BodyHandlers.ofString());
+
+			if (response.statusCode() == 404) {
+				// The common answer: most players have linked nothing.
+				discord.put(uuid, DiscordAccount.NONE);
+				discordFetchedAt.put(uuid, System.currentTimeMillis());
+				return;
+			}
+			if (response.statusCode() != 200) {
+				// Left unfetched so the next look retries, rather than caching
+				// a transient failure as "nothing linked".
+				SpogTiers.LOGGER.debug("Discord lookup returned HTTP {}",
+						response.statusCode());
+				return;
+			}
+
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String id = string(root, "id");
+			discord.put(uuid, id.isEmpty()
+					? DiscordAccount.NONE
+					: new DiscordAccount(id, nullable(root, "username"),
+							nullable(root, "displayName")));
+			discordFetchedAt.put(uuid, System.currentTimeMillis());
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Could not read a Discord account ({})", e.toString());
+		} finally {
+			discordPending.remove(uuid);
+		}
+	}
+
+	/**
+	 * A string field that may legitimately be JSON null.
+	 *
+	 * <p>The backend writes null for a name it could not resolve, which is a
+	 * different thing from an empty string and has to survive as null so the
+	 * caller can tell "no name" from "".
+	 */
+	private static String nullable(JsonObject root, String key) {
+		return root.has(key) && !root.get(key).isJsonNull()
+				? root.get(key).getAsString()
+				: null;
 	}
 
 	/**
