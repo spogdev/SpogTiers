@@ -569,6 +569,34 @@ public final class TagEditor {
 		return field != null && inside(field, mouseX, mouseY);
 	}
 
+	/**
+	 * Whether an element is being held right now.
+	 *
+	 * <p>Asked from the moment the button goes down on one, not from the
+	 * moment it has travelled far enough to count as a drag: the hand should
+	 * close as soon as something is grasped, which is what makes the pick-up
+	 * feel like it was registered.
+	 */
+	public boolean isHoldingElement() {
+		return dragging != null;
+	}
+
+	/**
+	 * Whether the pointer is over an element that can be picked up.
+	 *
+	 * <p>The elements only; the buttons and switches around them want the
+	 * pointing hand, since they are pressed rather than moved.
+	 */
+	public boolean isOverElement(int mouseX, int mouseY) {
+		for (Hit hit : hits) {
+			if (mouseX >= hit.left() && mouseX < hit.right()
+					&& mouseY >= hit.top() && mouseY < hit.bottom()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Whether the pointer is over anything clickable, for the cursor. */
 	public boolean isOverControl(int mouseX, int mouseY) {
 		for (Button button : buttons) {
