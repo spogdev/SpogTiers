@@ -13,7 +13,10 @@ import java.util.List;
 public enum TierList {
 	PVPHQ("pvphq", "PVPHQ", "https://pvphq.com/api/v1/players/", true),
 	PVPTIERS("pvptiers", "PvPTiers", "https://pvptiers.com/api/profile/", false),
-	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/profile/", false),
+	// v2 with tests asked for, as MCTiers below: SubTiers runs the same API
+	// software, down to the endpoint list and the response shapes, so the same
+	// flag gets the same tester data.
+	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/v2/profile/", false, "?tests"),
 	// v2, with tests asked for: v1 was deprecated with a stated removal date of
 	// 1 June 2026, and only v2 publishes who tested a placement. The flag takes
 	// no value, which is why it hangs off the end of the path.
