@@ -188,15 +188,21 @@ public final class DiscordNames {
 	/**
 	 * A user's handle, in whichever scheme their account uses.
 	 *
-	 * <p>Discord has migrated to unique handles with no discriminator, but
-	 * accounts that never migrated still carry one, and JDA reports "0" for
-	 * those that did.
+	 * <p>Discord has migrated to unique handles with no discriminator. A
+	 * migrated account reports a placeholder rather than nothing, and it is
+	 * not always the same one -- both "0" and "0000" appear -- so the test is
+	 * whether the digits mean anything rather than a match against one
+	 * spelling. Checking only "0" is what put "#0000" after every name.
+	 *
+	 * <p>An account that never migrated still carries a real discriminator,
+	 * and its handle does not identify anyone without it, so that case keeps
+	 * the suffix.
 	 */
 	private static String handle(User user) {
 		String discriminator = user.getDiscriminator();
-		return discriminator == null || discriminator.equals("0")
-				? user.getName()
-				: user.getName() + "#" + discriminator;
+		boolean legacy = discriminator != null
+				&& discriminator.chars().anyMatch(digit -> digit != '0');
+		return legacy ? user.getName() + "#" + discriminator : user.getName();
 	}
 
 	/** For the health endpoint, so an operator can see the cache doing its job. */
