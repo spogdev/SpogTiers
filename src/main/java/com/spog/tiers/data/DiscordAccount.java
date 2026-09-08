@@ -34,14 +34,16 @@ public record DiscordAccount(String id, String username, String displayName) {
 	/**
 	 * What to draw for this account, or null when there is nothing.
 	 *
-	 * <p>The display name first, since that is what Discord itself shows
-	 * beside a message, falling back to the handle for an account that has
-	 * never set one.
+	 * <p>The username, not the display name. A display name is whatever
+	 * someone has set today and two people can share one; the username is the
+	 * handle that identifies the account, which is what a tag showing "who is
+	 * this" wants. The display name is only a fallback, for the rare account
+	 * whose handle could not be read.
 	 */
 	public String label() {
-		if (displayName != null && !displayName.isBlank()) {
-			return displayName;
+		if (username != null && !username.isBlank()) {
+			return username;
 		}
-		return username != null && !username.isBlank() ? username : null;
+		return displayName != null && !displayName.isBlank() ? displayName : null;
 	}
 }
