@@ -118,7 +118,11 @@ public final class Regions {
 				return "";
 			}
 		}
-		return raw.toUpperCase(Locale.ROOT);
+		String code = raw.toUpperCase(Locale.ROOT);
+		// Oceania under one spelling. The lists send OCE and we fold their
+		// countries to it too, so without this the same region votes as two
+		// and can lose to a region neither voter meant.
+		return code.equals("OCE") ? "OC" : code;
 	}
 
 	/**
@@ -140,7 +144,7 @@ public final class Regions {
 					"MADRID", "MILAN", "STOCKHOLM", "HELSINKI", "DUBLIN" -> "EU";
 			case "SINGAPORE", "TOKYO", "SEOUL", "MUMBAI", "HONG_KONG",
 					"OSAKA", "JAKARTA" -> "AS";
-			case "SYDNEY", "MELBOURNE", "AUCKLAND" -> "OCE";
+			case "SYDNEY", "MELBOURNE", "AUCKLAND" -> "OC";
 			case "SAO_PAULO", "SANTIAGO", "BUENOS_AIRES", "LIMA", "BOGOTA" -> "SA";
 			case "JOHANNESBURG", "CAPE_TOWN", "LAGOS" -> "AF";
 
@@ -164,7 +168,7 @@ public final class Regions {
 					"UNITED_ARAB_EMIRATES", "QATAR", "KUWAIT", "BAHRAIN",
 					"OMAN", "ISRAEL", "JORDAN", "LEBANON", "IRAQ", "IRAN",
 					"SYRIA", "YEMEN" -> "ME";
-			case "AUSTRALIA", "NEW_ZEALAND" -> "OCE";
+			case "AUSTRALIA", "NEW_ZEALAND" -> "OC";
 			case "BRAZIL", "ARGENTINA", "CHILE", "PERU", "COLOMBIA",
 					"URUGUAY", "PARAGUAY", "BOLIVIA", "ECUADOR",
 					"VENEZUELA" -> "SA";
