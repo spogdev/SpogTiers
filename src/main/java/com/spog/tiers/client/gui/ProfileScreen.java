@@ -6,6 +6,7 @@ import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.client.ModeIcons;
 import com.spog.tiers.client.QuickTiers;
 import com.spog.tiers.config.SpogTiersConfig;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.spog.tiers.data.DiscordAccount;
 import com.spog.tiers.data.Gamemode;
 import com.spog.tiers.data.NameHistory;
@@ -144,6 +145,30 @@ public class ProfileScreen extends Screen {
 	private int tagTop;
 	private int tagRight;
 	private int tagBottom;
+
+	/**
+	 * Where the name and the Discord line were drawn, so a click can copy
+	 * them.
+	 *
+	 * <p>Recorded during drawing rather than computed again: the header is
+	 * laid out at full width and drawn scaled, so anything measuring it a
+	 * second time has to repeat that transform and would drift from it.
+	 */
+	private int nameCopyLeft;
+	private int nameCopyTop;
+	private int nameCopyRight;
+	private int nameCopyBottom;
+	private int discordCopyLeft;
+	private int discordCopyTop;
+	private int discordCopyRight;
+	private int discordCopyBottom;
+
+	/** What was copied and when, so the screen can say so briefly. */
+	private String copied;
+	private long copiedAtMillis;
+
+	/** How long the "copied" note stays up. */
+	private static final long COPIED_MILLIS = 1200L;
 	private String tagRegion = "";
 
 	/** Door SMP grade tag bounds, for the same reason. */
@@ -401,6 +426,22 @@ public class ProfileScreen extends Screen {
 			drawRegionTooltip(graphics, mouseX, mouseY);
 		}
 
+		// The pointer over anything a click copies, so the text reads as a
+		// control rather than as a label that happens to react.
+		if (overCopyable(mouseX, mouseY)) {
+			graphics.requestCursor(CursorTypes.POINTING_HAND);
+		}
+
+		// What was just copied, briefly, beside the pointer. Said rather than
+		// left to the clipboard, because a click with no visible result reads
+		// as a click that did nothing.
+		if (copied != null) {
+			if (System.currentTimeMillis() - copiedAtMillis > COPIED_MILLIS) {
+				copied = null;
+			} else {
+				drawLabelTooltip(graphics, "Copied " + copied, mouseX, mouseY);
+			}
+		}
 	}
 
 	/**
@@ -549,6 +590,13 @@ public class ProfileScreen extends Screen {
 		// +1 so the text sits optically centred against the face icon.
 		int nameY = y + (FACE_SIZE - font.lineHeight) / 2 + 1;
 		graphics.text(font, Component.literal(playerName), nameX, nameY, 0xFFFFFFFF);
+		// In screen space, since that is where the mouse is: the header is
+		// laid out at full width and drawn under a scale, so a box recorded in
+		// panel coordinates would not line up with the pointer.
+		nameCopyLeft = left + Math.round(nameX * scale);
+		nameCopyTop = top + Math.round(nameY * scale);
+		nameCopyRight = left + Math.round((nameX + font.width(playerName)) * scale);
+		nameCopyBottom = top + Math.round((nameY + font.lineHeight) * scale);
 
 		// Region reads as a small boxed tag beside the name, with our own grade
 		// after it. tagX only advances when a tag was actually drawn, so a
@@ -616,6 +664,13 @@ public class ProfileScreen extends Screen {
 		// them on no evidence.
 		graphics.text(font, Component.literal(account.labels()), cursor, y,
 				0xFF000000 | DiscordAccount.BLURPLE);
+		// The name only, not the mark: the mark is decoration and clicking it
+		// to copy a handle would be a surprise.
+		float scale = panelScale();
+		discordCopyLeft = MARGIN + Math.round(cursor * scale);
+		discordCopyTop = MARGIN + Math.round(y * scale);
+		discordCopyRight = MARGIN + Math.round((cursor + font.width(account.labels())) * scale);
+		discordCopyBottom = MARGIN + Math.round((y + font.lineHeight) * scale);
 	}
 
 	/** The account to draw, or null while it is unknown or absent. */
@@ -723,6 +778,59 @@ public class ProfileScreen extends Screen {
 	 * <p>Scoped to the band, and only when there is something to scroll, so the
 	 * wheel keeps its usual meaning everywhere else on the screen.
 	 */
+	@Override
+	public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event,
+			boolean doubled) {
+		// The name and the linked handle copy on click. Both are things people
+		// retype into a search or a DM, and retyping a Minecraft name is where
+		// a typo costs a failed lookup.
+		if (within(event.x(), event.y(), nameCopyLeft, nameCopyTop,
+				nameCopyRight, nameCopyBottom)) {
+			return copyToClipboard(playerName);
+		}
+		DiscordAccount account = discordAccount();
+		String handle = account == null ? null : account.labels();
+		if (handle != null && within(event.x(), event.y(), discordCopyLeft,
+				discordCopyTop, discordCopyRight, discordCopyBottom)) {
+			return copyToClipboard(handle);
+		}
+		return super.mouseClicked(event, doubled);
+	}
+
+	/** Puts one string on the clipboard and says so on screen. */
+	private boolean copyToClipboard(String text) {
+		if (text == null || text.isBlank()) {
+			return false;
+		}
+		Minecraft.getInstance().keyboardHandler.setClipboard(text);
+		copied = text;
+		copiedAtMillis = System.currentTimeMillis();
+		Minecraft.getInstance().getSoundManager().play(
+				net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
+						net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0f));
+		return true;
+	}
+
+	/** Whether a point is inside a recorded box, right and bottom excluded. */
+	private static boolean within(double x, double y,
+			int left, int top, int right, int bottom) {
+		// A zero-width box is one that was never drawn this frame -- the
+		// Discord line is absent for most players -- and must never match.
+		return right > left && x >= left && x < right && y >= top && y < bottom;
+	}
+
+	/** Whether the pointer is over something a click would copy. */
+	private boolean overCopyable(int mouseX, int mouseY) {
+		if (within(mouseX, mouseY, nameCopyLeft, nameCopyTop,
+				nameCopyRight, nameCopyBottom)) {
+			return true;
+		}
+		DiscordAccount account = discordAccount();
+		return account != null && account.labels() != null
+				&& within(mouseX, mouseY, discordCopyLeft, discordCopyTop,
+						discordCopyRight, discordCopyBottom);
+	}
+
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
 		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + profileWidth()
