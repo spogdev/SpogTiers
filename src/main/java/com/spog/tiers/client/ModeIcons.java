@@ -154,9 +154,9 @@ public final class ModeIcons {
 	/**
 	 * The file a list's artwork for a mode is stored under.
 	 *
-	 * <p>Several lists have their own name for a mode everyone else shares --
-	 * CatPVP's sword is "beast", MCPvP's axe is "shield", PvPTiers and PVPHQ
-	 * call vanilla "crystal". Those all resolve to one {@link Gamemode} now,
+	 * <p>Two lists have their own name for a mode everyone else shares --
+	 * MCPvP's axe is "shield", and PvPTiers calls vanilla "crystal". Those
+	 * resolve to one {@link Gamemode} now,
 	 * so a lookup arrives under the shared name while the texture is still
 	 * filed under the list's own. This maps back, and only for the list that
 	 * uses that spelling.
@@ -167,7 +167,6 @@ public final class ModeIcons {
 	 */
 	private static String artworkKey(TierList list, String modeKey) {
 		return switch (list) {
-			case CATPVP -> modeKey.equals("sword") ? "beast" : modeKey;
 			case MCPVP -> modeKey.equals("axe") ? "shield" : modeKey;
 			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
 			default -> modeKey;

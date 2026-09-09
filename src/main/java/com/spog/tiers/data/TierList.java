@@ -143,10 +143,9 @@ public enum TierList {
 			// "shield" is MCPvP's name for axe, so it is listed as axe.
 			case MCPVP -> modes("axe", "early_game", "end_game", "late_game", "mace",
 					"mcpvp_spear", "pot", "sword");
-			// "beast" is CatPVP's name for sword, so it is listed as sword.
-			case CATPVP -> modes("axe", "bow", "bridge", "cart", "creeper",
+			case CATPVP -> modes("axe", "beast", "bow", "bridge", "cart", "creeper",
 					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
-					"sword", "uhc", "vanilla");
+					"uhc", "vanilla");
 		};
 	}
 
