@@ -64,7 +64,7 @@ public final class HttpApi {
 		});
 
 		app.before(ctx -> {
-			if (!allow(ctx.ip())) {
+			if (!allow(clientIp(ctx))) {
 				ctx.status(429).json(Map.of("error", "rate limited"));
 				ctx.skipRemainingHandlers();
 			}
@@ -192,6 +192,32 @@ public final class HttpApi {
 
 		ctx.header("Cache-Control", CACHE_CONTROL);
 		ctx.contentType("application/json").result(out.toString());
+	}
+
+	/**
+	 * The caller's own address, seen past the proxy.
+	 *
+	 * <p>Caddy terminates TLS and forwards, so {@code ctx.ip()} is Caddy's
+	 * own address for every request -- which put every user of the mod in one
+	 * shared bucket and returned 429 to all of them once any handful of
+	 * players had been looked up. That is the "everything works, then 429s"
+	 * case the deploy notes warned about.
+	 *
+	 * <p>The first entry in X-Forwarded-For is the original client; the rest
+	 * are proxies it passed through. Trusted only because nothing reaches
+	 * this port but our own proxy -- the service binds 127.0.0.1, so a client
+	 * cannot set the header itself and be believed.
+	 */
+	private static String clientIp(Context ctx) {
+		String forwarded = ctx.header("X-Forwarded-For");
+		if (forwarded != null && !forwarded.isBlank()) {
+			int comma = forwarded.indexOf(',');
+			String first = (comma < 0 ? forwarded : forwarded.substring(0, comma)).trim();
+			if (!first.isEmpty()) {
+				return first;
+			}
+		}
+		return ctx.ip();
 	}
 
 	/**
