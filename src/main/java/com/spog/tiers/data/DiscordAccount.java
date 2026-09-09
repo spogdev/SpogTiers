@@ -44,30 +44,26 @@ public record DiscordAccount(String id, String username, String displayName,
 	}
 
 	/**
-	 * Every name to draw, joined as the one line the tag shows.
+	 * The names of the other accounts, when the lists disagreed.
 	 *
-	 * <p>Comma separated when the lists disagreed, so "spogdev, _spog" reads
-	 * as one player with two linked accounts rather than as two players. An
-	 * account whose name could not be resolved is skipped rather than drawn
-	 * as a bare snowflake, which would say nothing.
+	 * <p>Only the ones worth drawing: an account whose name could not be
+	 * resolved is skipped rather than listed as a bare snowflake, and one
+	 * repeating the first is not a disagreement at all.
+	 *
+	 * <p>Kept apart from {@link #label()} rather than joined into one string,
+	 * because the two are drawn differently -- the first name is the answer
+	 * and the rest are a footnote behind a marker.
 	 */
-	public String labels() {
-		StringBuilder out = new StringBuilder();
+	public java.util.List<String> otherLabels() {
 		String first = label();
-		if (first != null) {
-			out.append(first);
-		}
+		java.util.List<String> out = new java.util.ArrayList<>(others.size());
 		for (DiscordAccount other : others) {
 			String label = other.label();
-			if (label == null || label.equals(first)) {
-				continue;
+			if (label != null && !label.equals(first) && !out.contains(label)) {
+				out.add(label);
 			}
-			if (!out.isEmpty()) {
-				out.append(", ");
-			}
-			out.append(label);
 		}
-		return out.isEmpty() ? null : out.toString();
+		return java.util.List.copyOf(out);
 	}
 
 	/**
