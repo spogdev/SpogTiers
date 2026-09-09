@@ -158,6 +158,19 @@ public class TierService {
 
 	/** How long a Discord answer is kept before asking again. */
 	private static final long DISCORD_TTL_MILLIS = 60 * 60 * 1000L;
+
+	/**
+	 * How long to wait before retrying a Discord lookup that failed.
+	 *
+	 * <p>Without this a failure retried on the very next frame: nothing was
+	 * recorded, so the staleness test passed again immediately and the screen
+	 * asked sixty times a second for as long as it stayed open. That turns one
+	 * refused request into a flood, which is the surest way to stay refused.
+	 */
+	private static final long DISCORD_RETRY_MILLIS = 10_000L;
+
+	/** When a failed lookup may be tried again. */
+	private final Map<UUID, Long> discordRetryAfter = new ConcurrentHashMap<>();
 	private final Set<UUID> gradePending = ConcurrentHashMap.newKeySet();
 
 	public TierService(SpogTiersConfig config, TierCache cache) {
@@ -222,10 +235,14 @@ public class TierService {
 			return null;
 		}
 		DiscordAccount known = discord.get(uuid);
+		long now = System.currentTimeMillis();
 		Long fetchedAt = discordFetchedAt.get(uuid);
-		boolean stale = fetchedAt == null
-				|| System.currentTimeMillis() - fetchedAt > DISCORD_TTL_MILLIS;
-		if (stale && discordPending.add(uuid)) {
+		boolean stale = fetchedAt == null || now - fetchedAt > DISCORD_TTL_MILLIS;
+		// A failed lookup waits before being tried again, so a service that is
+		// refusing us is asked once in a while rather than every frame.
+		Long retryAfter = discordRetryAfter.get(uuid);
+		boolean waiting = retryAfter != null && now < retryAfter;
+		if (stale && !waiting && discordPending.add(uuid)) {
 			priority.submit(() -> fetchDiscord(uuid));
 		}
 		return known;
@@ -251,14 +268,18 @@ public class TierService {
 					http.send(request, HttpResponse.BodyHandlers.ofString());
 
 			if (response.statusCode() == 404) {
-				// The common answer: most players have linked nothing.
+				// The common answer: most players have linked nothing. A real
+				// answer, so any hold from an earlier failure is lifted.
 				discord.put(uuid, DiscordAccount.NONE);
 				discordFetchedAt.put(uuid, System.currentTimeMillis());
+				discordRetryAfter.remove(uuid);
 				return;
 			}
 			if (response.statusCode() != 200) {
-				// Left unfetched so the next look retries, rather than caching
-				// a transient failure as "nothing linked".
+				// Left unfetched so a later look retries, rather than caching a
+				// transient failure as "nothing linked" -- but held off for a
+				// while first, or "later" means the next frame.
+				backOffDiscord(uuid);
 				SpogTiers.LOGGER.debug("Discord lookup returned HTTP {}",
 						response.statusCode());
 				return;
@@ -271,11 +292,18 @@ public class TierService {
 					: new DiscordAccount(id, nullable(root, "username"),
 							nullable(root, "displayName"), others(root)));
 			discordFetchedAt.put(uuid, System.currentTimeMillis());
+			discordRetryAfter.remove(uuid);
 		} catch (Exception e) {
+			backOffDiscord(uuid);
 			SpogTiers.LOGGER.debug("Could not read a Discord account ({})", e.toString());
 		} finally {
 			discordPending.remove(uuid);
 		}
+	}
+
+	/** Holds off the next attempt for this player after a failure. */
+	private void backOffDiscord(UUID uuid) {
+		discordRetryAfter.put(uuid, System.currentTimeMillis() + DISCORD_RETRY_MILLIS);
 	}
 
 	/**
