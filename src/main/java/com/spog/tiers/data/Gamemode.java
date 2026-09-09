@@ -10,7 +10,6 @@ import java.util.Locale;
  * spelling observed in the wild.
  */
 public enum Gamemode {
-	CRYSTAL("crystal", "Crystal", 0xFFD16BFF),
 	SWORD("sword", "Sword", 0xFF5AC8FA),
 	UHC("uhc", "UHC", 0xFFFF5555),
 	POT("pot", "Pot", 0xFFFF77C6),
@@ -34,7 +33,6 @@ public enum Gamemode {
 	OG_VANILLA("og_vanilla", "OG Vanilla", 0xFF95D5B2),
 	SPEED("speed", "Speed", 0xFF48CAE4),
 	TRIDENT("trident", "Trident", 0xFF00B4D8),
-	BEAST("beast", "Beast", 0xFFE0685A),
 	BRIDGE("bridge", "Bridge", 0xFF7FB7E8),
 	// MCPvP ranks phases of a fight rather than a kit, so these have no
 	// equivalent on the other lists.
@@ -98,8 +96,16 @@ public enum Gamemode {
 		// Aliases that do not simply differ by separator.
 		return switch (needle) {
 			case "nethop", "netherite", "netheritepot", "nethpot", "npot" -> NETH_POT;
+			// The same mode under four names. Vanilla wins because three lists
+			// call it that -- MCTiers, PVPHQ and CatPVP -- against PvPTiers
+			// alone saying crystal; PVPHQ declares crystal too but has never
+			// returned it, so its vanilla is the one that exists.
+			case "crystal", "crystalpvp" -> VANILLA;
+			// CatPVP's name for sword.
+			case "beast" -> SWORD;
+			// MCPvP's name for axe.
+			case "shield" -> AXE;
 			case "diamondsmp", "diasmp" -> DIA_SMP;
-			case "crystalpvp" -> CRYSTAL;
 			case "htcart", "hightiercart" -> CART;
 			case "diamondcrystal" -> DIA_CRYSTAL;
 			case "potion" -> POT;
