@@ -33,6 +33,7 @@ public enum Gamemode {
 	OG_VANILLA("og_vanilla", "OG Vanilla", 0xFF95D5B2),
 	SPEED("speed", "Speed", 0xFF48CAE4),
 	TRIDENT("trident", "Trident", 0xFF00B4D8),
+	BEAST("beast", "Beast", 0xFFE0685A),
 	BRIDGE("bridge", "Bridge", 0xFF7FB7E8),
 	// MCPvP ranks phases of a fight rather than a kit, so these have no
 	// equivalent on the other lists.
@@ -101,8 +102,6 @@ public enum Gamemode {
 			// alone saying crystal; PVPHQ declares crystal too but has never
 			// returned it, so its vanilla is the one that exists.
 			case "crystal", "crystalpvp" -> VANILLA;
-			// CatPVP's name for sword.
-			case "beast" -> SWORD;
 			// MCPvP's name for axe.
 			case "shield" -> AXE;
 			case "diamondsmp", "diasmp" -> DIA_SMP;
