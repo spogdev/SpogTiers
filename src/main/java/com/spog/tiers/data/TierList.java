@@ -126,21 +126,27 @@ public enum TierList {
 		return switch (this) {
 			case MCTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
 					"uhc", "vanilla");
-			case PVPHQ -> modes("axe", "cart", "crystal", "dia_smp", "mace", "neth_pot",
+			// No "crystal": PVPHQ declares one but has never returned it, and
+			// its vanilla is the same mode the other lists call vanilla.
+			case PVPHQ -> modes("axe", "cart", "dia_smp", "mace", "neth_pot",
 					"pot", "smp", "spear_mace", "sword", "uhc", "vanilla");
-			case PVPTIERS -> modes("axe", "crystal", "mace", "neth_pot", "pot", "smp",
-					"sword", "uhc");
+			// PvPTiers says "crystal" for what everyone else calls vanilla; the
+			// key resolves to VANILLA, so the mode is named here as it lands.
+			case PVPTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp",
+					"sword", "uhc", "vanilla");
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
 					"dia_smp", "elytra", "manhunt", "minecart", "og_vanilla",
 					"speed", "trident");
 			// Straight from MCPvP's own kit list: five kits and three phases of
 			// a fight. It ranks neither axe nor the SMP modes the other lists
 			// do, and the phases have no equivalent anywhere else.
-			case MCPVP -> modes("early_game", "end_game", "late_game", "mace",
-					"mcpvp_spear", "pot", "shield", "sword");
-			case CATPVP -> modes("axe", "beast", "bow", "bridge", "cart", "creeper",
+			// "shield" is MCPvP's name for axe, so it is listed as axe.
+			case MCPVP -> modes("axe", "early_game", "end_game", "late_game", "mace",
+					"mcpvp_spear", "pot", "sword");
+			// "beast" is CatPVP's name for sword, so it is listed as sword.
+			case CATPVP -> modes("axe", "bow", "bridge", "cart", "creeper",
 					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
-					"uhc", "vanilla");
+					"sword", "uhc", "vanilla");
 		};
 	}
 

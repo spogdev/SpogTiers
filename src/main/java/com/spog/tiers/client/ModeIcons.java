@@ -138,15 +138,39 @@ public final class ModeIcons {
 	}
 
 	private static int codepointOf(TierList list, String modeKey) {
+		String artwork = artworkKey(list, modeKey);
 		int offset = 0;
 		for (TierList candidate : ORDER) {
 			List<String> modes = MODES.get(candidate);
 			if (candidate == list) {
-				int index = modes.indexOf(modeKey);
+				int index = modes.indexOf(artwork);
 				return index < 0 ? -1 : FIRST_CODEPOINT + offset + index;
 			}
 			offset += modes.size();
 		}
 		return -1;
+	}
+
+	/**
+	 * The file a list's artwork for a mode is stored under.
+	 *
+	 * <p>Several lists have their own name for a mode everyone else shares --
+	 * CatPVP's sword is "beast", MCPvP's axe is "shield", PvPTiers and PVPHQ
+	 * call vanilla "crystal". Those all resolve to one {@link Gamemode} now,
+	 * so a lookup arrives under the shared name while the texture is still
+	 * filed under the list's own. This maps back, and only for the list that
+	 * uses that spelling.
+	 *
+	 * <p>The alternative was renaming the files, which would renumber every
+	 * codepoint after them: the glyphs are indexed by sorted position, so one
+	 * rename shifts every icon that sorts later.
+	 */
+	private static String artworkKey(TierList list, String modeKey) {
+		return switch (list) {
+			case CATPVP -> modeKey.equals("sword") ? "beast" : modeKey;
+			case MCPVP -> modeKey.equals("axe") ? "shield" : modeKey;
+			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
+			default -> modeKey;
+		};
 	}
 }
