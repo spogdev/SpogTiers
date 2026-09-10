@@ -331,7 +331,7 @@ systemctl status spogtiers-resolver --no-pager
 ```bash
 cat >> /etc/caddy/Caddyfile <<'EOF'
 
-resolver.spog.dev {
+dua.spog.dev {
     reverse_proxy localhost:8082
 }
 EOF
@@ -339,19 +339,19 @@ EOF
 systemctl reload caddy
 ```
 
-Add the `A` record for `resolver.spog.dev` first, as in C1, or the certificate cannot be issued.
+Add the `A` record for `dua.spog.dev` first, as in C1, or the certificate cannot be issued.
 
 **E6. Verify.**
 
 ```bash
-curl https://resolver.spog.dev/health
+curl https://dua.spog.dev/health
 ```
 
 `"bot":true` means it logged in and can name accounts; `false` means it will still return linked
 ids but leave the names null. Then a player who has linked one:
 
 ```bash
-curl https://resolver.spog.dev/api/v1/discord/d219c8eed32e4da2b22e0aa69d36c88a
+curl https://dua.spog.dev/api/v1/discord/d219c8eed32e4da2b22e0aa69d36c88a
 ```
 
 A player who has linked nothing returns **404**, which is the normal answer and not an error.
