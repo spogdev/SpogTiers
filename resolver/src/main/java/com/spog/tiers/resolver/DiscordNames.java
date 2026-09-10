@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package com.spog.tiers.resolver;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -27,11 +27,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * does. That is a snowflake, not a name, so the second hop asks Discord for
  * the account it belongs to.
  *
- * <p><b>The second hop is why this lives on the server.</b> Resolving a
+ * <p><b>The second hop is why this lives on a server.</b> Resolving a
  * snowflake needs a bot token, and a token shipped inside the mod would be
  * extractable by anyone holding the jar and revoked by Discord soon after. The
- * bot is already running in this process, so the mod can ask us instead and
- * never sees a credential.
+ * mod asks this service instead and never sees a credential.
  *
  * <p>{@code retrieveUserById} is a REST call rather than a gateway lookup, so
  * it works with the bot's caches disabled and no privileged intents, and for
@@ -219,7 +218,7 @@ public final class DiscordNames {
 		String url = profileEndpoint + uuid.toString().replace("-", "");
 		HttpRequest request = HttpRequest.newBuilder(URI.create(url))
 				.header("Accept", "application/json")
-				.header("User-Agent", "DoorSMP-Backend/1.0")
+				.header("User-Agent", "SpogTiers-Resolver/1.0")
 				.timeout(Duration.ofSeconds(10))
 				.GET()
 				.build();

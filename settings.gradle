@@ -10,3 +10,4 @@ pluginManagement {
 rootProject.name = 'SpogTiers'
 
 include 'backend'
+include 'resolver'

@@ -1,7 +1,7 @@
 # Deploying Door SMP
 
 From built jars to a working badge in game. Four parts: **(A)** test locally, **(B)** create the
-Discord bot, **(C)** the VPS, **(D)** ship the mod.
+Discord bot, **(C)** the VPS, **(D)** ship the mod, **(E)** the Discord name resolver.
 
 Do Part A first. It takes ten minutes and it means that when something breaks on the VPS you already
 know the jar itself is fine.
@@ -258,6 +258,103 @@ curl https://doorsmptl.spog.dev/api/v1/grade/name/<someone>
 ```
 
 If that returns the grade, the backend is done.
+
+---
+
+## Part E — The Discord name resolver
+
+A **second, separate service**. It turns a Minecraft UUID into the Discord account the player linked
+on MCTiers or SubTiers, which is what the mod draws under a name in `/tiers`.
+
+It is deliberately not part of the tierlist backend. The two share nothing: the tierlist is grades
+and a bot people run commands against, this is a cache in front of two public APIs. Kept apart, the
+grading bot going down does not take player names with it, a flood of name lookups cannot exhaust
+the grading commands' rate limit, and either can be redeployed without restarting the other.
+
+> **Naming.** The service is `spogtiers-resolver`, it listens on **8082**, and it needs **its own
+> Discord bot** — a second application, a second token. Do not reuse the tierlist bot's, or you have
+> re-joined the two things this separates.
+
+**E1. Create the bot.** Same as Part B, and just as plain: **no privileged intents**, no permissions
+needed at all. It never joins a server and never reads a message — the only call it makes is
+`retrieveUserById`, which is REST rather than gateway. You do **not** need to invite it anywhere.
+
+**E2. Upload the jar.**
+
+```bash
+scp dist/spogtiers-resolver-all.jar root@YOUR.VPS.IP:/tmp/
+```
+
+**E3. A dedicated user and the token**, kept apart from the tierlist's for the same reason as the
+service:
+
+```bash
+useradd -r -m -d /opt/resolver resolver
+mv /tmp/spogtiers-resolver-all.jar /opt/resolver/
+chown resolver:resolver /opt/resolver/spogtiers-resolver-all.jar
+install -o resolver -g resolver -m 600 /dev/null /opt/resolver/resolver.env
+nano /opt/resolver/resolver.env
+```
+
+One line, no quotes, no spaces around the `=`:
+
+```
+DISCORD_TOKEN=the-resolver-bots-token
+```
+
+**E4. The service.**
+
+```bash
+cat > /etc/systemd/system/spogtiers-resolver.service <<'EOF'
+[Unit]
+Description=SpogTiers Discord name resolver
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/java -jar /opt/resolver/spogtiers-resolver-all.jar --host 127.0.0.1 --port 8082
+EnvironmentFile=/opt/resolver/resolver.env
+WorkingDirectory=/opt/resolver
+Restart=always
+User=resolver
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now spogtiers-resolver
+systemctl status spogtiers-resolver --no-pager
+```
+
+**E5. Caddy.** **Append** a block — do not edit the others:
+
+```bash
+cat >> /etc/caddy/Caddyfile <<'EOF'
+
+resolver.spog.dev {
+    reverse_proxy localhost:8082
+}
+EOF
+
+systemctl reload caddy
+```
+
+Add the `A` record for `resolver.spog.dev` first, as in C1, or the certificate cannot be issued.
+
+**E6. Verify.**
+
+```bash
+curl https://resolver.spog.dev/health
+```
+
+`"bot":true` means it logged in and can name accounts; `false` means it will still return linked
+ids but leave the names null. Then a player who has linked one:
+
+```bash
+curl https://resolver.spog.dev/api/v1/discord/d219c8eed32e4da2b22e0aa69d36c88a
+```
+
+A player who has linked nothing returns **404**, which is the normal answer and not an error.
 
 ---
 
