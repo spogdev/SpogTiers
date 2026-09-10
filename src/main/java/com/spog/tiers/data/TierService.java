@@ -76,7 +76,7 @@ public class TierService {
 	 * one being down does not cost the other.
 	 */
 	private static final String DISCORD_ENDPOINT =
-			"https://resolver.spog.dev/api/v1/discord/";
+			"https://dua.spog.dev/api/v1/discord/";
 
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
