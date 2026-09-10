@@ -68,14 +68,15 @@ public class TierService {
 	private static final String GRADE_ENDPOINT = "https://doorsmptl.spog.dev/api/v1/grade/";
 
 	/**
-	 * Discord accounts, from the same service.
+	 * Discord accounts, from their own service.
 	 *
-	 * <p>It is the backend that holds the bot token, so it is the backend that
-	 * can turn the id SubTiers publishes into a name. The mod ships no
-	 * credential and could not do this itself.
+	 * <p>A different host from the grade endpoint above, and deliberately so:
+	 * naming a Discord id needs a bot token, and that lives on a server rather
+	 * than in a jar anyone can open. Keeping it apart from the tierlist means
+	 * one being down does not cost the other.
 	 */
 	private static final String DISCORD_ENDPOINT =
-			"https://doorsmptl.spog.dev/api/v1/discord/";
+			"https://resolver.spog.dev/api/v1/discord/";
 
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
