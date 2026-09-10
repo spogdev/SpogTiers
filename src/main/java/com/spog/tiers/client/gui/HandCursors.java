@@ -10,7 +10,7 @@ import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 
 /**
- * The open and closed hands used while dragging a tag element.
+ * The closed hand shown while a tag element is being held.
  *
  * <p>Drawn here rather than asked for by name because GLFW has no such
  * shapes. Its standard set runs arrow, I-beam, crosshair, pointing hand,
@@ -18,9 +18,14 @@ import java.nio.ByteBuffer;
  * cursors, which GLFW never adopted. So the two are built as images and
  * handed to GLFW as custom cursors.
  *
- * <p>Everything here is best-effort. A failure anywhere leaves {@link #open}
- * and {@link #closed} null and the caller falls back to the pointing hand,
- * which is what the editor used before these existed.
+ * <p>Only the closed hand is drawn here. The open one was too, until it kept
+ * looking wrong beside the system's own cursors -- there is no open hand to
+ * copy, so the editor uses the pointing hand for "you can pick this up" and
+ * keeps a drawn cursor only for "you are holding it", which no stock set has
+ * at all.
+ *
+ * <p>Everything here is best-effort. A failure anywhere leaves
+ * {@link #closed} null and the caller falls back to the pointing hand.
  */
 public final class HandCursors {
 	/** The size of each cursor, in pixels. */
@@ -37,16 +42,9 @@ public final class HandCursors {
 	private static final int HOT_Y = 9;
 
 	private static boolean built;
-	private static Cursor open;
 	private static Cursor closed;
 
 	private HandCursors() {
-	}
-
-	/** The open hand, for an element that can be picked up, or null. */
-	public static Cursor open() {
-		build();
-		return open;
 	}
 
 	/** The closed hand, for an element being held, or null. */
@@ -73,24 +71,22 @@ public final class HandCursors {
 			Constructor<Cursor> ctor =
 					Cursor.class.getDeclaredConstructor(String.class, long.class);
 			ctor.setAccessible(true);
-			open = make(ctor, "spogtiers_open_hand", false);
-			closed = make(ctor, "spogtiers_closed_hand", true);
+			closed = make(ctor, "spogtiers_closed_hand");
 		} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-			SpogTiers.LOGGER.warn("Could not build the drag cursors; "
+			SpogTiers.LOGGER.warn("Could not build the drag cursor; "
 					+ "the pointing hand will be used instead ({})", e.toString());
-			open = null;
 			closed = null;
 		}
 	}
 
 	/** One cursor, or null if GLFW would not take it. */
-	private static Cursor make(Constructor<Cursor> ctor, String name, boolean grip)
+	private static Cursor make(Constructor<Cursor> ctor, String name)
 			throws ReflectiveOperationException {
 		// Off the Java heap: GLFW reads this buffer itself, and a heap buffer
 		// has no address it could read from.
 		ByteBuffer pixels = MemoryUtil.memAlloc(SIZE * SIZE * 4);
 		try {
-			paint(pixels, grip);
+			paint(pixels);
 			pixels.flip();
 			GLFWImage image = GLFWImage.malloc();
 			try {
@@ -116,11 +112,11 @@ public final class HandCursors {
 	 * and the dark panels behind the editor. The open hand has its fingers
 	 * up; the closed one has them curled, and is a row shorter for it.
 	 */
-	private static void paint(ByteBuffer pixels, boolean grip) {
+	private static void paint(ByteBuffer pixels) {
 		// Each string is one row, and each character one pixel: a space is
 		// clear, '#' the black outline and '.' the white fill. Written out
 		// rather than computed because a hand is a shape, not a formula.
-		String[] art = grip ? CLOSED : OPEN;
+		String[] art = CLOSED;
 		for (int y = 0; y < SIZE; y++) {
 			String row = y < art.length ? art[y] : "";
 			for (int x = 0; x < SIZE; x++) {
@@ -137,29 +133,6 @@ public final class HandCursors {
 	private static void put(ByteBuffer pixels, int r, int g, int b, int a) {
 		pixels.put((byte) r).put((byte) g).put((byte) b).put((byte) a);
 	}
-
-	/** Fingers up: this can be picked up. */
-	private static final String[] OPEN = {
-		"                        ",
-		"                        ",
-		"          ##            ",
-		"      ##  #.#  ##       ",
-		"     #.#  #.#  #.#  ##  ",
-		"     #.#  #.#  #.#  #.# ",
-		" ##  #.#  #.#  #.#  #.# ",
-		"#..# #.####.####.####.# ",
-		"#...##................# ",
-		"#.....................# ",
-		" #....................# ",
-		" #....................# ",
-		"  #...................# ",
-		"  #..................#  ",
-		"   #.................#  ",
-		"   #................#   ",
-		"    #..............#    ",
-		"    #..............#    ",
-		"    ################    ",
-	};
 
 	/** Fingers curled: this is being held. */
 	private static final String[] CLOSED = {

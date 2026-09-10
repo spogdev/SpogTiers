@@ -286,10 +286,16 @@ public class ConfigScreen extends Screen {
 			return;
 		}
 		// An element that can be picked up, before the buttons: an element is
-		// dragged where a button is pressed, and the open hand is what says
-		// so before anyone tries it.
+		// dragged where a button is pressed, and the cursor is what says so
+		// before anyone tries it.
+		//
+		// The pointing hand rather than an open one. GLFW has no open-hand
+		// shape and Windows ships no such cursor to copy -- its only hand is
+		// this one -- so a drawn stand-in was never going to match the system
+		// it sat beside. The closed hand stays hand-drawn because there is no
+		// stock cursor for "holding something" at all.
 		if (active == Tab.NAMETAG && tagEditor.isOverElement(mouseX, mouseY)) {
-			graphics.setCursor(hand(HandCursors.open()));
+			graphics.setCursor(StandardCursors.POINTING_HAND);
 			return;
 		}
 		boolean over = false;
