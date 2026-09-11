@@ -18,9 +18,13 @@ import com.spog.tiers.data.TierList;
 import com.spog.tiers.data.TierService;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.Click;
+import net.minecraft.client.gui.cursor.StandardCursors;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gl.RenderPipelines;
+import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.text.Style;
 import net.minecraft.util.Identifier;
@@ -158,6 +162,23 @@ public class ProfileScreen extends Screen {
 	private int discordMoreBottom;
 	/** The names behind that marker. */
 	private List<String> discordMore = List.of();
+
+	/**
+	 * Where the name and the Discord handle were drawn, so a click can copy
+	 * them.
+	 *
+	 * <p>Recorded while drawing rather than measured again: the header is laid
+	 * out at full width and drawn under a scale, so anything measuring it a
+	 * second time has to repeat that transform and would drift from it.
+	 */
+	private int nameCopyLeft;
+	private int nameCopyTop;
+	private int nameCopyRight;
+	private int nameCopyBottom;
+	private int discordCopyLeft;
+	private int discordCopyTop;
+	private int discordCopyRight;
+	private int discordCopyBottom;
 
 	private String tagRegion = "";
 
@@ -421,6 +442,12 @@ public class ProfileScreen extends Screen {
 		if (overDiscordMore(mouseX, mouseY)) {
 			drawLabelTooltip(graphics, String.join(", ", discordMore), mouseX, mouseY);
 		}
+
+		// The pointer over anything a click copies, so the text reads as a
+		// control rather than as a label that happens to react.
+		if (overCopyable(mouseX, mouseY)) {
+			graphics.setCursor(StandardCursors.POINTING_HAND);
+		}
 	}
 
 	/**
@@ -569,6 +596,13 @@ public class ProfileScreen extends Screen {
 		// +1 so the text sits optically centred against the face icon.
 		int nameY = y + (FACE_SIZE - textRenderer.fontHeight) / 2 + 1;
 		graphics.drawTextWithShadow(textRenderer, Text.literal(playerName), nameX, nameY, 0xFFFFFFFF);
+		// In screen space, since that is where the mouse is: the header is
+		// laid out at full width and drawn under a scale, so a box recorded in
+		// panel coordinates would not line up with the pointer.
+		nameCopyLeft = left + Math.round(nameX * scale);
+		nameCopyTop = top + Math.round(nameY * scale);
+		nameCopyRight = left + Math.round((nameX + textRenderer.getWidth(playerName)) * scale);
+		nameCopyBottom = top + Math.round((nameY + textRenderer.fontHeight) * scale);
 
 		// Region reads as a small boxed tag beside the name, with our own grade
 		// after it. tagX only advances when a tag was actually drawn, so a
@@ -622,6 +656,9 @@ public class ProfileScreen extends Screen {
 	private void drawDiscord(DrawContext graphics, int x, int y) {
 		DiscordAccount account = discordAccount();
 		if (account == null || account.label() == null) {
+			// Cleared, not just left: most players have no Discord line, and a
+			// box kept from one that did would keep copying their handle.
+			discordCopyRight = discordCopyLeft;
 			return;
 		}
 		TextRenderer font = this.textRenderer;
@@ -635,6 +672,13 @@ public class ProfileScreen extends Screen {
 		String name = account.label();
 		graphics.drawTextWithShadow(font, Text.literal(name), cursor, y,
 				0xFF000000 | DiscordAccount.BLURPLE);
+		// The handle only: the mark before it is decoration and the marker
+		// after it belongs to the other accounts, so neither should copy.
+		float nameScale = panelScale();
+		discordCopyLeft = MARGIN + Math.round(cursor * nameScale);
+		discordCopyTop = MARGIN + Math.round(y * nameScale);
+		discordCopyRight = MARGIN + Math.round((cursor + font.getWidth(name)) * nameScale);
+		discordCopyBottom = MARGIN + Math.round((y + font.fontHeight) * nameScale);
 		cursor += font.getWidth(name);
 
 		// The other accounts as a count rather than a list. Two handles side
@@ -780,6 +824,47 @@ public class ProfileScreen extends Screen {
 	private boolean overDiscordMore(int mouseX, int mouseY) {
 		return !discordMore.isEmpty() && within(mouseX, mouseY,
 				discordMoreLeft, discordMoreTop, discordMoreRight, discordMoreBottom);
+	}
+
+	/** Whether the pointer is over something a click would copy. */
+	private boolean overCopyable(int mouseX, int mouseY) {
+		return within(mouseX, mouseY, nameCopyLeft, nameCopyTop,
+						nameCopyRight, nameCopyBottom)
+				|| within(mouseX, mouseY, discordCopyLeft, discordCopyTop,
+						discordCopyRight, discordCopyBottom);
+	}
+
+	@Override
+	public boolean mouseClicked(Click event, boolean doubled) {
+		// The name and the linked handle copy on click. Both are things people
+		// retype into a search or a DM, and retyping a Minecraft name is where
+		// a typo costs a failed lookup.
+		if (within(event.x(), event.y(), nameCopyLeft, nameCopyTop,
+				nameCopyRight, nameCopyBottom)) {
+			return copyToClipboard(playerName);
+		}
+		if (within(event.x(), event.y(), discordCopyLeft, discordCopyTop,
+				discordCopyRight, discordCopyBottom)) {
+			DiscordAccount account = discordAccount();
+			return account != null && copyToClipboard(account.label());
+		}
+		return super.mouseClicked(event, doubled);
+	}
+
+	/**
+	 * Puts one string on the clipboard.
+	 *
+	 * <p>The click plays the usual UI sound and nothing else is shown: the
+	 * pointer over the text already says it is clickable.
+	 */
+	private boolean copyToClipboard(String text) {
+		if (text == null || text.isBlank()) {
+			return false;
+		}
+		MinecraftClient.getInstance().keyboard.setClipboard(text);
+		MinecraftClient.getInstance().getSoundManager()
+				.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+		return true;
 	}
 
 	@Override
