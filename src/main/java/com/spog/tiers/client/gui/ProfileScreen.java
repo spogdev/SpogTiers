@@ -719,9 +719,20 @@ public class ProfileScreen extends Screen {
 		discordMore = extra;
 	}
 
-	/** The account to draw, or null while it is unknown or absent. */
+	/**
+	 * The account to draw, or null while it is unknown, absent or turned off.
+	 *
+	 * <p>Everything about the Discord line asks here -- the drawing, the room
+	 * the header reserves for it, the box a click copies -- so the setting is
+	 * honoured everywhere by being honoured once. Turning it off also stops
+	 * the lookup, since the request is made from the read below rather than
+	 * ahead of it.
+	 */
 	private DiscordAccount discordAccount() {
-		return target == null ? null : SpogTiersClient.service().discord(target);
+		if (target == null || !SpogTiersClient.config().showDiscord) {
+			return null;
+		}
+		return SpogTiersClient.service().discord(target);
 	}
 
 	/** The extra height the header needs for a Discord line, or zero. */
