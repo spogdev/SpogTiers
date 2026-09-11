@@ -187,13 +187,13 @@ public class TierService {
 			thread.setDaemon(true);
 			return thread;
 		});
-		// The per-list requests run here rather than on `priority`, because
-		// the task that starts them is itself a `priority` task and waits for
-		// them to finish. Sharing one pool means a parent holding a thread
-		// while its children queue behind it for the same threads: with a few
-		// players looked up at once the pool fills with waiting parents and
-		// nothing can make progress. Unbounded and cached, since these are
-		// idle on a socket rather than busy, and they end when the requests do.
+		// Every outbound request runs here rather than on `priority`. These
+		// sit idle on a socket instead of doing work, so a fixed pool only
+		// bounds how many can be in flight at once -- with `priority` capped
+		// at eight, a handful of slow lists was enough to make an unrelated
+		// lookup wait for a thread even when its own service answered at
+		// once. Unbounded and cached: threads appear when a request needs one
+		// and retire when it is done.
 		this.fanout = Executors.newCachedThreadPool(runnable -> {
 			Thread thread = new Thread(runnable, "SpogTiers Fetch");
 			thread.setDaemon(true);
@@ -244,7 +244,7 @@ public class TierService {
 		Long retryAfter = discordRetryAfter.get(uuid);
 		boolean waiting = retryAfter != null && now < retryAfter;
 		if (stale && !waiting && discordPending.add(uuid)) {
-			priority.submit(() -> fetchDiscord(uuid));
+			fanout.submit(() -> fetchDiscord(uuid));
 		}
 		return known;
 	}
@@ -362,7 +362,7 @@ public class TierService {
 		boolean stale = fetchedAt == null
 				|| System.currentTimeMillis() - fetchedAt > config.cacheTtlSeconds * 1000L;
 		if (stale && gradePending.add(uuid)) {
-			priority.submit(() -> fetchGrade(uuid));
+			fanout.submit(() -> fetchGrade(uuid));
 		}
 		return known;
 	}
@@ -446,8 +446,19 @@ public class TierService {
 	}
 
 	/**
-	 * Queries every enabled list at once and waits for them together, so the
-	 * wait is the slowest list rather than the sum of all of them.
+	 * Queries every enabled list at once, marking the cache when they land.
+	 *
+	 * <p>Nothing here blocks. An earlier version looped over {@code join()},
+	 * which held a {@code priority} thread for as long as the slowest list
+	 * took -- up to the ten second timeout. That pool is only eight threads
+	 * and Discord and grade lookups share it, so opening a few profiles
+	 * parked most of it in {@code join()} and everything queued behind,
+	 * including lookups whose own service would have answered at once.
+	 *
+	 * <p>Completion is chained instead: the submitting thread is free the
+	 * moment the requests are in flight, and the last list to finish runs the
+	 * bookkeeping. The screen already fills in as data arrives, so nobody was
+	 * waiting on the return.
 	 */
 	private void fetchAllConcurrently(UUID uuid) {
 		List<TierList> lists = new ArrayList<>();
@@ -477,20 +488,22 @@ public class TierService {
 			}, fanout));
 		}
 
-		boolean any = false;
-		for (CompletableFuture<Boolean> future : pending) {
-			try {
-				any |= future.join();
-			} catch (Exception e) {
-				SpogTiers.LOGGER.debug("lookup failed for {}", uuid, e);
-			}
-		}
-
-		if (any) {
-			cache.markComplete(uuid);
-		} else {
-			cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
-		}
+		// Every child already swallows its own failure and reports false, so
+		// allOf never completes exceptionally and getNow cannot block here --
+		// by the time this runs, all of them are done.
+		CompletableFuture
+				.allOf(pending.toArray(new CompletableFuture[0]))
+				.whenComplete((ignored, error) -> {
+					boolean any = false;
+					for (CompletableFuture<Boolean> future : pending) {
+						any |= Boolean.TRUE.equals(future.getNow(false));
+					}
+					if (any) {
+						cache.markComplete(uuid);
+					} else {
+						cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
+					}
+				});
 	}
 
 	/**
