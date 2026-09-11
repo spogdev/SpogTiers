@@ -166,6 +166,27 @@ public enum TierList {
 	 * the list ships no icon for that mode.
 	 */
 	public String modeIconPath(String modeKey) {
-		return "textures/gui/modes/" + key + "/" + modeKey + ".png";
+		return "textures/gui/modes/" + key + "/" + artworkKey(modeKey) + ".png";
+	}
+
+	/**
+	 * The file this list stores a mode's artwork under.
+	 *
+	 * <p>Two lists have their own name for a mode everyone else shares:
+	 * MCPvP's axe is "shield", and PvPTiers calls vanilla "crystal". Both
+	 * resolve to one {@link Gamemode}, so a lookup arrives under the shared
+	 * name while the file is still filed under the list's own -- asking for
+	 * pvptiers/vanilla.png finds nothing, and the row drew no icon at all.
+	 *
+	 * <p>Renaming the files was the alternative and is worse: the font glyphs
+	 * are indexed by sorted position, so one rename renumbers every codepoint
+	 * that sorts after it.
+	 */
+	private String artworkKey(String modeKey) {
+		return switch (this) {
+			case MCPVP -> modeKey.equals("axe") ? "shield" : modeKey;
+			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
+			default -> modeKey;
+		};
 	}
 }
