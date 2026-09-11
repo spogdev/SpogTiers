@@ -72,6 +72,16 @@ public class SpogTiersConfig {
 	public boolean showParticles = true;
 
 	/**
+	 * Show the linked Discord account under a player's name in their profile.
+	 *
+	 * <p>Off by default, and off means the line is not drawn and the account
+	 * is never asked for: the lookup leaves for our own service, so a profile
+	 * only reaches out for someone's Discord handle once you have said it
+	 * should. Opting in is the right way round for that.
+	 */
+	public boolean showDiscord = false;
+
+	/**
 	 * Let Nametag Tweaks' adjustments reach our extra tag rows.
 	 *
 	 * <p>That mod scales, raises and recolours the nameplate by wrapping
