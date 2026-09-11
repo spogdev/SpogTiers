@@ -154,22 +154,13 @@ public final class ModeIcons {
 	/**
 	 * The file a list's artwork for a mode is stored under.
 	 *
-	 * <p>Two lists have their own name for a mode everyone else shares --
-	 * MCPvP's axe is "shield", and PvPTiers calls vanilla "crystal". Those
-	 * resolve to one {@link Gamemode} now,
-	 * so a lookup arrives under the shared name while the texture is still
-	 * filed under the list's own. This maps back, and only for the list that
-	 * uses that spelling.
-	 *
-	 * <p>The alternative was renaming the files, which would renumber every
-	 * codepoint after them: the glyphs are indexed by sorted position, so one
-	 * rename shifts every icon that sorts later.
+	 * <p>Taken from the path the textures themselves are loaded by, so the
+	 * font and the blitted artwork cannot disagree about which file a mode
+	 * lives in -- they did, and PvPTiers' vanilla row drew nothing because
+	 * only this side knew the file is called crystal.png.
 	 */
 	private static String artworkKey(TierList list, String modeKey) {
-		return switch (list) {
-			case MCPVP -> modeKey.equals("axe") ? "shield" : modeKey;
-			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
-			default -> modeKey;
-		};
+		String path = list.modeIconPath(modeKey);
+		return path.substring(path.lastIndexOf('/') + 1, path.length() - ".png".length());
 	}
 }
