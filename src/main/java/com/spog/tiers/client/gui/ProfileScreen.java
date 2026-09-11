@@ -669,7 +669,10 @@ public class ProfileScreen extends Screen {
 		graphics.drawTextWithShadow(font, mark, cursor, y, 0xFFFFFFFF);
 		cursor += font.getWidth(mark) + 3;
 
-		String name = account.label();
+		// Handles can be longer than the card is wide -- Discord allows far
+		// more characters than fit here -- so an over-long one is trimmed
+		// rather than drawn past the edge. The full handle still copies.
+		String name = clipToCard(account.label(), cursor);
 		graphics.drawTextWithShadow(font, Text.literal(name), cursor, y,
 				0xFF000000 | DiscordAccount.BLURPLE);
 		// The handle only: the mark before it is decoration and the marker
@@ -693,17 +696,26 @@ public class ProfileScreen extends Screen {
 			discordMoreRight = discordMoreLeft;
 			return;
 		}
-		String marker = " [" + extra.size() + " other account"
-				+ (extra.size() == 1 ? "" : "s") + "]";
-		graphics.drawTextWithShadow(font, Text.literal(marker), cursor, y, MUTED_COLOR);
+		String marker = markerText(extra.size());
+		// A long handle leaves no room for the marker beside it, and drawn
+		// anyway it runs past the card's edge. It drops to its own row under
+		// the handle instead, which is why the header reserves a second row
+		// for exactly this case.
+		int markerX = cursor;
+		int markerY = y;
+		if (wrapsMarker(account.label(), extra.size())) {
+			markerX = x;
+			markerY = y + font.fontHeight + 1;
+		}
+		graphics.drawTextWithShadow(font, Text.literal(marker), markerX, markerY, MUTED_COLOR);
 
 		// In screen space, since that is where the pointer is: the header is
 		// laid out at full width and drawn under a scale.
 		float scale = panelScale();
-		discordMoreLeft = MARGIN + Math.round(cursor * scale);
-		discordMoreTop = MARGIN + Math.round(y * scale);
-		discordMoreRight = MARGIN + Math.round((cursor + font.getWidth(marker)) * scale);
-		discordMoreBottom = MARGIN + Math.round((y + textRenderer.fontHeight) * scale);
+		discordMoreLeft = MARGIN + Math.round(markerX * scale);
+		discordMoreTop = MARGIN + Math.round(markerY * scale);
+		discordMoreRight = MARGIN + Math.round((markerX + font.getWidth(marker)) * scale);
+		discordMoreBottom = MARGIN + Math.round((markerY + font.fontHeight) * scale);
 		discordMore = extra;
 	}
 
@@ -717,7 +729,52 @@ public class ProfileScreen extends Screen {
 		DiscordAccount account = discordAccount();
 		// The same test the drawing uses, or the header would reserve a row
 		// nothing lands in, or draw into one it never reserved.
-		return account != null && account.label() != null ? DISCORD_ROW : 0;
+		if (account == null || account.label() == null) {
+			return 0;
+		}
+		// And a second row when the marker will not fit beside the handle, for
+		// the same reason: the drawing wraps it there, so the space has to be
+		// reserved here or it lands on top of the model.
+		int rows = wrapsMarker(account.label(), account.otherLabels().size()) ? 2 : 1;
+		return DISCORD_ROW + (rows - 1) * (textRenderer.fontHeight + 1);
+	}
+
+	/** The marker drawn after a handle when other accounts are linked. */
+	private static String markerText(int others) {
+		return " [" + others + " other]";
+	}
+
+	/**
+	 * Whether the marker has to drop to its own row under the handle.
+	 *
+	 * <p>Measured in panel space, where the width is the constant the header
+	 * is laid out at rather than whatever it was scaled to -- the drawing uses
+	 * the same space, so the two agree at every GUI scale. The mark and its
+	 * gap sit left of the handle, and the padding on the right is the card's
+	 * own, so the text stops where the card's content does.
+	 */
+	private boolean wrapsMarker(String name, int others) {
+		if (others <= 0) {
+			return false;
+		}
+		int markStart = CARD_PADDING + textRenderer.getWidth(ModeIcons.discord()) + 3;
+		int used = markStart + textRenderer.getWidth(clipToCard(name, markStart))
+				+ textRenderer.getWidth(markerText(others));
+		return used > PROFILE_WIDTH - CARD_PADDING;
+	}
+
+	/**
+	 * A handle trimmed to what fits between {@code x} and the card's edge.
+	 *
+	 * <p>Returned whole when it already fits, which is the ordinary case.
+	 * Panel space again, so this agrees with the drawing at any GUI scale.
+	 */
+	private String clipToCard(String text, int x) {
+		int room = PROFILE_WIDTH - CARD_PADDING - x;
+		if (text == null || textRenderer.getWidth(text) <= room) {
+			return text;
+		}
+		return textRenderer.trimToWidth(text, room - textRenderer.getWidth("...")) + "...";
 	}
 
 	/**
