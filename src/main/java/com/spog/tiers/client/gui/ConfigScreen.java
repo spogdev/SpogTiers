@@ -430,6 +430,13 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y = drawSwitch(graphics, "Show Discord", config.showDiscord, x, y,
+				() -> {
+					config.showDiscord = !config.showDiscord;
+					config.save();
+				},
+				"Show a player's linked Discord account on their profile");
+
 		return y + CARD_PADDING - top;
 	}
 
