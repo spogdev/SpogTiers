@@ -3,7 +3,7 @@
 	"id": "spogtiers",
 	"version": "${version}",
 	"name": "SpogTiers",
-	"description": "A tiertagger mod with cleaner menus and all mainstream tierlists including PVPHQ, MCPvP, CatPVP, MCTiers, PvPTiers, Subtiers",
+	"description": "A tiertagger mod with clean menus, name history, discord username lookup and all mainstream tierlists including PVPHQ, MCPvP, CatPVP, MCTiers, PvPTiers, Subtiers",
 	"authors": [
 		"Spog"
 	],
