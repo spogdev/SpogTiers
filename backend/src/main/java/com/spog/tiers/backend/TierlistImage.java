@@ -68,8 +68,40 @@ public final class TierlistImage {
 	private static final Color LABEL_TEXT = new Color(0x11, 0x11, 0x11);
 	private static final Color LABEL_TEXT_LIGHT = new Color(0xFF, 0xFF, 0xFF);
 
-	/** How long a fetched face is reused. Skins change rarely. */
-	private static final long FACE_TTL_MILLIS = 60 * 60 * 1000L;
+	/**
+	 * How long a fetched face is reused. Skins change rarely.
+	 *
+	 * <p>A day rather than an hour. The old hour was shorter than the gap
+	 * between uses of the command, so the cache was almost always cold and
+	 * every run paid for a full set of ten second renders -- which is what
+	 * "the first one in a while" was. A stale face is also better than no
+	 * face, so an expired one is still drawn if the refetch fails.
+	 */
+	private static final long FACE_TTL_MILLIS = 24 * 60 * 60 * 1000L;
+
+	/**
+	 * How long to give one face.
+	 *
+	 * <p>Generous on purpose. Minotar renders a skin it has not seen before in
+	 * a little over ten seconds, every time, and serves it in under a tenth of
+	 * a second afterwards. At the old ten second timeout a first render was
+	 * cut off a fraction before it arrived, which is why a tierlist run after
+	 * a quiet spell came back with most of its faces blank: not a failure to
+	 * fetch them, a deadline that expired just too early.
+	 */
+	private static final Duration FACE_TIMEOUT = Duration.ofSeconds(25);
+
+	/**
+	 * How many faces to fetch at once.
+	 *
+	 * <p>These wait on a socket rather than working, so this is not about
+	 * cores -- it is how many cold renders a tierlist can wait through in
+	 * parallel. The default {@code supplyAsync} pool was the common
+	 * ForkJoinPool, sized to the cores the machine has: on a small VPS that is
+	 * one or two threads, so several dozen faces queued up in ones and twos
+	 * behind ten second renders and the command took minutes.
+	 */
+	private static final int FACE_CONCURRENCY = 16;
 
 	private record CachedFace(BufferedImage image, long atMillis) {
 	}
@@ -78,6 +110,15 @@ public final class TierlistImage {
 			.connectTimeout(Duration.ofSeconds(10))
 			.followRedirects(HttpClient.Redirect.NORMAL)
 			.build();
+
+	/** Daemon threads, so a pending fetch cannot hold the process open. */
+	private final java.util.concurrent.ExecutorService faceFetchers =
+			java.util.concurrent.Executors.newFixedThreadPool(
+					FACE_CONCURRENCY, runnable -> {
+						Thread thread = new Thread(runnable, "Face Fetch");
+						thread.setDaemon(true);
+						return thread;
+					});
 
 	private final Map<UUID, CachedFace> faces = new HashMap<>();
 
@@ -193,6 +234,7 @@ public final class TierlistImage {
 		Map<UUID, CompletableFuture<BufferedImage>> pending = new HashMap<>();
 		long now = System.currentTimeMillis();
 
+		Map<UUID, BufferedImage> stale = new HashMap<>();
 		for (GradeStore.Record player : players) {
 			UUID id = player.uuid();
 			if (pending.containsKey(id)) {
@@ -204,26 +246,48 @@ public final class TierlistImage {
 					pending.put(id, CompletableFuture.completedFuture(hit.image()));
 					continue;
 				}
+				if (hit != null) {
+					// Kept to fall back on: a face we already have, however
+					// old, beats the grey square a failed refetch would draw.
+					stale.put(id, hit.image());
+				}
 			}
-			pending.put(id, CompletableFuture.supplyAsync(() -> face(id)));
+			pending.put(id, CompletableFuture.supplyAsync(() -> face(id), faceFetchers));
 		}
 
 		Map<UUID, BufferedImage> out = new HashMap<>();
+		int missed = 0;
 		for (Map.Entry<UUID, CompletableFuture<BufferedImage>> entry : pending.entrySet()) {
+			UUID id = entry.getKey();
 			try {
 				BufferedImage image = entry.getValue().get();
 				if (image != null) {
-					out.put(entry.getKey(), image);
+					out.put(id, image);
 					synchronized (faces) {
-						faces.put(entry.getKey(), new CachedFace(image, now));
+						faces.put(id, new CachedFace(image, now));
 					}
+					continue;
 				}
+				missed++;
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 				break;
 			} catch (Exception e) {
-				LOG.debug("could not load a face for {}", entry.getKey(), e);
+				missed++;
+				LOG.debug("could not load a face for {}", id, e);
 			}
+			// Whatever we had before, if anything: the alternative is a grey
+			// square where a face used to be.
+			BufferedImage old = stale.get(id);
+			if (old != null) {
+				out.put(id, old);
+			}
+		}
+		if (missed > 0) {
+			// Said out loud rather than left at debug: a run that comes back
+			// with blank cells is the visible symptom, and this is the line
+			// that explains it.
+			LOG.warn("{} of {} faces did not load", missed, pending.size());
 		}
 		return out;
 	}
@@ -238,7 +302,7 @@ public final class TierlistImage {
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(url))
 					.header("User-Agent", "DoorSMP-Backend/1.0")
-					.timeout(Duration.ofSeconds(10))
+					.timeout(FACE_TIMEOUT)
 					.GET()
 					.build();
 			HttpResponse<InputStream> response =
