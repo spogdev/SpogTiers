@@ -1711,6 +1711,12 @@ public class ProfileScreen extends Screen {
 			long attained, String run, boolean placing, int placementGames) {
 		/** Only worth showing a peak that is actually better than the current tier. */
 		boolean showsPeak() {
+			// The one gate for every part of a peak -- the struck-through label,
+			// the column it reserves, the promotion run beside it and the line
+			// in the tooltip -- so the setting turns all of it off together.
+			if (!SpogTiersClient.config().showPeakTiers) {
+				return false;
+			}
 			if (peak == null || !peak.isRanked()) {
 				return false;
 			}
