@@ -137,6 +137,13 @@ public final class ModeIcons {
 		return Component.literal(Character.toString(NARROW_SPACE_CODEPOINT));
 	}
 
+	/** A one pixel space, so padding can land exactly. */
+	private static final int HAIR_SPACE_CODEPOINT = 0xE0FE;
+
+	public static Component hairSpace() {
+		return Component.literal(Character.toString(HAIR_SPACE_CODEPOINT));
+	}
+
 	private static int codepointOf(TierList list, String modeKey) {
 		String artwork = artworkKey(list, modeKey);
 		int offset = 0;
