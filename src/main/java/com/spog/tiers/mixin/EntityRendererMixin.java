@@ -3,6 +3,7 @@ package com.spog.tiers.mixin;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
+import com.spog.tiers.util.RowPadding;
 import com.spog.tiers.util.AuraTarget;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.render.entity.EntityRenderer;
@@ -49,7 +50,15 @@ public class EntityRendererMixin {
 		Text[] around = TagRenderer.aroundName(player.getUuid(), bare);
 		NameShift.set(state, around == null ? null : around[0],
 				around == null ? null : around[1]);
-		AboveLabel.set(state, TagRenderer.aboveTag(player.getUuid()));
-		AboveLabel.setBelow(state, TagRenderer.belowTag(player.getUuid()));
+		Text above = TagRenderer.aboveTag(player.getUuid());
+		Text below = TagRenderer.belowTag(player.getUuid());
+		// The plate is padded here rather than in LabelMixin, which only draws
+		// the two extra rows: the plate is vanilla's own and is the widest of
+		// the three more often than not, but a long row above it still left it
+		// narrower than the rows either side. NameShift is already set from the
+		// unpadded halves above, so centring is measured on the real text.
+		state.displayName = RowPadding.plate(state.displayName, above, below);
+		AboveLabel.set(state, above);
+		AboveLabel.setBelow(state, below);
 	}
 }
