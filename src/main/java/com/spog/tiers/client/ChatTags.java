@@ -9,6 +9,7 @@ import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.text.Text;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.PlainTextContent;
+import net.minecraft.text.TranslatableTextContent;
 
 /**
  * Prefixes chat lines with the sender's tier tag.
@@ -45,11 +46,27 @@ public final class ChatTags {
 				continue;
 			}
 
+			// Auto Adjust Lines deals the rows either side of the name, which
+			// is what chat wants too: it has one line, so a layout built as
+			// three rows otherwise arrives as a single badge and loses the
+			// rest. Without the setting it stays one badge in front.
+			//
+			// Tried rather than committed to: if the name cannot be found in
+			// the tree -- a heavily formatted line, a translated one -- insert
+			// returns the message untouched, and returning that would drop the
+			// tag that the single badge could still have placed.
+			Text[] sides = TagRenderer.balancedAround(profile.id());
+			if (sides != null) {
+				Text balanced = insert(message, name, sides[0], sides[1]);
+				if (balanced != message) {
+					return balanced;
+				}
+			}
 			Text badge = TagRenderer.badgeFor(profile.id());
 			if (badge == null) {
 				return message;
 			}
-			return insert(message, name, badge);
+			return insert(message, name, badge, null);
 		}
 		return message;
 	}
@@ -67,9 +84,10 @@ public final class ChatTags {
 	 * <p>Only the first occurrence is decorated: a player quoting their own
 	 * name should not collect a second badge.
 	 */
-	private static Text insert(Text message, String name, Text badge) {
+	private static Text insert(Text message, String name,
+			Text before, Text after) {
 		MutableText out = Text.empty();
-		if (walk(message, name, badge, out, new boolean[1])) {
+		if (walk(message, name, before, after, out, new boolean[1])) {
 			return out;
 		}
 		return message;
@@ -82,9 +100,17 @@ public final class ChatTags {
 	 * @param done one-element flag, set once the badge has been placed
 	 * @return true if anything was copied
 	 */
-	private static boolean walk(Text source, String name, Text badge,
-			MutableText out, boolean[] done) {
-		String own = source.getContent() instanceof PlainTextContent.Literal plain
+	private static boolean walk(Text source, String name, Text before,
+			Text after, MutableText out, boolean[] done) {
+		// A translated line -- vanilla's own chat.type.text, which is what an
+		// unmodified server sends -- keeps the name in an argument rather than
+		// in its own text, so reading only PlainTextContent found nothing and
+		// the line went through untouched. The arguments are walked too, and
+		// the result is rebuilt from them in order.
+		if (source.getContent() instanceof TranslatableTextContent translatable) {
+			return translated(translatable, source, name, before, after, out, done);
+		}
+		String own = source.getContent() instanceof PlainTextContent plain
 				? plain.string() : "";
 		int at = done[0] ? -1 : own.indexOf(name);
 
@@ -99,16 +125,68 @@ public final class ChatTags {
 			// name and the rest, all keeping this run's own style.
 			done[0] = true;
 			if (at > 0) {
-				out.append(Text.literal(own.substring(0, at)).setStyle(source.getStyle()));
+				out.append(Text.literal(own.substring(0, at))
+						.setStyle(source.getStyle()));
 			}
-			out.append(badge).append(Text.literal(" "));
-			out.append(Text.literal(own.substring(at)).setStyle(source.getStyle()));
+			if (before != null) {
+				out.append(before).append(Text.literal(" "));
+			}
+			// The name itself, then whatever follows it -- inserted between the
+			// name and the rest of the run rather than after the whole run, or
+			// it would land past the server's closing bracket.
+			out.append(Text.literal(name).setStyle(source.getStyle()));
+			if (after != null) {
+				out.append(Text.literal(" ")).append(after);
+			}
+			String rest = own.substring(at + name.length());
+			if (!rest.isEmpty()) {
+				out.append(Text.literal(rest).setStyle(source.getStyle()));
+			}
 		}
 
 		for (Text child : source.getSiblings()) {
-			walk(child, name, badge, out, done);
+			walk(child, name, before, after, out, done);
 		}
 		return done[0];
+	}
+
+	/**
+	 * A translated line, with the name found inside one of its arguments.
+	 *
+	 * <p>Rebuilt as the same translation with the arguments replaced, so the
+	 * server's own wording and ordering survive: the badge lands inside the
+	 * argument that holds the name, which is inside whatever the format wrapped
+	 * it in.
+	 */
+	private static boolean translated(TranslatableTextContent translatable, Text source,
+			String name, Text before, Text after, MutableText out,
+			boolean[] done) {
+		Object[] args = translatable.getArgs();
+		Object[] replaced = new Object[args.length];
+		for (int i = 0; i < args.length; i++) {
+			if (args[i] instanceof Text argument && !done[0]) {
+				MutableText rebuilt = Text.empty();
+				walk(argument, name, before, after, rebuilt, done);
+				// Taken only when this argument is the one that placed it:
+				// walk reports the shared flag, which an earlier argument may
+				// already have set, and rebuilding an untouched argument would
+				// flatten the styling the server gave it.
+				if (done[0]) {
+					replaced[i] = rebuilt;
+					continue;
+				}
+			}
+			replaced[i] = args[i];
+		}
+		if (!done[0]) {
+			return false;
+		}
+		out.append(Text.translatable(translatable.getKey(), replaced)
+				.setStyle(source.getStyle()));
+		for (Text child : source.getSiblings()) {
+			walk(child, name, before, after, out, done);
+		}
+		return true;
 	}
 
 }
