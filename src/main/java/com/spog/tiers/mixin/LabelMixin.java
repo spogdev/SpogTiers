@@ -9,6 +9,7 @@ import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
+import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.math.MatrixStack;
@@ -37,7 +38,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * opacity option, and the same two text passes -- faint through walls, solid
  * when in view -- with the same colours and emissive light.
  */
-@Mixin(EntityRenderer.class)
+// PlayerEntityRenderer overrides renderLabelIfPresent, and players are the
+// only thing we tag -- so a mixin on EntityRenderer alone never fires for
+// them and the extra rows simply never drew. Both are targeted, and the
+// guard below means the base class contributes nothing for a player.
+@Mixin({EntityRenderer.class, PlayerEntityRenderer.class})
 public class LabelMixin {
 	/**
 	 * One line up, in font pixels: nine of text plus the backdrop's pixel of
