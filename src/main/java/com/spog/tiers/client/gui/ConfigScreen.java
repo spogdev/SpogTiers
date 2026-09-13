@@ -477,18 +477,18 @@ public class ConfigScreen extends Screen {
 				},
 				"Show retired ranks as retired, rather than as the plain tier");
 
-		y = drawSwitch(graphics, "Particles", config.showParticles, x, y,
-				() -> {
-					config.showParticles = !config.showParticles;
-					config.save();
-				});
-
 		y = drawSwitch(graphics, "Show Discord", config.showDiscord, x, y,
 				() -> {
 					config.showDiscord = !config.showDiscord;
 					config.save();
 				},
 				"Show a player's linked Discord account on their profile");
+
+		y = drawSwitch(graphics, "Show Particles", config.showParticles, x, y,
+				() -> {
+					config.showParticles = !config.showParticles;
+					config.save();
+				});
 
 		return y + CARD_PADDING - top;
 	}
