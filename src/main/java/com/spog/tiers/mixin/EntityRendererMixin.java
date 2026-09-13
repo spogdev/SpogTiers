@@ -40,16 +40,16 @@ public class EntityRendererMixin {
 		if (!SpogTiersClient.config().showNametags || state.displayName == null) {
 			return;
 		}
-		state.displayName = TagRenderer.withTag(player.getUuid(), state.displayName);
-		// Stashed rather than folded into the name: this version has no second
-		// label line of its own, so LabelMixin submits one, and a newline in
-		// the name would share the name's single background.
 		// Split from the bare name, before it is replaced: passing the tagged
 		// name back in would tag it a second time and measure the wrong halves.
 		Text bare = state.displayName;
 		Text[] around = TagRenderer.aroundName(player.getUuid(), bare);
 		NameShift.set(state, around == null ? null : around[0],
 				around == null ? null : around[1]);
+		// Stashed rather than folded into the name: this version has no second
+		// label line of its own, so LabelMixin submits one, and a newline in
+		// the name would share the name's single background.
+		state.displayName = TagRenderer.withTag(player.getUuid(), bare);
 		Text above = TagRenderer.aboveTag(player.getUuid());
 		Text below = TagRenderer.belowTag(player.getUuid());
 		// The plate is padded here rather than in LabelMixin, which only draws
