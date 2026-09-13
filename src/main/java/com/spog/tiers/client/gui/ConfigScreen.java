@@ -422,8 +422,7 @@ public class ConfigScreen extends Screen {
 					config.showPeakTiers = !config.showPeakTiers;
 					config.save();
 				},
-				"Show the peak tier a player has held, struck through, "
-						+ "beside their current one");
+				"Show the peak tier a player has held");
 
 		y = drawSwitch(graphics, "Show Retired", config.showRetired, x, y,
 				() -> {
