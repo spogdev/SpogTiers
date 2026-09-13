@@ -112,13 +112,13 @@ public class LabelMixin {
 		// plate itself is padded where it is set, on the render state.
 		int widest = RowPadding.widest(state.displayName, above, below);
 		if (above != null) {
-			line(queue, matrices, font, RowPadding.pad(above, widest), LINE_OFFSET - raise, shift,
+			line(queue, matrices, font, RowPadding.row(above, widest), LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(queue, matrices, font, RowPadding.pad(below, widest), -LINE_OFFSET - raise, shift,
+			line(queue, matrices, font, RowPadding.row(below, widest), -LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		matrices.pop();

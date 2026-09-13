@@ -24,7 +24,7 @@ public class PlayerListHudMixin {
 		if (uuid == null) {
 			return;
 		}
-		Text tagged = TagRenderer.withTag(uuid, cir.getReturnValue());
+		Text tagged = TagRenderer.withTagOnOneLine(uuid, cir.getReturnValue());
 		if (tagged != cir.getReturnValue()) {
 			cir.setReturnValue(tagged);
 		}

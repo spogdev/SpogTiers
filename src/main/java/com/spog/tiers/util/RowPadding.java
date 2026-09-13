@@ -28,6 +28,28 @@ public final class RowPadding {
 		return config != null && config.tagLayout != null && config.tagLayout.autoExpand;
 	}
 
+	/**
+	 * How much wider Essential draws the name line than its text.
+	 *
+	 * <p>Its nameplate feature puts a backdrop strip either side of the label,
+	 * each a pixel wide, so the plate ends up two pixels wider than the text we
+	 * measured. Without this the plate sits a touch wider than the rows above
+	 * and below it, which is the one row Auto Expand is trying to match.
+	 */
+	private static final int ESSENTIAL_STRIPS = 2;
+
+	/**
+	 * Whether Essential is installed and drawing those strips.
+	 *
+	 * <p>The id is {@code essential-container}, which is what the jar declares
+	 * -- "essential" matches nothing and would have left this silently doing
+	 * nothing at all.
+	 */
+	private static boolean essential() {
+		return net.fabricmc.loader.api.FabricLoader.getInstance()
+				.isModLoaded("essential-container");
+	}
+
 	/** The widest of the three rows, or zero when the setting is off. */
 	public static int widest(Text plate, Text above, Text below) {
 		if (!wanted()) {
@@ -51,7 +73,28 @@ public final class RowPadding {
 	 * the plate exactly as vanilla built it for anyone not using this.
 	 */
 	public static Text plate(Text plate, Text above, Text below) {
-		return pad(plate, widest(plate, above, below));
+		int width = widest(plate, above, below);
+		if (width <= 0) {
+			return plate;
+		}
+		// Padded to less than the target, because Essential's own strips make
+		// up the difference: padding it the full amount left the name line
+		// wider than the rows either side by exactly those two pixels.
+		return pad(plate, essential() ? width - ESSENTIAL_STRIPS : width);
+	}
+
+	/**
+	 * One of the two extra rows, padded to match the name line.
+	 *
+	 * <p>A pixel wider than the measured width when Essential is installed:
+	 * its strips widen the name line either side, so a row padded to the bare
+	 * text measurement finishes just inside the plate it is meant to match.
+	 */
+	public static Text row(Text row, int width) {
+		if (width <= 0) {
+			return row;
+		}
+		return pad(row, essential() ? width + 1 : width);
 	}
 
 	/**
