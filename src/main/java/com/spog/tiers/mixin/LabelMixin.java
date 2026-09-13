@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.spog.tiers.compat.NametagTweaks;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
+import com.spog.tiers.util.RowPadding;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -117,86 +118,22 @@ public class LabelMixin {
 		float raise = NametagTweaks.offset();
 		// Every row out to the width of the widest, when asked. The backdrop
 		// is the font's and is only as wide as the text it is given, so three
-		// rows of different lengths stack up as a ragged set of boxes.
-		int widest = expandTo(state, font, above, below);
+		// rows of different lengths stack up as a ragged set of boxes. The
+		// plate itself is padded where it is set, on the render state.
+		int widest = RowPadding.widest(state.nameTag, above, below);
 		if (above != null) {
-			line(collector, poseStack, font, pad(font, above, widest),
+			line(collector, poseStack, font, RowPadding.pad(above, widest),
 					offset + LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		// One line below the name rather than above it, by the same pitch, so
 		// the three rows are evenly spaced whichever of them are filled.
 		if (below != null) {
-			line(collector, poseStack, font, pad(font, below, widest),
+			line(collector, poseStack, font, RowPadding.pad(below, widest),
 					offset - LINE_OFFSET - raise, shift,
 					seeThrough, light, background);
 		}
 		poseStack.popPose();
-	}
-
-	/**
-	 * The width every row is padded out to, or zero to leave them alone.
-	 *
-	 * <p>The widest of the three, the name plate included -- padding only the
-	 * two extra rows to each other would still leave them ragged against the
-	 * plate between them, which is the line a person actually reads.
-	 */
-	private static int expandTo(EntityRenderState state, Font font,
-			Component above, Component below) {
-		var config = com.spog.tiers.SpogTiersClient.config();
-		if (config == null || !config.tagLayout.autoExpand) {
-			return 0;
-		}
-		int widest = state.nameTag == null ? 0 : font.width(state.nameTag);
-		if (above != null) {
-			widest = Math.max(widest, font.width(above));
-		}
-		if (below != null) {
-			widest = Math.max(widest, font.width(below));
-		}
-		return widest;
-	}
-
-	/**
-	 * One row padded out to {@code width}, centred in it.
-	 *
-	 * <p>Spaces either side rather than one long run on the end, so the row
-	 * stays centred on whatever it was centred on before. The padding is the
-	 * four pixel space and the two pixel one from our own font include, so a
-	 * row lands within a pixel of the target rather than being rounded to the
-	 * nearest four.
-	 */
-	private static Component pad(Font font, Component row, int width) {
-		if (width <= 0) {
-			return row;
-		}
-		int missing = width - font.width(row);
-		if (missing <= 1) {
-			return row;
-		}
-		// Half either side, with the odd pixel going left: the row is drawn
-		// from its own total width, so splitting the padding keeps its middle
-		// where it was.
-		MutableComponent out = Component.empty();
-		out.append(spaces(missing - missing / 2));
-		out.append(row);
-		out.append(spaces(missing / 2));
-		return out;
-	}
-
-	/** A run of padding as close to {@code pixels} wide as the spaces allow. */
-	private static Component spaces(int pixels) {
-		MutableComponent out = Component.empty();
-		int left = pixels;
-		while (left >= 4) {
-			out.append(Component.literal(" "));
-			left -= 4;
-		}
-		// The narrow space from our include, for the last two pixels.
-		if (left >= 2) {
-			out.append(com.spog.tiers.client.ModeIcons.narrowSpace());
-		}
-		return out;
 	}
 
 	/**
