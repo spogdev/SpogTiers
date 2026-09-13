@@ -88,6 +88,28 @@ public final class TagRenderer {
 	 * back to the row as laid out.
 	 */
 	private static Component balancedRow(UUID uuid, Component name) {
+		Component[] sides = balancedSides(uuid);
+		if (sides == null) {
+			return null;
+		}
+		MutableComponent out = Component.empty();
+		if (sides[0] != null) {
+			out.append(sides[0]);
+		}
+		out.append(name);
+		if (sides[1] != null) {
+			out.append(sides[1]);
+		}
+		return out;
+	}
+
+	/**
+	 * The elements of every row, dealt either side of the name.
+	 *
+	 * <p>Returns what goes before the name and what goes after it, either of
+	 * which may be null; null altogether when there is nothing to deal.
+	 */
+	private static Component[] balancedSides(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		// Every row, not just the middle one. Chat and the tab list have a
 		// single line, so the top and bottom rows are the ones with nowhere
@@ -162,15 +184,26 @@ public final class TagRenderer {
 		if (head == null && tail == null) {
 			return null;
 		}
-		MutableComponent out = Component.empty();
-		if (head != null) {
-			out.append(head);
+		return new Component[] {head, tail};
+	}
+
+	/**
+	 * The balanced halves, for a caller that inserts them itself.
+	 *
+	 * <p>Chat gets a rendered line rather than a name it can wrap, so it finds
+	 * the sender's name inside the text and puts these either side of it. The
+	 * two entries are what goes before the name and what goes after, either of
+	 * which may be null.
+	 *
+	 * <p>Null when there is nothing to deal, so a caller can fall back to its
+	 * own single-badge behaviour.
+	 */
+	public static Component[] balancedAround(UUID uuid) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled || !config.tagLayout.autoAdjustLines) {
+			return null;
 		}
-		out.append(name);
-		if (tail != null) {
-			out.append(tail);
-		}
-		return out;
+		return balancedSides(uuid);
 	}
 
 	/**

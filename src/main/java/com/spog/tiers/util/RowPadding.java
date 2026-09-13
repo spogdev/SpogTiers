@@ -29,14 +29,15 @@ public final class RowPadding {
 	}
 
 	/**
-	 * How much wider Essential draws the name line than its text.
+	 * How much less the name line is padded when Essential is installed.
 	 *
 	 * <p>Its nameplate feature puts a backdrop strip either side of the label,
-	 * each a pixel wide, so the plate ends up two pixels wider than the text we
-	 * measured. Without this the plate sits a touch wider than the rows above
-	 * and below it, which is the one row Auto Expand is trying to match.
+	 * so the plate finishes wider than the text we measured and the rows either
+	 * side finish narrower. One pixel off the plate and one onto the rows is
+	 * what closes that, which was measured rather than derived -- taking two off
+	 * the plate overshot and pulled the box visibly inside the rows.
 	 */
-	private static final int ESSENTIAL_STRIPS = 2;
+	private static final int ESSENTIAL_STRIPS = 1;
 
 	/**
 	 * Whether Essential is installed and drawing those strips.
