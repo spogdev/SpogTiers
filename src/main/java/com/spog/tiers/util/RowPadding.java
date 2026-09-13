@@ -110,8 +110,7 @@ public final class RowPadding {
 		}
 		TextRenderer font = MinecraftClient.getInstance().textRenderer;
 		int missing = width - font.getWidth(row);
-		// A pixel is not worth a glyph: the narrowest padding available is two.
-		if (missing <= 1) {
+		if (missing <= 0) {
 			return row;
 		}
 		MutableText out = Text.empty();
@@ -125,9 +124,8 @@ public final class RowPadding {
 	/**
 	 * A run of padding as close to {@code pixels} wide as the spaces allow.
 	 *
-	 * <p>The four pixel space and the two pixel one from our own font include,
-	 * so a row lands within a pixel of the target rather than being rounded to
-	 * the nearest four.
+	 * <p>The four, two and one pixel spaces from our own font include, so any
+	 * width lands exactly rather than being rounded down.
 	 */
 	private static Text spaces(int pixels) {
 		MutableText out = Text.empty();
@@ -136,8 +134,16 @@ public final class RowPadding {
 			out.append(Text.literal(" "));
 			left -= 4;
 		}
+		// Four, two and one, so any remainder lands exactly. With only the
+		// four and the two, a one or three pixel remainder was dropped on each
+		// side independently -- which is what left the rows short of the plate
+		// rather than level with it.
 		if (left >= 2) {
 			out.append(ModeIcons.narrowSpace());
+			left -= 2;
+		}
+		if (left >= 1) {
+			out.append(ModeIcons.hairSpace());
 		}
 		return out;
 	}
