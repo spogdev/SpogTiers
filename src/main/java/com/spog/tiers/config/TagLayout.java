@@ -180,6 +180,28 @@ public class TagLayout {
 	 */
 	public boolean centerOnName;
 
+	/**
+	 * Pad every row out to the width of the longest one.
+	 *
+	 * <p>Off, each row's backdrop is only as wide as its own text, so three
+	 * rows of different lengths leave a ragged stack of boxes. On, the shorter
+	 * rows are padded to match the longest, and the three read as one plate.
+	 *
+	 * <p>Padding is split evenly either side so the row stays centred on
+	 * whatever it was centred on before.
+	 */
+	public boolean autoExpand;
+
+	/**
+	 * Move a row's elements around the name in chat and the tab list.
+	 *
+	 * <p>Those two places have only one line to work with, so a tag arranged
+	 * as three rows arrives as a single run of text with everything on one
+	 * side of the name. On, the middle row's elements are dealt either side of
+	 * it instead.
+	 */
+	public boolean autoAdjustLines;
+
 	public TagLayout() {
 	}
 
@@ -199,6 +221,8 @@ public class TagLayout {
 	public TagLayout copy() {
 		TagLayout copy = new TagLayout();
 		copy.centerOnName = centerOnName;
+		copy.autoExpand = autoExpand;
+		copy.autoAdjustLines = autoAdjustLines;
 		for (Element element : elements) {
 			copy.elements.add(element.copy());
 		}
