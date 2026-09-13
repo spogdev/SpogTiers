@@ -110,8 +110,7 @@ public final class RowPadding {
 		}
 		Font font = Minecraft.getInstance().font;
 		int missing = width - font.width(row);
-		// A pixel is not worth a glyph: the narrowest padding available is two.
-		if (missing <= 1) {
+		if (missing <= 0) {
 			return row;
 		}
 		MutableComponent out = Component.empty();
@@ -136,8 +135,16 @@ public final class RowPadding {
 			out.append(Component.literal(" "));
 			left -= 4;
 		}
+		// Four, two and one, so any remainder lands exactly. With only the
+		// four and the two, a one or three pixel remainder was dropped on each
+		// side independently -- which is what left the rows short of the plate
+		// rather than level with it.
 		if (left >= 2) {
 			out.append(ModeIcons.narrowSpace());
+			left -= 2;
+		}
+		if (left >= 1) {
+			out.append(ModeIcons.hairSpace());
 		}
 		return out;
 	}
