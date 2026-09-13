@@ -35,8 +35,30 @@ public final class TagRenderer {
 	private TagRenderer() {
 	}
 
-	/** Returns {@code original} decorated per the user's nametag settings. */
+	/**
+	 * Returns {@code original} decorated per the user's nametag settings.
+	 *
+	 * <p>The middle row only. Used for the in-world nametag, which draws its
+	 * other two rows itself and so must be left exactly as laid out.
+	 */
 	public static Component withTag(UUID uuid, Component original) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config == null || !config.enabled) {
+			return original;
+		}
+		Component middle = buildRow(uuid, TagLayout.Row.MIDDLE, original);
+		return middle == null ? original : middle;
+	}
+
+	/**
+	 * The same, for somewhere with only one line to draw on.
+	 *
+	 * <p>The tab list gets a single component and has nowhere to put the top
+	 * and bottom rows, so Auto Adjust Lines deals them either side of the name
+	 * here. The in-world tag calls {@link #withTag} instead: it draws all three
+	 * rows, so moving them would undo the arrangement rather than rescue it.
+	 */
+	public static Component withTagOnOneLine(UUID uuid, Component original) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (config == null || !config.enabled) {
 			return original;
@@ -47,8 +69,7 @@ public final class TagRenderer {
 				return balanced;
 			}
 		}
-		Component middle = buildRow(uuid, TagLayout.Row.MIDDLE, original);
-		return middle == null ? original : middle;
+		return withTag(uuid, original);
 	}
 
 	/**

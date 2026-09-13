@@ -29,7 +29,7 @@ public class PlayerTabOverlayMixin {
 		if (uuid == null) {
 			return;
 		}
-		Component tagged = TagRenderer.withTag(uuid, cir.getReturnValue());
+		Component tagged = TagRenderer.withTagOnOneLine(uuid, cir.getReturnValue());
 		if (tagged != cir.getReturnValue()) {
 			cir.setReturnValue(tagged);
 		}

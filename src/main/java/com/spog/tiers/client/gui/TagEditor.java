@@ -684,10 +684,10 @@ public final class TagEditor {
 		y = rule(graphics, left, right, y);
 
 		int centreTop = y;
-		y = toggle(graphics, "Centre On Name", working.centerOnName, x, y,
+		y = toggle(graphics, "Center On Name", working.centerOnName, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.centre");
 		if (overRow(mouseX, mouseY, x, right, centreTop)) {
-			hover = "Centres the top and bottom rows with the name element";
+			hover = "Centers the top and bottom rows with the name element";
 		}
 
 		int expandTop = y;
