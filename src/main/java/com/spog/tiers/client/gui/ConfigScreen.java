@@ -417,6 +417,14 @@ public class ConfigScreen extends Screen {
 				},
 				"If placement rounds should be shown in the tier viewer");
 
+		y = drawSwitch(graphics, "Show Peak Tiers", config.showPeakTiers, x, y,
+				() -> {
+					config.showPeakTiers = !config.showPeakTiers;
+					config.save();
+				},
+				"Show the peak tier a player has held, struck through, "
+						+ "beside their current one");
+
 		y = drawSwitch(graphics, "Show Retired", config.showRetired, x, y,
 				() -> {
 					config.showRetired = !config.showRetired;

@@ -27,6 +27,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -39,7 +40,13 @@ import java.util.concurrent.CompletableFuture;
  * looked up.
  */
 public final class ClientCommands {
-	private static final String PREFIX = "tiers";
+	/**
+	 * The command names, the first being the one documented everywhere.
+	 *
+	 * <p>The alias exists because "tiers" is a name other tier mods want too,
+	 * and whichever registers last wins: the namespaced one is always ours.
+	 */
+	private static final List<String> PREFIXES = List.of("tiers", "spogtiers");
 	private static final String MOJANG_PROFILE =
 			"https://api.mojang.com/users/profiles/minecraft/";
 	/** Session server: unlike the profile API, this returns skin textures. */
@@ -70,15 +77,14 @@ public final class ClientCommands {
 				SharedSuggestionProvider.suggest(
 						context.getSource().getOnlinePlayerNames(), builder);
 
-		LiteralArgumentBuilder<ClientSuggestionProvider> root =
-				LiteralArgumentBuilder.<ClientSuggestionProvider>literal(PREFIX)
-						.executes(context -> 0)
-						.then(RequiredArgumentBuilder
-								.<ClientSuggestionProvider, String>argument("player", StringArgumentType.word())
-								.suggests(players)
-								.executes(context -> 0));
-
-		dispatcher.register(root);
+		for (String prefix : PREFIXES) {
+			dispatcher.register(LiteralArgumentBuilder.<ClientSuggestionProvider>literal(prefix)
+					.executes(context -> 0)
+					.then(RequiredArgumentBuilder
+							.<ClientSuggestionProvider, String>argument("player", StringArgumentType.word())
+							.suggests(players)
+							.executes(context -> 0)));
+		}
 	}
 
 	/**
@@ -88,7 +94,14 @@ public final class ClientCommands {
 	public static boolean handle(String command) {
 		String trimmed = command.trim();
 		String lower = trimmed.toLowerCase(Locale.ROOT);
-		if (!lower.equals(PREFIX) && !lower.startsWith(PREFIX + " ")) {
+		boolean ours = false;
+		for (String prefix : PREFIXES) {
+			if (lower.equals(prefix) || lower.startsWith(prefix + " ")) {
+				ours = true;
+				break;
+			}
+		}
+		if (!ours) {
 			return false;
 		}
 
