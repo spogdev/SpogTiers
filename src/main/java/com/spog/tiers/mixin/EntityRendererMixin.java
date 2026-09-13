@@ -3,6 +3,7 @@ package com.spog.tiers.mixin;
 import com.spog.tiers.SpogTiersClient;
 import com.spog.tiers.util.AboveLabel;
 import com.spog.tiers.util.NameShift;
+import com.spog.tiers.util.RowPadding;
 import com.spog.tiers.util.AuraTarget;
 import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -49,7 +50,15 @@ public class EntityRendererMixin {
 		state.nameTag = TagRenderer.withTag(player.getUUID(), bare);
 		// Stashed for LabelMixin rather than put in scoreText: vanilla draws
 		// that field under the name, since it is the scoreboard line.
-		AboveLabel.set(state, TagRenderer.aboveTag(player.getUUID()));
-		AboveLabel.setBelow(state, TagRenderer.belowTag(player.getUUID()));
+		Component above = TagRenderer.aboveTag(player.getUUID());
+		Component below = TagRenderer.belowTag(player.getUUID());
+		// The plate is padded here rather than in LabelMixin, which only draws
+		// the two extra rows: the plate is vanilla's own and is the widest of
+		// the three more often than not, but a long row above it still left it
+		// narrower than the rows either side. NameShift is already set from the
+		// unpadded halves above, so centring is measured on the real text.
+		state.nameTag = RowPadding.plate(state.nameTag, above, below);
+		AboveLabel.set(state, above);
+		AboveLabel.setBelow(state, below);
 	}
 }

@@ -68,20 +68,31 @@ public final class TagRenderer {
 	 */
 	private static Component balancedRow(UUID uuid, Component name) {
 		SpogTiersConfig config = SpogTiersClient.config();
+		// Every row, not just the middle one. Chat and the tab list have a
+		// single line, so the top and bottom rows are the ones with nowhere
+		// to go -- and the middle row usually holds nothing but the name, so
+		// reading only that found nothing to move and did nothing at all.
+		//
+		// Top first, as the row a person reads first, then the middle, then
+		// the bottom.
 		List<TagLayout.Element> row = new ArrayList<>();
 		boolean hasName = false;
-		for (TagLayout.Element element : config.tagLayout.elements) {
-			if (element.row != TagLayout.Row.MIDDLE) {
-				continue;
+		for (TagLayout.Row which : TagLayout.Row.values()) {
+			for (TagLayout.Element element : config.tagLayout.elements) {
+				if (element.row != which) {
+					continue;
+				}
+				if (element.kind == TagLayout.Kind.NAME) {
+					hasName = true;
+					continue;
+				}
+				row.add(element);
 			}
-			if (element.kind == TagLayout.Kind.NAME) {
-				hasName = true;
-				continue;
-			}
-			row.add(element);
 		}
-		// Nothing to deal, or nowhere to deal it around.
-		if (!hasName || row.size() < 2) {
+		// Nothing to deal, or nowhere to deal it around. One element is still
+		// worth moving: it goes to the left of the name rather than after
+		// everything, which is the whole point in a one-line context.
+		if (!hasName || row.isEmpty()) {
 			return null;
 		}
 
@@ -95,7 +106,7 @@ public final class TagRenderer {
 				&& row.get(row.size() - 1).kind == TagLayout.Kind.SEPARATOR) {
 			row.remove(row.size() - 1);
 		}
-		if (row.size() < 2) {
+		if (row.isEmpty()) {
 			return null;
 		}
 
@@ -122,10 +133,8 @@ public final class TagRenderer {
 		}
 
 		// One set across both sides, so a tier shown on the left is not
-		// repeated on the right. resolve() adds to it as it goes, which is
-		// what makes the suppression carry from one side to the other; the
-		// middle row is the first row, so there is nothing before it to seed
-		// it with.
+		// repeated on the right: resolve() adds to it as it goes, which is
+		// what carries the suppression from one side to the other.
 		Set<String> shown = new LinkedHashSet<>();
 		Component head = sideOf(uuid, before, shown, true);
 		Component tail = sideOf(uuid, after, shown, false);
