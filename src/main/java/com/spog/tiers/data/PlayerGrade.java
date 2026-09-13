@@ -165,11 +165,11 @@ public record PlayerGrade(String grade, int color, long gradedAt, boolean retire
 	 */
 	private static int fallbackColor(String grade) {
 		return switch (grade.toUpperCase(Locale.ROOT)) {
-			case "S" -> 0xFFFFFF;
+			case "S" -> 0xF760E6;
 			case "A+" -> 0xA034C7;
 			case "A" -> 0xD42626;
 			case "B+" -> 0xEB8526;
-			case "B" -> 0x7FFF7F;
+			case "B" -> 0x00F2FF;
 			case "C" -> 0xEDE04E;
 			case "D" -> 0x5F9448;
 			case "F" -> 0x824B27;
