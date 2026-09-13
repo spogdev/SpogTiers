@@ -12,6 +12,7 @@ import com.spog.tiers.data.PlayerTiers;
 import com.spog.tiers.data.Regions;
 import com.spog.tiers.data.Tier;
 import com.spog.tiers.data.TierList;
+import com.spog.tiers.util.TagRenderer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.widget.TextFieldWidget;
@@ -1739,18 +1740,11 @@ public final class TagEditor {
 		if (previewPlayer == null) {
 			return null;
 		}
-		Tier shown = tierFor(element);
-		for (var entry : SpogTiersClient.cache().allLists(previewPlayer).entrySet()) {
-			PlayerTiers tiers = entry.getValue();
-			if (tiers == null) {
-				continue;
-			}
-			Tier best = tiers.best();
-			if (best != null && best.equals(shown)) {
-				return entry.getKey();
-			}
-		}
-		return null;
+		// Asked of the renderer rather than searched for here: it already knows
+		// which list won, and matching a tier back to a list compared only each
+		// list's overall best, so an element pinned to a gamemode found nothing
+		// and lost its icon.
+		return TagRenderer.bestList(previewPlayer, element.gamemode);
 	}
 
 	/** The gamemode the shown tier came from, or null when it is not known. */
@@ -1781,13 +1775,24 @@ public final class TagEditor {
 	 */
 	private Tier tierFor(TagLayout.Element element) {
 		if (previewPlayer != null && element != null && !element.doorSmp) {
-			PlayerTiers tiers = element.list() == null
-					? SpogTiersClient.cache().get(previewPlayer)
-					: SpogTiersClient.cache().get(previewPlayer, element.list());
-			if (tiers != null) {
-				Tier tier = element.gamemode == null ? tiers.best() : tiers.get(element.gamemode);
-				if (tier != null && tier.isRanked()) {
-					return tier;
+			if (element.list() == null) {
+				// Best means the best across every enabled list, which is what
+				// the tag itself draws. Reading the cache for the one list
+				// being displayed showed the stand-in for anyone ranked
+				// elsewhere.
+				Tier best = TagRenderer.bestTier(previewPlayer, element.gamemode);
+				if (best != null && best.isRanked()) {
+					return best;
+				}
+			} else {
+				PlayerTiers tiers =
+						SpogTiersClient.cache().get(previewPlayer, element.list());
+				if (tiers != null) {
+					Tier tier = element.gamemode == null
+							? tiers.best() : tiers.get(element.gamemode);
+					if (tier != null && tier.isRanked()) {
+						return tier;
+					}
 				}
 			}
 		}

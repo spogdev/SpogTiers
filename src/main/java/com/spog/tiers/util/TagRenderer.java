@@ -664,6 +664,27 @@ public final class TagRenderer {
 	}
 
 	/**
+	 * The best tier across every enabled list, for the editor's preview.
+	 *
+	 * <p>Exposed so the preview resolves a Best element the way the tag itself
+	 * does. It used to read the cache for the one list being displayed, which
+	 * is not what Best means: a player ranked on another list showed the
+	 * stand-in tier instead of the tier they actually hold.
+	 *
+	 * <p>Null when nothing is known yet, which the caller shows a stand-in for.
+	 */
+	public static Tier bestTier(UUID uuid, Gamemode mode) {
+		Best best = bestAcrossLists(uuid, mode, Set.of());
+		return best == null ? null : best.tier();
+	}
+
+	/** The list that best tier came from, for its artwork. */
+	public static TierList bestList(UUID uuid, Gamemode mode) {
+		Best best = bestAcrossLists(uuid, mode, Set.of());
+		return best == null ? null : best.list();
+	}
+
+	/**
 	 * The icon for the gamemode the tag is showing. When the slot tracks the
 	 * player's best tier the gamemode is not fixed, so it is resolved by
 	 * finding which mode actually holds that tier.
