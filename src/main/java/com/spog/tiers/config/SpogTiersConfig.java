@@ -72,6 +72,15 @@ public class SpogTiersConfig {
 	public boolean showParticles = true;
 
 	/**
+	 * Show a player's peak tier beside their current one in their profile.
+	 *
+	 * <p>Drawn struck through, as the tier they used to hold. Off leaves only
+	 * the tier they hold now, for someone who reads the list as it stands
+	 * rather than as it was.
+	 */
+	public boolean showPeakTiers = true;
+
+	/**
 	 * Show the linked Discord account under a player's name in their profile.
 	 *
 	 * <p>Off by default, and off means the line is not drawn and the account
