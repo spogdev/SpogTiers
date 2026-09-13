@@ -683,19 +683,43 @@ public final class TagEditor {
 				mouseX, mouseY, "toggle.chat");
 		y = rule(graphics, left, right, y);
 
-		y = toggle(graphics, "Center on name", working.centerOnName, x, y,
+		int centreTop = y;
+		y = toggle(graphics, "Centre On Name", working.centerOnName, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.centre");
+		if (overRow(mouseX, mouseY, x, right, centreTop)) {
+			hover = "Centres the top and bottom rows with the name element";
+		}
+
+		int expandTop = y;
+		y = toggle(graphics, "Auto Expand", working.autoExpand, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.expand");
+		if (overRow(mouseX, mouseY, x, right, expandTop)) {
+			hover = "Widens every row to match the longest one";
+		}
+
+		int adjustTop = y;
+		y = toggle(graphics, "Auto Adjust Lines", working.autoAdjustLines, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.adjust");
+		if (overRow(mouseX, mouseY, x, right, adjustTop)) {
+			hover = "Splits a row either side of the name in chat and the tab "
+					+ "list, where there is only one line to use";
+		}
 
 		int duplicatesTop = y;
 		toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.duplicates");
 		// Explained on hover: what it does depends on a Best option being
 		// picked somewhere, which the label has no room to say.
-		if (mouseX >= x && mouseX < right - PADDING
-				&& mouseY >= duplicatesTop && mouseY < duplicatesTop + 16) {
+		if (overRow(mouseX, mouseY, x, right, duplicatesTop)) {
 			hover = "Prevent duplicate tiers from appearing when a best tierlist "
 					+ "or best gamemode option is selected";
 		}
+	}
+
+	/** Whether the pointer is over a settings row, which is 16 tall. */
+	private boolean overRow(int mouseX, int mouseY, int x, int right, int top) {
+		return mouseX >= x && mouseX < right - PADDING
+				&& mouseY >= top && mouseY < top + 16;
 	}
 
 	/**
@@ -1458,6 +1482,16 @@ public final class TagEditor {
 			case "toggle.centre" -> {
 				remember();
 				working.centerOnName = !working.centerOnName;
+				changed();
+			}
+			case "toggle.expand" -> {
+				remember();
+				working.autoExpand = !working.autoExpand;
+				changed();
+			}
+			case "toggle.adjust" -> {
+				remember();
+				working.autoAdjustLines = !working.autoAdjustLines;
 				changed();
 			}
 			case "toggle.duplicates" -> {
