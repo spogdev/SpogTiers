@@ -41,8 +41,134 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return original;
 		}
+		if (config.tagLayout.autoAdjustLines) {
+			Component balanced = balancedRow(uuid, original);
+			if (balanced != null) {
+				return balanced;
+			}
+		}
 		Component middle = buildRow(uuid, TagLayout.Row.MIDDLE, original);
 		return middle == null ? original : middle;
+	}
+
+	/**
+	 * The middle row dealt either side of the name, for one-line contexts.
+	 *
+	 * <p>Chat and the tab list have a single line, so a tag built as three
+	 * rows arrives with everything bunched on one side of the name. The
+	 * elements are split around it instead.
+	 *
+	 * <p>Two tiers held apart by a separator become one tier either side and
+	 * the separator is dropped: it was there to divide them, and once they are
+	 * on opposite sides of the name it divides nothing. Without a separator the
+	 * sides are simply balanced, the odd one out going left.
+	 *
+	 * <p>Returns null when there is nothing to rearrange, so the caller falls
+	 * back to the row as laid out.
+	 */
+	private static Component balancedRow(UUID uuid, Component name) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		List<TagLayout.Element> row = new ArrayList<>();
+		boolean hasName = false;
+		for (TagLayout.Element element : config.tagLayout.elements) {
+			if (element.row != TagLayout.Row.MIDDLE) {
+				continue;
+			}
+			if (element.kind == TagLayout.Kind.NAME) {
+				hasName = true;
+				continue;
+			}
+			row.add(element);
+		}
+		// Nothing to deal, or nowhere to deal it around.
+		if (!hasName || row.size() < 2) {
+			return null;
+		}
+
+		// A separator on either end divides nothing, so it is dropped rather
+		// than dealt to a side of its own -- balancing [sep, tier] would
+		// otherwise put a bare separator to the left of the name.
+		while (!row.isEmpty() && row.get(0).kind == TagLayout.Kind.SEPARATOR) {
+			row.remove(0);
+		}
+		while (!row.isEmpty()
+				&& row.get(row.size() - 1).kind == TagLayout.Kind.SEPARATOR) {
+			row.remove(row.size() - 1);
+		}
+		if (row.size() < 2) {
+			return null;
+		}
+
+		// A separator between two others is what it means to be "separated".
+		int divider = -1;
+		for (int i = 1; i < row.size() - 1; i++) {
+			if (row.get(i).kind == TagLayout.Kind.SEPARATOR) {
+				divider = i;
+				break;
+			}
+		}
+
+		List<TagLayout.Element> before = new ArrayList<>();
+		List<TagLayout.Element> after = new ArrayList<>();
+		if (divider >= 0) {
+			before.addAll(row.subList(0, divider));
+			after.addAll(row.subList(divider + 1, row.size()));
+		} else {
+			// The odd one out goes left, so two elements split one and one and
+			// three split two and one.
+			int left = row.size() - row.size() / 2;
+			before.addAll(row.subList(0, left));
+			after.addAll(row.subList(left, row.size()));
+		}
+
+		// One set across both sides, so a tier shown on the left is not
+		// repeated on the right. resolve() adds to it as it goes, which is
+		// what makes the suppression carry from one side to the other; the
+		// middle row is the first row, so there is nothing before it to seed
+		// it with.
+		Set<String> shown = new LinkedHashSet<>();
+		Component head = sideOf(uuid, before, shown, true);
+		Component tail = sideOf(uuid, after, shown, false);
+		if (head == null && tail == null) {
+			return null;
+		}
+		MutableComponent out = Component.empty();
+		if (head != null) {
+			out.append(head);
+		}
+		out.append(name);
+		if (tail != null) {
+			out.append(tail);
+		}
+		return out;
+	}
+
+	/**
+	 * One side of a balanced row, or null when none of it resolved.
+	 *
+	 * <p>Built through the same element handling the row itself uses, so a
+	 * tier that resolves to nothing leaves no stray separator or gap behind,
+	 * and duplicate suppression still applies across both sides.
+	 */
+	private static Component sideOf(UUID uuid, List<TagLayout.Element> side,
+			Set<String> shown, boolean leading) {
+		List<Component> pieces = resolve(uuid, side, null, shown);
+		if (pieces.isEmpty()) {
+			return null;
+		}
+		MutableComponent out = Component.empty();
+		// A gap against the name on whichever side it sits, so a tier never
+		// runs straight into it.
+		if (!leading) {
+			out.append(space());
+		}
+		for (int i = 0; i < pieces.size(); i++) {
+			out.append(pieces.get(i));
+		}
+		if (leading) {
+			out.append(space());
+		}
+		return out;
 	}
 
 	/**
@@ -160,17 +286,25 @@ public final class TagRenderer {
 		TagLayout layout = config.tagLayout;
 		Set<String> shown = config.preventDuplicateTiers
 				? labelsBefore(uuid, row) : new LinkedHashSet<>();
+		List<TagLayout.Element> wanted = new ArrayList<>();
+		for (TagLayout.Element element : layout.elements) {
+			if (element.row == row) {
+				wanted.add(element);
+			}
+		}
+		return resolve(uuid, wanted, name, shown);
+	}
 
+	/** Turns a list of elements into the pieces that get drawn. */
+	private static List<Component> resolve(UUID uuid, List<TagLayout.Element> elements,
+			Component name, Set<String> shown) {
 		List<Component> pieces = new ArrayList<>();
 		// A separator is only worth drawing between two things, so it is held
 		// back until something after it earns it. This is what lets a tier
 		// resolve to nothing without leaving a stray bar behind.
 		Component pending = null;
 
-		for (TagLayout.Element element : layout.elements) {
-			if (element.row != row) {
-				continue;
-			}
+		for (TagLayout.Element element : elements) {
 			Component piece = switch (element.kind) {
 				case NAME -> name;
 				case REGION -> regionFor(uuid);

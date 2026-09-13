@@ -84,7 +84,21 @@ public final class LayoutCode {
 		SWITCHES.put("xt", new Switch(c -> c.extraTierlists, (c, v) -> c.extraTierlists = v));
 		SWITCHES.put("cn", new Switch(c -> c.tagLayout != null && c.tagLayout.centerOnName,
 				(c, v) -> c.tagLayout.centerOnName = v));
+		SWITCHES.put("ax", new Switch(c -> c.tagLayout != null && c.tagLayout.autoExpand,
+				(c, v) -> c.tagLayout.autoExpand = v));
+		SWITCHES.put("al", new Switch(c -> c.tagLayout != null && c.tagLayout.autoAdjustLines,
+				(c, v) -> c.tagLayout.autoAdjustLines = v));
 	}
+
+	/**
+	 * The switches that belong to the layout rather than to the config.
+	 *
+	 * <p>They are held until the imported layout is the one in the config, so
+	 * a code that carries elements does not set them on a layout it is about
+	 * to replace.
+	 */
+	private static final java.util.Set<String> LAYOUT_SWITCHES =
+			java.util.Set.of("cn", "ax", "al");
 
 	private LayoutCode() {
 	}
@@ -206,10 +220,15 @@ public final class LayoutCode {
 			String name = part.endsWith("/") ? part.substring(0, part.length() - 1) : part;
 			Switch setting = SWITCHES.get(name);
 			if (setting != null) {
-				// centerOnName lives on the layout being built, so it is held
-				// until that layout is the one in the config.
-				if (name.equals("cn")) {
-					layout.centerOnName = !part.endsWith("/");
+				// These live on the layout being built, so they are held until
+				// that layout is the one in the config.
+				if (LAYOUT_SWITCHES.contains(name)) {
+					boolean on = !part.endsWith("/");
+					switch (name) {
+						case "cn" -> layout.centerOnName = on;
+						case "ax" -> layout.autoExpand = on;
+						default -> layout.autoAdjustLines = on;
+					}
 				} else {
 					setting.set().accept(config, !part.endsWith("/"));
 				}
@@ -226,6 +245,8 @@ public final class LayoutCode {
 			config.tagLayout = layout;
 		} else if (config.tagLayout != null) {
 			config.tagLayout.centerOnName = layout.centerOnName;
+			config.tagLayout.autoExpand = layout.autoExpand;
+			config.tagLayout.autoAdjustLines = layout.autoAdjustLines;
 		}
 		config.normalise();
 		config.save();
