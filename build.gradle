@@ -113,7 +113,7 @@ tasks.register('checkMixinConfig') {
 	description = 'Cross-checks the mixin config against the mixin sources.'
 
 	def config = file('src/main/resources/spogtiers.client.mixins.json')
-	def dir = file('src/main/java/com/spog/tiers/mixin')
+	def dir = file('src/main/java/dev/spog/tiers/mixin')
 	inputs.file(config)
 	inputs.dir(dir)
 
