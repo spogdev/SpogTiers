@@ -75,18 +75,28 @@ public abstract class TextDisplayAboveMixin {
 
 		int ourHeight = lines.lines().size() * LINE_HEIGHT - 1;
 
+		// Auto Expand: the strip is normally only as wide as its own text, so
+		// a short tag over a long display leaves two boxes of different widths
+		// stacked on each other. Widened to the display's own text instead --
+		// set directly rather than padded with spaces, because unlike the
+		// nameplate this background is a quad we size ourselves.
+		int stripWidth = lines.width();
+		if (SpogTiersClient.config().tagLayout.autoExpand) {
+			stripWidth = Math.max(stripWidth, state.textLines.width());
+		}
+
 		// Vanilla never pushes here, so at TAIL the matrix is already rotated,
 		// scaled and translated into the display's text space -- rotating and
 		// scaling again would put this strip somewhere else entirely. It only
 		// needs moving up, in the units that space already uses.
 		matrices.push();
 		matrices.peek().getPositionMatrix().translate(
-				(state.textLines.width() - lines.width()) / 2.0f,
+				(state.textLines.width() - stripWidth) / 2.0f,
 				-(ourHeight + 1),
 				0.0f);
 
 		if ((background & 0xFC000000) != 0) {
-			int width = lines.width();
+			int width = stripWidth;
 			int height = ourHeight;
 			queue.getBatchingQueue(0).submitCustom(matrices,
 					seeThrough ? RenderLayers.textBackgroundSeeThrough()
@@ -99,8 +109,8 @@ public abstract class TextDisplayAboveMixin {
 		for (DisplayEntity.TextDisplayEntity.TextLine cached : lines.lines()) {
 			float x = switch (align) {
 				case LEFT -> 0.0f;
-				case RIGHT -> lines.width() - cached.width();
-				default -> (lines.width() - cached.width()) / 2.0f;
+				case RIGHT -> stripWidth - cached.width();
+				default -> (stripWidth - cached.width()) / 2.0f;
 			};
 			ordered.submitText(matrices, x, line * LINE_HEIGHT, cached.contents(),
 					(flags & DisplayEntity.TextDisplayEntity.SHADOW_FLAG) != 0,
