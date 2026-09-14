@@ -79,6 +79,23 @@ public abstract class TextDisplayMixin {
 				text.backgroundColor(), text.flags());
 		// Re-laid out rather than cleared. submitInner reads width() straight
 		// off this, so a null here crashes the render thread on the next frame.
-		state.cachedInfo = splitLines(tagged, text.lineWidth());
+		Display.TextDisplay.CachedInfo lines = splitLines(tagged, text.lineWidth());
+
+		// Auto Expand: widen the display's own box to the tag above it when
+		// that is the wider of the two, so the two stack as one label rather
+		// than as two boxes of different widths. The tag strip widens the
+		// other way in TextDisplayAboveMixin; between them whichever is
+		// narrower grows.
+		Component above = DisplayAbove.get(state);
+		if (SpogTiersClient.config().tagLayout.autoExpand && above != null) {
+			int tagWidth = splitLines(above, text.lineWidth()).width();
+			if (tagWidth > lines.width()) {
+				// The record carries the width the renderer measures the
+				// background by, so a wider one is all this needs -- the lines
+				// themselves are unchanged and still align inside it.
+				lines = new Display.TextDisplay.CachedInfo(lines.lines(), tagWidth);
+			}
+		}
+		state.cachedInfo = lines;
 	}
 }
