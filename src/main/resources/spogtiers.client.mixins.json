@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "com.spog.tiers.mixin",
+	"package": "dev.spog.tiers.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
 		"PlayerTabOverlayMixin",

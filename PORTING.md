@@ -25,7 +25,7 @@ touch Minecraft internals:
 | Area | Files | Risk |
 | --- | --- | --- |
 | Version metadata | `gradle.properties`, `fabric.mod.json` | trivial |
-| Mixins | `src/main/java/com/spog/tiers/mixin/` | **this is where ports break** |
+| Mixins | `src/main/java/dev/spog/tiers/mixin/` | **this is where ports break** |
 
 `data/`, `config/`, and `util/TagRenderer` only touch `Text`/`Style`, which
 have been stable for many versions.

@@ -13,10 +13,10 @@
 	"environment": "client",
 	"entrypoints": {
 		"client": [
-			"com.spog.tiers.SpogTiersClient"
+			"dev.spog.tiers.SpogTiersClient"
 		],
 		"modmenu": [
-			"com.spog.tiers.client.SpogTiersModMenu"
+			"dev.spog.tiers.client.SpogTiersModMenu"
 		]
 	},
 	"mixins": [

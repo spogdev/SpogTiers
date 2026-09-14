@@ -1,0 +1,355 @@
+package dev.spog.tiers.config;
+
+import dev.spog.tiers.data.Gamemode;
+import dev.spog.tiers.data.TierList;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * The nametag, as a list of elements the user arranges.
+ *
+ * <p>Replaces the three fixed slots the tag used to be built from -- above,
+ * left and right -- which could only ever hold a tier and only ever in that
+ * order. An element knows what it is and which row it sits on, so a separator
+ * can be moved, a second name is possible, and the region is no longer pinned
+ * to one end of one row.
+ *
+ * <p>Rows are drawn as three lines: {@link Row#TOP} above the name plate,
+ * {@link Row#MIDDLE} the plate itself, {@link Row#BOTTOM} below it. Within a
+ * row, elements are drawn in list order, so moving an element left or right is
+ * a swap with its neighbour.
+ *
+ * <p>Read by {@link dev.spog.tiers.util.TagRenderer} and edited by the tag
+ * editor on the nametag tab. It is stored in the config file as a plain list,
+ * so a hand-edited file stays readable.
+ */
+public class TagLayout {
+	/** Which of the three lines an element sits on. */
+	public enum Row {
+		TOP("Top"),
+		MIDDLE("Middle"),
+		BOTTOM("Bottom");
+
+		private final String title;
+
+		Row(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
+		}
+	}
+
+	/** What an element is. */
+	public enum Kind {
+		/** The player's own name. At least one is required. */
+		NAME("Name"),
+		/** A tier from one list, or the best across all of them. */
+		TIER("Tier"),
+		/** The player's region code. */
+		REGION("Region"),
+		/** A character between two other elements. */
+		SEPARATOR("Separator");
+
+		private final String title;
+
+		Kind(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
+		}
+	}
+
+	/**
+	 * One piece of the tag.
+	 *
+	 * <p>A single class rather than a subclass per kind: the config is
+	 * serialised with Gson, which has no polymorphism without a type adapter,
+	 * and the unused fields cost nothing. Which fields matter depends on
+	 * {@link #kind}, and the editor only offers the ones that do.
+	 */
+	public static class Element {
+		public Kind kind = Kind.NAME;
+		public Row row = Row.MIDDLE;
+
+		/**
+		 * Tier elements: which list, or null for the best across all of them.
+		 *
+		 * <p>Starts null, not at a list. Gson omits a null field when writing
+		 * and leaves the field initialiser in place when reading, so a Best
+		 * element saved with no list came back as whatever the initialiser
+		 * said -- silently turning every Best tier into a PvPTiers one on the
+		 * next start. {@link #best} carries the distinction explicitly
+		 * instead.
+		 */
+		public TierList list;
+
+		/**
+		 * Whether this element means "best across every list".
+		 *
+		 * <p>Written out as a real value, so it survives a round trip that a
+		 * null {@link #list} cannot.
+		 */
+		public boolean best;
+
+		/**
+		 * Tier elements: our own Door SMP list rather than one of the six.
+		 *
+		 * <p>A flag rather than a value of {@link TierList}: Door SMP is a
+		 * separate service with one grade per player and no gamemodes, so it
+		 * has no place in an enum whose every member has an endpoint, a set of
+		 * modes and a shared shape. When this is set, {@link #list} and
+		 * {@link #gamemode} are both ignored.
+		 */
+		public boolean doorSmp;
+
+		/** Tier elements: which gamemode, or null for that list's best. */
+		public Gamemode gamemode;
+
+		/** Separator elements: what to draw, and in what colour. */
+		public String character = "|";
+		public int colour = 0x555555;
+
+		public Element() {
+		}
+
+		public Element(Kind kind, Row row) {
+			this.kind = kind;
+			this.row = row;
+			if (kind == Kind.TIER) {
+				list = TierList.PVPTIERS;
+			}
+		}
+
+		/** The list this element draws from, or null when it is a Best. */
+		public TierList list() {
+			return best ? null : list;
+		}
+
+		/** Points the element at one list, or at all of them. */
+		public void list(TierList value) {
+			best = value == null;
+			if (value != null) {
+				list = value;
+			}
+		}
+
+		/** A copy, so an editing session can be abandoned without effect. */
+		public Element copy() {
+			Element copy = new Element(kind, row);
+			copy.list = list;
+			copy.best = best;
+			copy.doorSmp = doorSmp;
+			copy.gamemode = gamemode;
+			copy.character = character;
+			copy.colour = colour;
+			return copy;
+		}
+
+		/** How this element reads in the editor's element list. */
+		public String title() {
+			return switch (kind) {
+				case NAME -> "Name";
+				case REGION -> "Region";
+				case SEPARATOR -> "Separator";
+				case TIER -> {
+					if (doorSmp) {
+						yield "Tier: Door SMP";
+					}
+					yield best || list == null
+							? "Tier: Best" : "Tier: " + list.displayName();
+				}
+			};
+		}
+	}
+
+	/** Every element, in drawing order within each row. */
+	public List<Element> elements = new ArrayList<>();
+
+	/**
+	 * Line the other rows up over the name rather than over the whole tag.
+	 *
+	 * <p>Off, each row is centred in its own width, which is how a nameplate
+	 * is normally drawn. On, the top and bottom rows are centred on wherever
+	 * the name sits in the middle row, so a tag with a long tier on one side
+	 * does not leave the rows looking staggered.
+	 */
+	public boolean centerOnName;
+
+	/**
+	 * Pad every row out to the width of the longest one.
+	 *
+	 * <p>Off, each row's backdrop is only as wide as its own text, so three
+	 * rows of different lengths leave a ragged stack of boxes. On, the shorter
+	 * rows are padded to match the longest, and the three read as one plate.
+	 *
+	 * <p>Padding is split evenly either side so the row stays centred on
+	 * whatever it was centred on before.
+	 */
+	public boolean autoExpand;
+
+	/**
+	 * Move a row's elements around the name in chat and the tab list.
+	 *
+	 * <p>Those two places have only one line to work with, so a tag arranged
+	 * as three rows arrives as a single run of text with everything on one
+	 * side of the name. On, the middle row's elements are dealt either side of
+	 * it instead.
+	 */
+	public boolean autoAdjustLines;
+
+	public TagLayout() {
+	}
+
+	/**
+	 * What Reset returns to: the player's plain nameplate.
+	 *
+	 * <p>Nothing but the name, so resetting clears every tier and separator
+	 * rather than restoring some other arrangement the user did not choose.
+	 */
+	public static TagLayout defaults() {
+		TagLayout layout = new TagLayout();
+		layout.elements.add(new Element(Kind.NAME, Row.MIDDLE));
+		return layout;
+	}
+
+	/** A deep copy, for editing without committing. */
+	public TagLayout copy() {
+		TagLayout copy = new TagLayout();
+		copy.centerOnName = centerOnName;
+		copy.autoExpand = autoExpand;
+		copy.autoAdjustLines = autoAdjustLines;
+		for (Element element : elements) {
+			copy.elements.add(element.copy());
+		}
+		return copy;
+	}
+
+	/** The elements on one row, in order. */
+	public List<Element> row(Row row) {
+		List<Element> out = new ArrayList<>();
+		for (Element element : elements) {
+			if (element.row == row) {
+				out.add(element);
+			}
+		}
+		return out;
+	}
+
+	/** The one name element, or null if somehow there is none. */
+	public Element name() {
+		for (Element element : elements) {
+			if (element.kind == Kind.NAME) {
+				return element;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Whether this layout may be saved.
+	 *
+	 * <p>A tag with no name is not a nametag: it would leave a player
+	 * unidentifiable, which is worse than any arrangement the editor can
+	 * otherwise produce.
+	 */
+	public boolean hasName() {
+		for (Element element : elements) {
+			if (element.kind == Kind.NAME) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Moves an element one place along its row.
+	 *
+	 * <p>Works on the row rather than the backing list, so an element only
+	 * ever swaps with what is drawn beside it, not with whatever happens to be
+	 * adjacent in storage.
+	 *
+	 * @param towardsEnd true to move right, false to move left
+	 * @return true if it moved
+	 */
+	public boolean shift(Element element, boolean towardsEnd) {
+		List<Element> row = row(element.row);
+		int at = row.indexOf(element);
+		int to = at + (towardsEnd ? 1 : -1);
+		if (at < 0 || to < 0 || to >= row.size()) {
+			return false;
+		}
+		Element other = row.get(to);
+		int here = elements.indexOf(element);
+		int there = elements.indexOf(other);
+		elements.set(here, other);
+		elements.set(there, element);
+		return true;
+	}
+
+	/**
+	 * Moves an element to the row above or below, at the end of it.
+	 *
+	 * @return true if it moved
+	 */
+	public boolean reRow(Element element, boolean down) {
+		Row[] rows = Row.values();
+		int at = element.row.ordinal() + (down ? 1 : -1);
+		if (at < 0 || at >= rows.length) {
+			return false;
+		}
+		element.row = rows[at];
+		// Moved to the end of the backing list so it lands at the end of its
+		// new row: the row's order is the order elements appear here.
+		elements.remove(element);
+		elements.add(element);
+		return true;
+	}
+
+	/** Repairs a layout read from a file that has been edited by hand. */
+	public void normalise() {
+		if (elements == null) {
+			elements = new ArrayList<>();
+		}
+		elements.removeIf(element -> element == null || element.kind == null);
+		for (Element element : elements) {
+			if (element.row == null) {
+				element.row = Row.MIDDLE;
+			}
+			if (element.kind == Kind.SEPARATOR
+					&& (element.character == null || element.character.isEmpty()
+							|| element.character.indexOf('�') >= 0)) {
+				// The replacement character means the file was read back in
+				// the wrong charset at some point and the original bytes are
+				// gone. A bar is better than a glyph that cannot be drawn.
+				element.character = "|";
+			}
+			// A layout written before `best` existed says Best by leaving the
+			// list out, which Gson cannot tell from "never set".
+			if (element.kind == Kind.TIER && element.list == null) {
+				element.best = true;
+			}
+		}
+		// A layout with no name cannot be drawn usefully, and one with no
+		// elements at all is a file someone has emptied by accident.
+		if (!hasName()) {
+			elements.add(new Element(Kind.NAME, Row.MIDDLE));
+		}
+		// Exactly one name: two would draw the player's name twice, and the
+		// editor offers no way to tell them apart.
+		boolean seen = false;
+		for (int i = elements.size() - 1; i >= 0; i--) {
+			if (elements.get(i).kind != Kind.NAME) {
+				continue;
+			}
+			if (seen) {
+				elements.remove(i);
+			}
+			seen = true;
+		}
+	}
+}
