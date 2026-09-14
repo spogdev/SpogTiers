@@ -11,6 +11,7 @@ import net.minecraft.client.render.command.OrderedRenderCommandQueue;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.PlayerEntityRenderer;
 import net.minecraft.client.render.entity.state.EntityRenderState;
+import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
 import net.minecraft.client.render.state.CameraRenderState;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.OrderedText;
@@ -49,6 +50,22 @@ public class LabelMixin {
 	 * margin, so this line's box ends exactly where the name's begins.
 	 */
 	private static final int LINE_OFFSET = -10;
+
+	/**
+	 * How far vanilla lifts the name when a second label sits under it.
+	 *
+	 * <p>A player with a separate name line gets that drawn at the attachment
+	 * point first, and the pose is then translated by
+	 * {@code 9 * 1.15 * 0.025} before the display name, so the two do not
+	 * overlap. Our rows rebuild the frame from the attachment point rather
+	 * than inheriting that translate, so without this they stay at the old
+	 * height while the plate between them rises -- the bottom row landing on
+	 * the line below.
+	 *
+	 * <p>In font pixels, since that is the space the rows are drawn in: the
+	 * 0.025 is the scale already applied below.
+	 */
+	private static final float SCORE_LIFT = 9.0f * 1.15f;
 
 	/** Vanilla's nameplate scale: one font pixel is this many blocks. */
 	private static final float SCALE = 0.025f;
@@ -111,6 +128,11 @@ public class LabelMixin {
 		// so the same subtraction is applied here or they stay put while the
 		// plate rises.
 		float raise = NametagTweaks.offset();
+		// Up by a row when a second label is shown under the name, so the
+		// three rows stay together with the plate vanilla has just moved.
+		if (state instanceof PlayerEntityRenderState player && player.playerName != null) {
+			raise += SCORE_LIFT;
+		}
 		// Every row out to the width of the widest, when asked. The backdrop
 		// is the font's and is only as wide as the text it is given, so three
 		// rows of different lengths stack up as a ragged set of boxes. The
