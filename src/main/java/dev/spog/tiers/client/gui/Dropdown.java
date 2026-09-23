@@ -109,8 +109,23 @@ public class Dropdown<T> {
 		}
 	}
 
+	/**
+	 * The hover text of the row under the pointer, or null.
+	 *
+	 * <p>Recorded while the list is drawn rather than worked out again: the
+	 * rows are laid out there, and measuring them twice would mean keeping two
+	 * copies of the same arithmetic in step.
+	 */
+	private String hoveredTooltip;
+
+	/** The hover text of the row under the pointer, or null for none. */
+	public String hoveredTooltip() {
+		return hoveredTooltip;
+	}
+
 	/** The open list, drawn last so it sits above neighbouring rows. */
 	public void drawOverlay(DrawContext graphics, TextRenderer textRenderer, T current, int mouseX, int mouseY) {
+		hoveredTooltip = null;
 		if (!open || entries.isEmpty()) {
 			return;
 		}
@@ -129,6 +144,7 @@ public class Dropdown<T> {
 					|| (entry.value() != null && entry.value().equals(current));
 
 			if (hovered) {
+				hoveredTooltip = entry.tooltip();
 				graphics.fill(x + 1, rowY, x + width - 1, rowY + ROW_HEIGHT, 0x5022303F);
 			} else if (selected) {
 				graphics.fill(x + 1, rowY, x + width - 1, rowY + ROW_HEIGHT, 0x3016202B);
@@ -267,7 +283,16 @@ public class Dropdown<T> {
 		graphics.fill(right - 1, top, right, bottom, border);
 	}
 
-	/** One row: a value, its label and an optional 64x64 icon texture. */
-	public record Entry<T>(T value, String label, Identifier icon) {
+	/**
+	 * One row: a value, its label, an optional 64x64 icon and optional hover
+	 * text.
+	 *
+	 * <p>The three-argument form is the common case, for a list whose labels
+	 * speak for themselves.
+	 */
+	public record Entry<T>(T value, String label, Identifier icon, String tooltip) {
+		public Entry(T value, String label, Identifier icon) {
+			this(value, label, icon, null);
+		}
 	}
 }
