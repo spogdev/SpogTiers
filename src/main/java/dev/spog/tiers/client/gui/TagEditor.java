@@ -735,6 +735,14 @@ public final class TagEditor {
 					+ "list, where there is only one line to use";
 		}
 
+		int retiredTop = y;
+		y = toggle(graphics, "Lunar Retired", config.lunarRetired, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.lunarretired");
+		if (overRow(mouseX, mouseY, x, right, retiredTop)) {
+			hover = "Mark a retired tier with a light blue (R) before it, "
+					+ "as Lunar Client does";
+		}
+
 		int duplicatesTop = y;
 		y = toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.duplicates");
@@ -1536,6 +1544,10 @@ public final class TagEditor {
 				working.autoAdjustLines = !working.autoAdjustLines;
 				changed();
 			}
+			case "toggle.lunarretired" -> {
+				config.lunarRetired = !config.lunarRetired;
+				config.save();
+			}
 			case "toggle.duplicates" -> {
 				config.preventDuplicateTiers = !config.preventDuplicateTiers;
 				config.save();
@@ -1685,6 +1697,12 @@ public final class TagEditor {
 		if (element.doorSmp) {
 			PlayerGrade grade = gradeForPreview();
 			return grade != null && grade.isGraded() ? grade.label() : "S";
+		}
+		// The same shape the tag draws. The preview is one colour per element
+		// rather than a component, so the marker is not blue here -- but its
+		// text and width match, which is what the layout is judged on.
+		if (SpogTiersClient.config().lunarRetired && tier.showsRetirement()) {
+			return "(R) " + tier.bareLabel();
 		}
 		return tier.label();
 	}

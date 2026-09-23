@@ -638,8 +638,7 @@ public final class TagRenderer {
 				out.append(icon).append(glyphGap());
 			}
 		}
-		out.append(Text.literal(tier.label())
-				.setStyle(Style.EMPTY.withColor(tier.color())));
+		appendTier(out, tier);
 		return new Resolved(out, tier.label(), shown);
 	}
 
@@ -683,6 +682,33 @@ public final class TagRenderer {
 			}
 		}
 		return best;
+	}
+
+	/** Lunar Client's own retired colour, from its tiertagger config. */
+	private static final int LUNAR_RETIRED = 0xFFA2D6FF;
+
+	/**
+	 * The tier's label, with retirement marked whichever way is configured.
+	 *
+	 * <p>Normally the R is part of the label and takes the tier's colour, so a
+	 * retired HT1 is one run reading {@code RHT1}. Lunar's form is a bracketed
+	 * marker in its own light blue ahead of the tier, which keeps the tier's
+	 * colour readable next to it.
+	 */
+	private static void appendTier(MutableText out, Tier tier) {
+		SpogTiersConfig config = SpogTiersClient.config();
+		if (config.lunarRetired && tier.showsRetirement()) {
+			// bareLabel drops the R the normal form fuses on, so the marker is
+			// not written twice.
+			out.append(Text.literal("(R)")
+					.setStyle(Style.EMPTY.withColor(LUNAR_RETIRED)));
+			out.append(space());
+			out.append(Text.literal(tier.bareLabel())
+					.setStyle(Style.EMPTY.withColor(tier.color())));
+			return;
+		}
+		out.append(Text.literal(tier.label())
+				.setStyle(Style.EMPTY.withColor(tier.color())));
 	}
 
 	/** True when {@code candidate} is the better of the two tiers. */

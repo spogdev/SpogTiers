@@ -89,8 +89,14 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 		return config == null || config.showRetired;
 	}
 
-	/** Whether this rank should be presented as retired. */
-	private boolean showsRetirement() {
+	/**
+	 * Whether this rank should be presented as retired.
+	 *
+	 * <p>Public so a caller drawing its own marker can ask, rather than
+	 * inferring it by comparing label() against bareLabel(). Honours the Show
+	 * Retired setting, so a retired rank hidden there stays hidden here.
+	 */
+	public boolean showsRetirement() {
 		return retired && showRetired();
 	}
 

@@ -89,6 +89,19 @@ public class SpogTiersConfig {
 	 */
 	public IconStyle iconStyle = IconStyle.DEFAULT;
 
+	/**
+	 * Draw a retired rank the way Lunar Client does.
+	 *
+	 * <p>Off, the marker is an R fused to the front of the label and drawn in
+	 * the tier's own colour, so a retired HT1 reads {@code RHT1}. On, it is a
+	 * bracketed {@code (R)} in light blue before the tier, which is left in
+	 * its own colour -- so the same rank reads {@code (R) HT1}.
+	 *
+	 * <p>Nametags only. The profile has room to spell retirement out and
+	 * already does.
+	 */
+	public boolean lunarRetired = false;
+
 	/** Where a tier icon's artwork comes from. */
 	public enum IconStyle {
 		DEFAULT("Default", "Default icons for each tierlist"),
