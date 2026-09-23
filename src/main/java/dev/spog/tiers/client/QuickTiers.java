@@ -41,7 +41,7 @@ public final class QuickTiers {
 
 	private static final KeyMapping BINDING = new KeyMapping(
 			"key.spogtiers.quick_tiers",
-			InputConstants.Type.KEYSYM,
+			InputConstants.Type.KEYBOARD,
 			// Unbound by default: the user picks a key in Controls.
 			InputConstants.UNKNOWN.getValue(),
 			CATEGORY);

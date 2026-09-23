@@ -6,6 +6,8 @@ One branch per Minecraft version, named `mc/<version>`:
 
 ```
 main          -> current dev, tracks the newest supported version
+mc/26.3       -> release branch for 26.3 (mojmap, deobfuscated, SDL)
+mc/26.2       -> release branch for 26.2 (mojmap, deobfuscated)
 mc/26.1.2     -> release branch for 26.1.2 (mojmap, deobfuscated)
 mc/1.21.11    -> release branch for 1.21.11 (yarn)
 mc/1.21.8     -> release branch for 1.21.8
@@ -70,6 +72,35 @@ These are the breaking changes that matter for this mod:
 
   Every mixin target survived unchanged, and the identity mapping jar must be
   regenerated (`--version 26.2`, 10,952 classes).
+- **26.3** — the windowing and rendering layers both moved. Every mixin target
+  survived unchanged (all twelve still apply), but four APIs broke:
+
+  | 26.2 | 26.3 |
+  | --- | --- |
+  | `PoseStack.mulPose(Quaternionfc)` | `PoseStack.rotate(Quaternionfc)`, or `rotate(Axis, float)` |
+  | `InputConstants.Type.KEYSYM` | `InputConstants.Type.KEYBOARD` |
+  | `RenderTypes.textBackground()` | `collector.submitTextBackground(pose, x0, y0, x1, y1, colour, DisplayMode, light)` |
+  | `org.lwjgl.glfw.*` | `org.lwjgl.sdl.*` |
+
+  **GLFW is gone.** 26.3 ships `lwjgl-sdl` and no `lwjgl-glfw` at all, so
+  anything touching the window or cursor has to be rewritten against SDL.
+  `CursorType` survives with the same private `(String, long)` constructor,
+  but the handle now comes from
+  `SDLMouse.SDL_CreateColorCursor(SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, pixels, pitch), hotX, hotY)`.
+  `SDL_PIXELFORMAT_RGBA32` is the byte-order-correct alias, so existing RGBA
+  pixel rows need no reordering.
+
+  **The text-background render types were removed**, along with their
+  pipelines, and `RenderType.create` is package-private -- so a mod cannot
+  rebuild them. The replacement is `submitTextBackground`, which draws a flat
+  quad in the pose's own XY plane via `Font.prepareBackground`, lightmapped
+  and translucent exactly as the old render type was. Hand-built cube geometry
+  can still use it: rotate the pose to face along each outward normal and draw
+  a square, rather than submitting custom geometry.
+
+  Also renamed, though the mod does not use them: `com.mojang.blaze3d` types
+  under the renderer moved to `com.mojang.renderpearl`. Regenerate the
+  identity mapping jar (`--version 26.3`, 11,383 classes).
 
 ## The 1.21.11 -> 26.x wall
 

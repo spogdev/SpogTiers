@@ -38,7 +38,7 @@ def client_jar_url(version: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="26.1.2")
+    parser.add_argument("--version", default="26.3")
     args = parser.parse_args()
 
     url = client_jar_url(args.version)

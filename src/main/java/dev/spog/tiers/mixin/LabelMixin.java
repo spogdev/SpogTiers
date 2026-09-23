@@ -119,7 +119,7 @@ public class LabelMixin {
 		float tweakScale = NametagTweaks.scale();
 		poseStack.pushPose();
 		poseStack.translate(attachment.x, attachment.y + 0.5, attachment.z);
-		poseStack.mulPose(camera.orientation);
+		poseStack.rotate(camera.orientation);
 		poseStack.scale(SCALE * tweakScale, -SCALE * tweakScale, SCALE * tweakScale);
 
 		// Centred over the name rather than over the whole plate, when asked:

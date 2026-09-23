@@ -5,12 +5,9 @@ import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.util.DisplayAbove;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.DisplayRenderer;
 import net.minecraft.client.renderer.entity.state.TextDisplayEntityRenderState;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import org.spongepowered.asm.mixin.Mixin;
@@ -97,11 +94,13 @@ public abstract class TextDisplayAboveMixin {
 				0.0f);
 
 		if ((background & 0xFC000000) != 0) {
-			int width = stripWidth;
-			int height = ourHeight;
-			collector.submitCustomGeometry(poseStack,
-					seeThrough ? RenderTypes.textBackgroundSeeThrough() : RenderTypes.textBackground(),
-					(matrix, buffer) -> background(matrix, buffer, background, light, width, height));
+			// 26.3 dropped the text-background render types in favour of a
+			// dedicated submit call, which builds the same quad vanilla uses
+			// for its own nameplate.
+			collector.submitTextBackground(poseStack, -1.0f, -1.0f, stripWidth, ourHeight,
+					background,
+					seeThrough ? Font.DisplayMode.SEE_THROUGH : Font.DisplayMode.NORMAL,
+					light);
 		}
 
 		var ordered = collector.order(background != 0 ? 1 : 0);
@@ -121,12 +120,4 @@ public abstract class TextDisplayAboveMixin {
 		poseStack.popPose();
 	}
 
-	/** The background quad, in the same shape vanilla builds for its own. */
-	private static void background(PoseStack.Pose matrix, VertexConsumer consumer,
-			int colour, int light, int width, int height) {
-		consumer.addVertex(matrix, -1.0f, -1.0f, 0.0f).setColor(colour).setLight(light);
-		consumer.addVertex(matrix, -1.0f, height, 0.0f).setColor(colour).setLight(light);
-		consumer.addVertex(matrix, width, height, 0.0f).setColor(colour).setLight(light);
-		consumer.addVertex(matrix, width, -1.0f, 0.0f).setColor(colour).setLight(light);
-	}
 }

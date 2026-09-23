@@ -1,18 +1,17 @@
 package dev.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.WorldAura;
 import dev.spog.tiers.util.AuraTarget;
 import dev.spog.tiers.data.PlayerGrade;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -186,8 +185,7 @@ public class AuraMixin {
 				float half = size * AURA.tailSize(segment) / 2.0f;
 				poseStack.pushPose();
 				place(poseStack, i, then, height, reach);
-				collector.submitCustomGeometry(poseStack, RenderTypes.textBackground(),
-						(pose, buffer) -> cube(pose, buffer, colour, half));
+				cube(poseStack, collector, colour, half);
 				poseStack.popPose();
 			}
 
@@ -203,12 +201,10 @@ public class AuraMixin {
 			float coreHalf = Math.max(half * CORE_SHARE, PIXEL / 2.0f);
 			poseStack.pushPose();
 			place(poseStack, i, elapsed, height, reach);
-			collector.submitCustomGeometry(poseStack, RenderTypes.textBackground(), (pose, buffer) -> {
-				cube(pose, buffer, halo, half + HALO);
-				cube(pose, buffer, glow, half + GLOW);
-				cube(pose, buffer, glow, half);
-				cube(pose, buffer, core, coreHalf);
-			});
+			cube(poseStack, collector, halo, half + HALO);
+			cube(poseStack, collector, glow, half + GLOW);
+			cube(poseStack, collector, glow, half);
+			cube(poseStack, collector, core, coreHalf);
 			poseStack.popPose();
 		}
 	}
@@ -265,35 +261,49 @@ public class AuraMixin {
 		poseStack.translate(x, y, z);
 		// The +z face, turned about the vertical by a quarter less the angle,
 		// looks along (cos theta, 0, sin theta): outward.
-		poseStack.mulPose(Axis.YP.rotation(Mth.HALF_PI - theta));
+		poseStack.rotate(Axis.YP, Mth.HALF_PI - theta);
 	}
 
 	/**
-	 * One cube centred on the pose, {@code half} to each face, faces wound
-	 * to look outward so the culled back faces are exactly the far side.
+	 * One cube centred on the pose, {@code half} to each face.
+	 *
+	 * <p>26.3 removed the text-background render types, so each face is drawn
+	 * through {@link net.minecraft.client.renderer.SubmitNodeCollector#submitTextBackground}
+	 * instead of as hand-built geometry. That call draws a flat quad in the
+	 * pose's own XY plane, so a face is placed by rotating the pose to face
+	 * along its outward normal and pushing it out by {@code half}. Vanilla
+	 * builds its nameplate from the same quad, so the blend, depth and lightmap
+	 * behaviour is the plate's -- which is what the old render type gave us.
 	 */
-	private static void cube(PoseStack.Pose pose, VertexConsumer buffer, int colour, float half) {
+	private static void cube(PoseStack poseStack, SubmitNodeCollector collector,
+			int colour, float half) {
 		int top = shade(colour, TOP);
 		int side = shade(colour, SIDE);
 		int bottom = shade(colour, BOTTOM);
-		// Each face is spanned by two edge directions u and v whose cross
-		// product is the outward normal; walking -u-v, +u-v, +u+v, -u+v is
-		// then counter-clockwise from outside.
-		face(pose, buffer, top, 0, half, 0, 0, 0, half, half, 0, 0);       // +y: z x y
-		face(pose, buffer, bottom, 0, -half, 0, half, 0, 0, 0, 0, half);   // -y: x x z
-		face(pose, buffer, side, 0, 0, half, half, 0, 0, 0, half, 0);      // +z: x x y
-		face(pose, buffer, side, 0, 0, -half, 0, half, 0, half, 0, 0);     // -z: y x x
-		face(pose, buffer, side, half, 0, 0, 0, half, 0, 0, 0, half);      // +x: y x z
-		face(pose, buffer, side, -half, 0, 0, 0, 0, half, 0, half, 0);     // -x: z x y
+		// Yaw then pitch to aim +z along each outward normal. The quad is square
+		// and centred, so its own spin about that normal does not matter.
+		face(poseStack, collector, side, half, 0.0f, 0.0f);            // +z
+		face(poseStack, collector, side, half, Mth.PI, 0.0f);          // -z
+		face(poseStack, collector, side, half, Mth.HALF_PI, 0.0f);     // +x
+		face(poseStack, collector, side, half, -Mth.HALF_PI, 0.0f);    // -x
+		face(poseStack, collector, top, half, 0.0f, -Mth.HALF_PI);     // +y
+		face(poseStack, collector, bottom, half, 0.0f, Mth.HALF_PI);   // -y
 	}
 
-	/** One face: centre {@code c}, spanned by half-edge vectors {@code u} and {@code v}. */
-	private static void face(PoseStack.Pose pose, VertexConsumer buffer, int colour,
-			float cx, float cy, float cz, float ux, float uy, float uz, float vx, float vy, float vz) {
-		buffer.addVertex(pose, cx - ux - vx, cy - uy - vy, cz - uz - vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx + ux - vx, cy + uy - vy, cz + uz - vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx + ux + vx, cy + uy + vy, cz + uz + vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx - ux + vx, cy - uy + vy, cz - uz + vz).setColor(colour).setLight(LIGHT);
+	/**
+	 * One square face of half-extent {@code half}, turned to look along the
+	 * normal given by {@code yaw} and {@code pitch} and pushed out to the
+	 * cube's surface.
+	 */
+	private static void face(PoseStack poseStack, SubmitNodeCollector collector,
+			int colour, float half, float yaw, float pitch) {
+		poseStack.pushPose();
+		poseStack.rotate(Axis.YP, yaw);
+		poseStack.rotate(Axis.XP, pitch);
+		poseStack.translate(0.0f, 0.0f, half);
+		collector.submitTextBackground(poseStack, -half, -half, half, half, colour,
+				Font.DisplayMode.NORMAL, LIGHT);
+		poseStack.popPose();
 	}
 
 	/** The colour with its red, green and blue scaled by {@code by}; alpha untouched. */
