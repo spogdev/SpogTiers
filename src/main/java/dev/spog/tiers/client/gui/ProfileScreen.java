@@ -5,10 +5,12 @@ import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.ModeIcons;
 import dev.spog.tiers.client.QuickTiers;
+import dev.spog.tiers.client.PastSkins;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.data.DiscordAccount;
 import dev.spog.tiers.data.Gamemode;
 import dev.spog.tiers.data.NameHistory;
+import dev.spog.tiers.data.SkinHistory;
 import dev.spog.tiers.data.PlayerGrade;
 import dev.spog.tiers.data.PlayerTiers;
 import dev.spog.tiers.data.Regions;
@@ -90,6 +92,17 @@ public class ProfileScreen extends Screen {
 	 */
 	private static final int PROFILE_WIDTH = 172;
 	private static final float PROFILE_WIDTH_SHARE = 0.27f;
+	/** One skin tile, and the gap between two of them. */
+	private static final int TILE_SIZE = 20;
+	private static final int TILE_GAP = 3;
+	/** Between the model's feet and the row of tiles. */
+	private static final int TILE_DROP = 4;
+
+	private static final int TILE_BORDER = 0xFF2A2F37;
+	private static final int TILE_BORDER_HOVER = 0xFF4C5361;
+	private static final int TILE_BORDER_ACTIVE = 0xFF7AA2F7;
+	private static final int TILE_BACKDROP = 0x40000000;
+
 	private static final int SKIN_WIDTH = 110;
 	private static final int SKIN_HEIGHT = 170;
 	/** Rows of past names shown under the model before scrolling is needed. */
@@ -139,6 +152,16 @@ public class ProfileScreen extends Screen {
 	private final GameProfile profile;
 
 	private Supplier<SkinTextures> skin;
+	/**
+	 * The skin the tiles have switched to, or null to wear the live one.
+	 *
+	 * <p>Kept apart from {@link #skin} so the header face and the model can
+	 * disagree: the tiles change the model, and the face beside the name stays
+	 * the player as they are now.
+	 */
+	private SkinTextures chosenSkin;
+	/** Where each tile was drawn this frame, for hit testing. */
+	private final List<TileBounds> tiles = new ArrayList<>();
 	/** Row under the cursor this frame, resolved during card layout. */
 	private Hover hover;
 	/** List whose header is under the cursor, for the response-time tooltip. */
@@ -247,6 +270,7 @@ public class ProfileScreen extends Screen {
 		// loading state and fills in when the data lands, so it appears at once.
 		SpogTiersClient.service().requestNow(target);
 		SpogTiersClient.service().requestNameHistory(target);
+		SpogTiersClient.service().requestSkinHistory(target);
 
 		// createLookup fetches from Mojang in the background and serves a default
 		// skin until it arrives, so this is safe for arbitrary profiles.
@@ -273,11 +297,15 @@ public class ProfileScreen extends Screen {
 		// Fit the model to whatever is left between the header and the history,
 		// so it never spills out of the profile card.
 		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom();
-		int skinBottom = historyTop - 8;
+		// The tiles sit under the model, so the model is fitted to what is left
+		// above them rather than being drawn over.
+		int skinBottom = historyTop - 8 - tileRowHeight();
 		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
+		// The widget pulls from this every frame, so a tile switching the
+		// chosen skin is picked up without rebuilding the widget.
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
-				skinWidgetWidth(), skinHeight, client.getLoadedEntityModels(), skin);
+				skinWidgetWidth(), skinHeight, client.getLoadedEntityModels(), this::modelSkin);
 		int skinY = skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2);
 		skinWidget.setPosition(cardLeft + (profileWidth() - skinWidgetWidth()) / 2, skinY);
 		addDrawableChild(skinWidget);
@@ -408,6 +436,10 @@ public class ProfileScreen extends Screen {
 		// where it sits on other players and is a matter of taste. Here it is
 		// part of how a graded profile looks, and turning it off left the card
 		// looking like the lookup had failed.
+		// After the widgets so the row is not painted over by the model, and
+		// before the aura so the embers still read as being in front.
+		drawSkinTiles(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
+
 		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
 					skinWidget.getX(), skinWidget.getY(),
@@ -916,6 +948,21 @@ public class ProfileScreen extends Screen {
 			DiscordAccount account = discordAccount();
 			return account != null && copyToClipboard(account.label());
 		}
+		for (TileBounds tile : tiles) {
+			if (!tile.contains(event.x(), event.y())) {
+				continue;
+			}
+			SkinTextures picked = PastSkins.ready(tile.entry());
+			if (picked == null) {
+				return false;
+			}
+			// Picking the skin they already wear clears the choice rather than
+			// pinning it, so the model goes back to following the live lookup.
+			chosenSkin = tile.entry().active() ? null : picked;
+			MinecraftClient.getInstance().getSoundManager()
+					.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+			return true;
+		}
 		return super.mouseClicked(event, doubled);
 	}
 
@@ -1143,6 +1190,133 @@ public class ProfileScreen extends Screen {
 		graphics.fill(left, bottom - 1, right, bottom, CARD_BORDER);
 		graphics.fill(left, top, left + 1, bottom, CARD_BORDER);
 		graphics.fill(right - 1, top, right, bottom, CARD_BORDER);
+	}
+
+	/**
+	 * One drawn tile, kept so a click can be matched back to its skin.
+	 *
+	 * <p>A null entry is the live skin's tile, which is always first and is how
+	 * the model is put back after browsing.
+	 */
+	private record TileBounds(SkinHistory.Entry entry, int left, int top,
+			int right, int bottom) {
+		boolean contains(double x, double y) {
+			return x >= left && x < right && y >= top && y < bottom;
+		}
+	}
+
+	/** The skin the model wears: whichever tile is chosen, else the live one. */
+	private SkinTextures modelSkin() {
+		if (chosenSkin != null) {
+			return chosenSkin;
+		}
+		return skin == null ? null : skin.get();
+	}
+
+	/**
+	 * How much vertical room the tile row needs.
+	 *
+	 * <p>Reserved whether or not the skins have arrived yet, for the same
+	 * reason {@link #historyBandHeight} always keeps a row: the textures load
+	 * after the screen is laid out, and growing the row in later would drop the
+	 * model down a notch while someone was looking at it.
+	 *
+	 * <p>A player with no past skins still gets their live one as a tile, so
+	 * the row is never actually empty.
+	 */
+	private int tileRowHeight() {
+		return TILE_SIZE + TILE_DROP;
+	}
+
+	/**
+	 * The skins the tiles offer, the worn one first.
+	 *
+	 * <p>Only skins whose texture has finished loading are included: a tile is
+	 * a picture of a skin, and there is nothing to draw until the sheet is
+	 * there. They appear as they arrive.
+	 */
+	private List<SkinHistory.Entry> tileEntries() {
+		SkinHistory history = SpogTiersClient.service().skinHistory(target);
+		if (history == null || history.isEmpty()) {
+			return List.of();
+		}
+		List<SkinHistory.Entry> ready = new ArrayList<>();
+		for (SkinHistory.Entry entry : history.entries()) {
+			// Kicks off the load on first sight; later frames find it done.
+			PastSkins.get(entry);
+			if (PastSkins.ready(entry) != null) {
+				ready.add(entry);
+			}
+		}
+		return ready;
+	}
+
+	/**
+	 * Draws the row of past skins under the model.
+	 *
+	 * <p>Left out of the export on purpose: the picture is of a player, and a
+	 * strip of skins they used to wear is a browser for the person looking, not
+	 * part of what they are sharing.
+	 */
+	private void drawSkinTiles(DrawContext graphics, int mouseX, int mouseY) {
+		tiles.clear();
+		if (skinWidget == null || exporting) {
+			return;
+		}
+		List<SkinHistory.Entry> entries = tileEntries();
+		if (entries.isEmpty()) {
+			return;
+		}
+
+		// Centred on the model, and never wider than the card: a player with
+		// many skins shows as many as fit rather than spilling out of it.
+		int inset = Math.round(CARD_PADDING * panelScale());
+		int available = profileWidth() - inset * 2;
+		int fits = Math.max(1, (available + TILE_GAP) / (TILE_SIZE + TILE_GAP));
+		int shown = Math.min(entries.size(), fits);
+
+		int rowWidth = shown * TILE_SIZE + (shown - 1) * TILE_GAP;
+		int left = MARGIN + (profileWidth() - rowWidth) / 2;
+		int top = skinWidget.getY() + skinWidget.getHeight() + TILE_DROP;
+
+		for (int i = 0; i < shown; i++) {
+			SkinHistory.Entry entry = entries.get(i);
+			SkinTextures loaded = PastSkins.ready(entry);
+            if (loaded == null) {
+				continue;
+			}
+			int x = left + i * (TILE_SIZE + TILE_GAP);
+			boolean hovered = mouseX >= x && mouseX < x + TILE_SIZE
+					&& mouseY >= top && mouseY < top + TILE_SIZE;
+			// The worn skin reads as selected until a tile is picked, so the row
+			// always shows where the model came from.
+			boolean selected = chosenSkin == null ? entry.active()
+					: chosenSkin.body().texturePath().equals(loaded.body().texturePath());
+
+			graphics.fill(x, top, x + TILE_SIZE, top + TILE_SIZE, TILE_BACKDROP);
+			drawTileFace(graphics, loaded, x, top);
+			outline(graphics, x, top, x + TILE_SIZE, top + TILE_SIZE,
+					selected ? TILE_BORDER_ACTIVE : hovered ? TILE_BORDER_HOVER : TILE_BORDER);
+
+			tiles.add(new TileBounds(entry, x, top, x + TILE_SIZE, top + TILE_SIZE));
+		}
+	}
+
+	/** A tile's face: the head and then the hat, from that skin's own sheet. */
+	private void drawTileFace(DrawContext graphics, SkinTextures worn, int x, int y) {
+		graphics.drawTexture(RenderPipelines.GUI_TEXTURED, worn.body().texturePath(),
+				x, y, 8.0f, 8.0f, TILE_SIZE, TILE_SIZE, 8, 8, 64, 64);
+		graphics.drawTexture(RenderPipelines.GUI_TEXTURED, worn.body().texturePath(),
+				x, y, 40.0f, 8.0f, TILE_SIZE, TILE_SIZE, 8, 8, 64, 64);
+	}
+
+	/** A one-pixel frame, drawn as four fills. */
+	private static void outline(DrawContext graphics, int left, int top,
+			int right, int bottom, int colour) {
+		graphics.fill(left, top, right, top + 1, colour);
+		graphics.fill(left, bottom - 1, right, bottom, colour);
+		graphics.fill(left, top, left + 1, bottom, colour);
+		graphics.fill(right - 1, top, right, bottom, colour);
 	}
 
 	/** Draws the head, then the hat layer, scaled up from the 64x64 skin sheet. */
