@@ -1024,13 +1024,26 @@ public class TierService {
 		return result;
 	}
 
-	/** Parses {@code "#RRGGBB"}; returns 0 when absent or malformed. */
+	/**
+	 * Parses {@code "RRGGBB"}, with or without a leading {@code #}; returns 0
+	 * when absent or malformed.
+	 *
+	 * <p>Both forms are accepted because the services disagree: the Door SMP
+	 * API serves bare hex, while the third-party lists send it prefixed. A
+	 * published colour is the source of truth for the grade it describes, so
+	 * rejecting one spelling of it silently fell back to the hardcoded ladder
+	 * and made every colour change need a client update.
+	 */
 	private static int parseHexColor(String raw) {
-		if (raw == null || !raw.startsWith("#") || raw.length() != 7) {
+		if (raw == null) {
+			return 0;
+		}
+		String digits = raw.startsWith("#") ? raw.substring(1) : raw;
+		if (digits.length() != 6) {
 			return 0;
 		}
 		try {
-			return Integer.parseInt(raw.substring(1), 16);
+			return Integer.parseInt(digits, 16);
 		} catch (NumberFormatException e) {
 			return 0;
 		}
