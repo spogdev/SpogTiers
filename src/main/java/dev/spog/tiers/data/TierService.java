@@ -50,6 +50,12 @@ public class TierService {
 	 * records it had gathered before then and still tracks changes since.
 	 */
 	private static final String NAME_HISTORY = "https://laby.net/api/v3/user/";
+	/**
+	 * Past skins, from the same service as the names above. Its texture CDN is
+	 * separate from this API and is not rate limited, so a profile costs one
+	 * metered call here however many skins come back.
+	 */
+	private static final String SKIN_HISTORY = "https://laby.net/api/v3/user/";
 	private static final String PVPHQ_LEADERBOARD =
 			"https://pvphq.com/api/v1/leaderboard/ranked/";
 	private static final String CATPVP_RANKED = "https://catpvp.net/ranked";
@@ -119,6 +125,8 @@ public class TierService {
 	/** Past names per player, fetched on demand by the profile screen. */
 	private final Map<UUID, NameHistory> nameHistory = new ConcurrentHashMap<>();
 	private final Set<UUID> nameHistoryPending = ConcurrentHashMap.newKeySet();
+	private final Map<UUID, SkinHistory> skinHistory = new ConcurrentHashMap<>();
+	private final Set<UUID> skinHistoryPending = ConcurrentHashMap.newKeySet();
 	/** Global leaderboard positions, keyed by player, list and gamemode. */
 	private final Map<String, Integer> worldRanks = new ConcurrentHashMap<>();
 	private final Set<String> worldRankPending = ConcurrentHashMap.newKeySet();
@@ -1063,6 +1071,101 @@ public class TierService {
 	private static float floatOr(JsonObject object, String key, float fallback) {
 		JsonElement element = object.get(key);
 		return element == null || element.isJsonNull() ? fallback : element.getAsFloat();
+	}
+
+	/** The skin history for a player, or null until it has been fetched. */
+	public SkinHistory skinHistory(UUID uuid) {
+		return skinHistory.get(uuid);
+	}
+
+	/**
+	 * Fetches a player's past skins, once per player per session.
+	 *
+	 * <p>Same shape as {@link #requestNameHistory}: the profile screen is the
+	 * only caller, so it is pulled on demand and the empty answer is cached too.
+	 */
+	public void requestSkinHistory(UUID uuid) {
+		if (uuid == null || skinHistory.containsKey(uuid) || !skinHistoryPending.add(uuid)) {
+			return;
+		}
+		workers.submit(() -> {
+			try {
+				skinHistory.put(uuid, fetchSkinHistory(uuid));
+			} catch (Exception e) {
+				SpogTiers.LOGGER.debug("Skin history failed for {}", uuid, e);
+				skinHistory.put(uuid, SkinHistory.EMPTY);
+			} finally {
+				skinHistoryPending.remove(uuid);
+			}
+		});
+	}
+
+	/**
+	 * laby.net groups textures by kind, with the skins under {@code SKIN}:
+	 * <pre>
+	 * { "SKIN": [ { "image_hash":"dc31df..", "slim_skin":false,
+	 *              "active":true, "first_seen_at":"2022-01-21T22:05:48+00:00",
+	 *              "last_seen_at":"2026-09-23T22:28:19+00:00" } ],
+	 *   "CAPE": [ .. ] }
+	 * </pre>
+	 * Capes and cloaks are ignored -- the panel switches skins, and a cape
+	 * cannot be shown without the body it belongs to.
+	 *
+	 * <p>{@code active} is {@code true} or absent, never {@code false}, so a
+	 * missing value means "not the current skin". The order returned is not
+	 * documented, so the worn skin is pulled to the front here rather than
+	 * trusted to arrive there.
+	 */
+	private SkinHistory fetchSkinHistory(UUID uuid) throws Exception {
+		HttpRequest request = HttpRequest.newBuilder(URI.create(
+						SKIN_HISTORY + uuid.toString().replace("-", "") + "/textures"))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+
+		HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() != 200 || response.body().isBlank()) {
+			return SkinHistory.EMPTY;
+		}
+
+		JsonElement parsed = JsonParser.parseString(response.body());
+		if (!parsed.isJsonObject()) {
+			return SkinHistory.EMPTY;
+		}
+		JsonElement skins = parsed.getAsJsonObject().get("SKIN");
+		if (skins == null || !skins.isJsonArray()) {
+			return SkinHistory.EMPTY;
+		}
+
+		List<SkinHistory.Entry> entries = new ArrayList<>();
+		for (JsonElement element : skins.getAsJsonArray()) {
+			if (!element.isJsonObject()) {
+				continue;
+			}
+			JsonObject object = element.getAsJsonObject();
+			String hash = string(object, "image_hash");
+			// The hash is the texture's name on the CDN, so an entry without
+			// one cannot be fetched and is no use to the panel.
+			if (hash.isEmpty()) {
+				continue;
+			}
+			entries.add(new SkinHistory.Entry(
+					hash,
+					object.has("slim_skin") && !object.get("slim_skin").isJsonNull()
+							&& object.get("slim_skin").getAsBoolean(),
+					object.has("active") && !object.get("active").isJsonNull()
+							&& object.get("active").getAsBoolean(),
+					epochSeconds(string(object, "first_seen_at")),
+					epochSeconds(string(object, "last_seen_at"))));
+		}
+		// Worn skin first, then most recently seen. Two undated entries keep
+		// the order the service sent them.
+		entries.sort(Comparator
+				.comparing(SkinHistory.Entry::active).reversed()
+				.thenComparing(Comparator.comparingLong(SkinHistory.Entry::lastSeen).reversed()));
+		return new SkinHistory(List.copyOf(entries));
 	}
 
 	/** The name history for a player, or null until it has been fetched. */
