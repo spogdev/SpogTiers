@@ -30,10 +30,9 @@ public enum Gamemode {
 	DEBUFF("debuff", "Debuff", 0xFFE07BE0),
 	MANHUNT("manhunt", "Manhunt", 0xFFFFB703),
 	MINECART("minecart", "Minecart", 0xFFB98A5A),
-	OG_VANILLA("og_vanilla", "OG Vanilla", 0xFF95D5B2),
+	OG_VANILLA("og_vanilla", "OGV", 0xFF95D5B2),
 	SPEED("speed", "Speed", 0xFF48CAE4),
 	TRIDENT("trident", "Trident", 0xFF00B4D8),
-	BEAST("beast", "Beast", 0xFFE0685A),
 	BRIDGE("bridge", "Bridge", 0xFF7FB7E8),
 	// MCPvP ranks phases of a fight rather than a kit, so these have no
 	// equivalent on the other lists.
@@ -104,6 +103,10 @@ public enum Gamemode {
 			case "crystal", "crystalpvp" -> VANILLA;
 			// MCPvP's name for axe.
 			case "shield" -> AXE;
+			// CatPVP's name for sword. Its artwork stays its own: the icon
+			// follows whichever list the tier came from, so a CatPVP row still
+			// shows the beast.
+			case "beast" -> SWORD;
 			case "diamondsmp", "diasmp" -> DIA_SMP;
 			case "htcart", "hightiercart" -> CART;
 			case "diamondcrystal" -> DIA_CRYSTAL;
