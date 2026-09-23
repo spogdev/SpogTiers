@@ -739,8 +739,8 @@ public final class TagEditor {
 		y = toggle(graphics, "Lunar Retired", config.lunarRetired, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.lunarretired");
 		if (overRow(mouseX, mouseY, x, right, retiredTop)) {
-			hover = "Mark a retired tier with a light blue (R) before it, "
-					+ "as Lunar Client does";
+			hover = "Mark retired tiers like how lunar client does with a "
+					+ "(R) in front of the tier";
 		}
 
 		int duplicatesTop = y;
