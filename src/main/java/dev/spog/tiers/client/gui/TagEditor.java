@@ -2,6 +2,7 @@ package dev.spog.tiers.client.gui;
 
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.ClientCommands;
+import dev.spog.tiers.client.GlyphIcons;
 import dev.spog.tiers.client.ModeIcons;
 import dev.spog.tiers.config.LayoutCode;
 import dev.spog.tiers.config.SpogTiersConfig;
@@ -202,6 +203,14 @@ public final class TagEditor {
 	/** What to explain under the pointer this frame, or null. */
 	private String hover;
 
+	/** Hover text for an open dropdown row, painted after the list itself. */
+	private String optionHover;
+
+	/** The open dropdown row's hover text, or null. */
+	public String optionHoverText() {
+		return optionHover;
+	}
+
 	/** The same, for a coloured button, so its panel can match it. */
 	private Explained hoverButton;
 
@@ -219,6 +228,7 @@ public final class TagEditor {
 	private final Dropdown<TagLayout.Kind> creator;
 	private final Dropdown<Choice> tierList;
 	private final Dropdown<Gamemode> tierMode;
+	private final Dropdown<SpogTiersConfig.IconStyle> iconStyle;
 
 	/** What to create next, and how far the right panel is scrolled. */
 	private TagLayout.Kind creating = TagLayout.Kind.TIER;
@@ -297,6 +307,11 @@ public final class TagEditor {
 				}
 				changed();
 			}
+		});
+		this.iconStyle = new Dropdown<>(value -> {
+			SpogTiersConfig config = SpogTiersClient.config();
+			config.iconStyle = value;
+			config.save();
 		});
 		this.tierMode = new Dropdown<>(value -> {
 			click();
@@ -390,10 +405,13 @@ public final class TagEditor {
 
 	/** Every dropdown, so the screen can route clicks and overlays to them. */
 	public List<Dropdown<?>> dropdowns() {
+		// iconStyle is always listed: it lives in the left pane rather than in
+		// the panel that follows the selection, so it has to take clicks and
+		// draw its list whatever is selected.
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
-			return List.of(creator, tierList, tierMode);
+			return List.of(creator, tierList, tierMode, iconStyle);
 		}
-		return List.of(creator);
+		return List.of(creator, iconStyle);
 	}
 
 	public void closeDropdowns() {
@@ -416,6 +434,7 @@ public final class TagEditor {
 		// still take clicks.
 		codeBox = null;
 		hover = null;
+		optionHover = null;
 		hoverButton = null;
 
 		int centreLeft = left + SIDE_WIDTH + PADDING;
@@ -647,6 +666,16 @@ public final class TagEditor {
 	/** Dropdown lists, drawn last so they sit over everything else. */
 	public void drawOverlays(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		creator.drawOverlay(graphics, font, creating, mouseX, mouseY);
+		iconStyle.drawOverlay(graphics, font,
+				SpogTiersClient.config().iconStyle, mouseX, mouseY);
+		// Each option says what it does while the list is open, which is the
+		// only moment the difference between them matters. Drawn here rather
+		// than left to hoverText(): the screen reads that before the overlays,
+		// so a row's text would always be a frame behind the pointer.
+		String option = iconStyle.hoveredTooltip();
+		if (option != null) {
+			optionHover = option;
+		}
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
 			tierList.drawOverlay(graphics, font, current(selected), mouseX, mouseY);
 			tierMode.drawOverlay(graphics, font, selected.gamemode, mouseX, mouseY);
@@ -707,7 +736,7 @@ public final class TagEditor {
 		}
 
 		int duplicatesTop = y;
-		toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
+		y = toggle(graphics, "Prevent Duplicates", config.preventDuplicateTiers, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.duplicates");
 		// Explained on hover: what it does depends on a Best option being
 		// picked somewhere, which the label has no room to say.
@@ -715,6 +744,18 @@ public final class TagEditor {
 			hover = "Prevent duplicate tiers from appearing when a best tierlist "
 					+ "or best gamemode option is selected";
 		}
+
+		y = rule(graphics, left, right, y);
+		graphics.text(font, Component.literal("Icons"), x, y, LABEL_COLOR);
+		y += font.lineHeight + 6;
+		List<Dropdown.Entry<SpogTiersConfig.IconStyle>> styles = new ArrayList<>();
+		for (SpogTiersConfig.IconStyle style : SpogTiersConfig.IconStyle.values()) {
+			styles.add(new Dropdown.Entry<>(style, style.title(), null,
+					style.description()));
+		}
+		iconStyle.setEntries(styles);
+		iconStyle.setBounds(x, y - 4, right - PADDING - x);
+		iconStyle.draw(graphics, font, config.iconStyle, mouseX, mouseY);
 	}
 
 	/** Whether the pointer is over a settings row, which is 16 tall. */
@@ -1723,7 +1764,13 @@ public final class TagEditor {
 			// showing the axe icon because axe sorts first.
 			mode = modeOf(list, element);
 		}
-		return mode == null ? null : ModeIcons.of(list, mode.key());
+		if (mode == null) {
+			return null;
+		}
+		// The same choice the tag itself makes, so the preview shows what will
+		// be drawn rather than the artwork the setting has replaced.
+		Component glyph = GlyphIcons.of(SpogTiersClient.config().iconStyle, mode);
+		return glyph != null ? glyph : ModeIcons.of(list, mode.key());
 	}
 
 	/**

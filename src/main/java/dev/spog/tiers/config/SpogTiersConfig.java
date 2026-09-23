@@ -81,6 +81,39 @@ public class SpogTiersConfig {
 	public boolean showPeakTiers = true;
 
 	/**
+	 * Which artwork a tier's icon is drawn from.
+	 *
+	 * <p>Each tierlist ships its own icons and those are the default. The other
+	 * two are one shared set of font glyphs, which covers the modes the
+	 * tierlists share and leaves the rest on their own artwork.
+	 */
+	public IconStyle iconStyle = IconStyle.DEFAULT;
+
+	/** Where a tier icon's artwork comes from. */
+	public enum IconStyle {
+		DEFAULT("Default", "Default icons for each tierlist"),
+		LUNAR("Lunar", "Use icons design from lunar client replacing all the "
+				+ "gamemodes that are compatible"),
+		CLASSIC("Classic", "Use classic icons from the PvPTiers tiertagger");
+
+		private final String title;
+		private final String description;
+
+		IconStyle(String title, String description) {
+			this.title = title;
+			this.description = description;
+		}
+
+		public String title() {
+			return title;
+		}
+
+		public String description() {
+			return description;
+		}
+	}
+
+	/**
 	 * Show the linked Discord account under a player's name in their profile.
 	 *
 	 * <p>Off by default, and off means the line is not drawn and the account
@@ -457,6 +490,9 @@ public class SpogTiersConfig {
 		}
 		if (sortOrder == null) {
 			sortOrder = SortOrder.RANKING;
+		}
+		if (iconStyle == null) {
+			iconStyle = IconStyle.DEFAULT;
 		}
 		if (leftTag == null) {
 			leftTag = new TagSlot(true, TierList.PVPTIERS, null);

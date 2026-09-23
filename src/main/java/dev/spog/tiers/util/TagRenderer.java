@@ -1,6 +1,7 @@
 package dev.spog.tiers.util;
 
 import dev.spog.tiers.SpogTiersClient;
+import dev.spog.tiers.client.GlyphIcons;
 import dev.spog.tiers.client.ModeIcons;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.config.TagLayout;
@@ -732,7 +733,14 @@ public final class TagRenderer {
 				}
 			}
 		}
-		return mode == null ? null : ModeIcons.of(list, mode.key());
+		if (mode == null) {
+			return null;
+		}
+		// A glyph style first, and only when it has one for this mode: the
+		// modes only CatPVP and MCPvP rank have no Lunar equivalent, and they
+		// keep their own list's artwork rather than losing an icon.
+		Component glyph = GlyphIcons.of(SpogTiersClient.config().iconStyle, mode);
+		return glyph != null ? glyph : ModeIcons.of(list, mode.key());
 	}
 
 	/**
