@@ -215,6 +215,11 @@ public class ConfigScreen extends Screen {
 		// Open dropdowns paint last so they overlap the rows beneath them.
 		if (active == Tab.NAMETAG) {
 			tagEditor.drawOverlays(graphics, mouseX, mouseY);
+			// After the list, since that is what decides which row is under
+			// the pointer, and over it so the text is not painted beneath.
+			if (tagEditor.optionHoverText() != null) {
+				drawHoverText(graphics, tagEditor.optionHoverText(), mouseX, mouseY);
+			}
 		} else if (active == Tab.GENERAL) {
 			sortOrder.drawOverlay(graphics, font, config().sortOrder, mouseX, mouseY);
 		}
