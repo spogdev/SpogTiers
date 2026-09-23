@@ -143,7 +143,7 @@ public enum TierList {
 			// "shield" is MCPvP's name for axe, so it is listed as axe.
 			case MCPVP -> modes("axe", "early_game", "end_game", "late_game", "mace",
 					"mcpvp_spear", "pot", "sword");
-			case CATPVP -> modes("axe", "beast", "bow", "bridge", "cart", "creeper",
+			case CATPVP -> modes("axe", "sword", "bow", "bridge", "cart", "creeper",
 					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
 					"uhc", "vanilla");
 		};
@@ -186,6 +186,10 @@ public enum TierList {
 		return switch (this) {
 			case MCPVP -> modeKey.equals("axe") ? "shield" : modeKey;
 			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
+			// CatPVP ranks sword as beast and ships that artwork, so a row
+			// sourced from it keeps the beast even though the mode is now
+			// sword everywhere else.
+			case CATPVP -> modeKey.equals("sword") ? "beast" : modeKey;
 			default -> modeKey;
 		};
 	}
