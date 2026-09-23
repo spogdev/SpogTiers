@@ -39,8 +39,7 @@ public enum Gamemode {
 	EARLY_GAME("early_game", "Early Game", 0xFF9BE39B),
 	LATE_GAME("late_game", "Late Game", 0xFFE0A05A),
 	END_GAME("end_game", "End Game", 0xFFB98AE8),
-	SHIELD("shield", "Shield", 0xFFC9A227),
-	SPEAR("mcpvp_spear", "Spear", 0xFF7FD1C4);
+	SHIELD("shield", "Shield", 0xFFC9A227);
 
 	private final String key;
 	private final String displayName;
@@ -72,14 +71,12 @@ public enum Gamemode {
 	/**
 	 * Resolves a provider's key, letting the provider settle any clash.
 	 *
-	 * <p>Only one key is genuinely ambiguous: {@code spear} is Spear Mace on
-	 * CatPVP but a kit of its own on MCPvP.
+	 * <p>The list is no longer needed to read a key -- MCPvP's spear and
+	 * CatPVP's spear mace are close enough to be one mode, and each card in
+	 * the profile is built from its own list, so they cannot collide there.
+	 * Kept so callers that know their list need not care.
 	 */
 	public static Gamemode byKey(TierList list, String key) {
-		if (list != null && list.isMcPvp() && key != null
-				&& normalise(key).equals("spear")) {
-			return SPEAR;
-		}
 		return byKey(key);
 	}
 
@@ -111,9 +108,8 @@ public enum Gamemode {
 			case "htcart", "hightiercart" -> CART;
 			case "diamondcrystal" -> DIA_CRYSTAL;
 			case "potion" -> POT;
-			// CatPVP calls its Spear Mace mode simply "spear"; MCPvP's own Spear
-			// is a different mode and carries a distinct key to keep them apart.
-			case "spear" -> SPEAR_MACE;
+			// Both lists' spear kits, which are alike enough to be one mode.
+			case "spear", "mcpvpspear" -> SPEAR_MACE;
 			// MCPvP spells its phases with a hyphen, which normalise() drops.
 			case "earlygame" -> EARLY_GAME;
 			case "lategame" -> LATE_GAME;
