@@ -4,7 +4,6 @@ import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.data.SkinHistory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.SkinTextureDownloader;
-import net.minecraft.core.ClientAsset;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
