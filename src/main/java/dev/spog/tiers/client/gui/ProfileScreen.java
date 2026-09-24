@@ -103,7 +103,7 @@ public class ProfileScreen extends Screen {
 	private static final int TILE_SIZE = 20;
 	private static final int TILE_GAP = 3;
 	/** Between the model's feet and the row of tiles. */
-	private static final int TILE_DROP = 4;
+	private static final int TILE_DROP = 10;
 
 	private static final int TILE_BORDER = 0xFF2A2F37;
 	private static final int TILE_BORDER_HOVER = 0xFF4C5361;
