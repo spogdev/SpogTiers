@@ -28,6 +28,8 @@ import java.util.Arrays;
  */
 final class WindowsClipboard {
 	private static final int CF_DIB = 8;
+	/** A list of file names, which is what a file manager copies. */
+	private static final int CF_HDROP = 15;
 	private static final int GMEM_MOVEABLE = 0x0002;
 
 	private WindowsClipboard() {
@@ -92,6 +94,51 @@ final class WindowsClipboard {
 			// Anything at all -- a missing library, a denied clipboard -- falls
 			// back to the portable path rather than losing the copy.
 			SpogTiers.LOGGER.debug("Native clipboard unavailable", e);
+			return false;
+		}
+	}
+
+	/**
+	 * Puts a file itself on the clipboard, the way a file manager does.
+	 *
+	 * <p>{@code CF_HDROP} is a DROPFILES header followed by the paths as
+	 * wide characters, the list ending in a second null. Pasting it into a
+	 * folder, a chat window or an upload box produces the file rather than a
+	 * picture of it -- which is the difference between sending someone a skin
+	 * they can apply and sending them a screenshot of one.
+	 */
+	static boolean putFile(java.nio.file.Path file) {
+		try {
+			String path = file.toAbsolutePath().toString();
+			// DROPFILES is 20 bytes: the offset to the names, an unused point,
+			// then two flags. fWide marks the names as UTF-16.
+			byte[] names = path.getBytes(java.nio.charset.StandardCharsets.UTF_16LE);
+			ByteBuffer buffer = ByteBuffer
+					.allocate(20 + names.length + 4)
+					.order(ByteOrder.LITTLE_ENDIAN);
+			buffer.putInt(20);
+			buffer.putInt(0);
+			buffer.putInt(0);
+			buffer.putInt(0);
+			buffer.putInt(1);
+			buffer.put(names);
+			// One null ends the name, a second ends the list.
+			buffer.putShort((short) 0);
+			buffer.putShort((short) 0);
+
+			Pointer handle = globalCopy(buffer.array());
+			if (!User32.INSTANCE.OpenClipboard(null)) {
+				return false;
+			}
+			try {
+				User32.INSTANCE.EmptyClipboard();
+				User32.INSTANCE.SetClipboardData(CF_HDROP, handle);
+			} finally {
+				User32.INSTANCE.CloseClipboard();
+			}
+			return true;
+		} catch (Exception | Error e) {
+			SpogTiers.LOGGER.debug("Could not put a file on the clipboard", e);
 			return false;
 		}
 	}
