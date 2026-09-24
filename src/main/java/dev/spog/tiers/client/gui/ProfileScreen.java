@@ -5,6 +5,7 @@ import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.ModeIcons;
 import dev.spog.tiers.client.QuickTiers;
+import dev.spog.tiers.client.EssentialSkins;
 import dev.spog.tiers.client.PastSkins;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.data.DiscordAccount;
@@ -30,8 +31,13 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.text.Style;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.Util;
 import net.minecraft.entity.player.SkinTextures;
 
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -42,6 +48,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -103,6 +110,13 @@ public class ProfileScreen extends Screen {
 	private static final int TILE_BORDER_ACTIVE = 0xFF7AA2F7;
 	private static final int TILE_BACKDROP = 0x40000000;
 
+	/** The right-click menu on a tile. */
+	private static final int MENU_ROW_HEIGHT = 14;
+	private static final int MENU_PADDING = 4;
+	private static final int MENU_FILL = 0xF0161B22;
+	private static final int MENU_BORDER = 0xFF323B47;
+	private static final int MENU_HOVER = 0x40FFFFFF;
+
 	private static final int SKIN_WIDTH = 110;
 	private static final int SKIN_HEIGHT = 170;
 	/** Rows of past names shown under the model before scrolling is needed. */
@@ -162,6 +176,8 @@ public class ProfileScreen extends Screen {
 	private SkinTextures chosenSkin;
 	/** Where each tile was drawn this frame, for hit testing. */
 	private final List<TileBounds> tiles = new ArrayList<>();
+	/** The open right-click menu, or null when none is. */
+	private TileMenu tileMenu;
 	/** Row under the cursor this frame, resolved during card layout. */
 	private Hover hover;
 	/** List whose header is under the cursor, for the response-time tooltip. */
@@ -439,6 +455,7 @@ public class ProfileScreen extends Screen {
 		// After the widgets so the row is not painted over by the model, and
 		// before the aura so the embers still read as being in front.
 		drawSkinTiles(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
+		drawTileMenu(graphics, mouseX, mouseY);
 
 		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
@@ -948,9 +965,29 @@ public class ProfileScreen extends Screen {
 			DiscordAccount account = discordAccount();
 			return account != null && copyToClipboard(account.label());
 		}
+		// An open menu eats the click wherever it lands: on an entry it runs
+		// it, anywhere else it just closes, which is what a menu should do.
+		TileMenu menu = tileMenu;
+		if (menu != null) {
+			tileMenu = null;
+			int row = menu.rowAt(event.x(), event.y());
+			if (row >= 0) {
+				MinecraftClient.getInstance().getSoundManager()
+						.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+				runTileMenu(menu, row);
+			}
+			return true;
+		}
+
 		for (TileBounds tile : tiles) {
 			if (!tile.contains(event.x(), event.y())) {
 				continue;
+			}
+			if (event.button() == 1) {
+				openTileMenu(tile.entry(), event.x(), event.y());
+				MinecraftClient.getInstance().getSoundManager()
+						.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+				return true;
 			}
 			SkinTextures picked = PastSkins.ready(tile.entry());
 			if (picked == null) {
@@ -984,6 +1021,9 @@ public class ProfileScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		// The menu is positioned against the card, so anything that moves the
+		// card underneath it should take it away rather than leave it floating.
+		tileMenu = null;
 		boolean overHistory = mouseX >= MARGIN && mouseX <= MARGIN + profileWidth()
 				&& mouseY >= historyTop && mouseY <= historyBottom;
 		if (overHistory && historyMaxScroll > 0) {
@@ -1300,6 +1340,142 @@ public class ProfileScreen extends Screen {
 
 			tiles.add(new TileBounds(entry, x, top, x + TILE_SIZE, top + TILE_SIZE));
 		}
+	}
+
+	/**
+	 * The right-click menu on a tile.
+	 *
+	 * <p>Built when the menu opens rather than each frame, so the entries
+	 * cannot change under the cursor between drawing and clicking.
+	 */
+	private record TileMenu(SkinHistory.Entry entry, List<String> labels,
+			int left, int top, int width) {
+		int height() {
+			return labels.size() * MENU_ROW_HEIGHT + MENU_PADDING * 2;
+		}
+
+		/** The entry under the pointer, or -1. */
+		int rowAt(double x, double y) {
+			if (x < left || x >= left + width
+					|| y < top + MENU_PADDING
+					|| y >= top + height() - MENU_PADDING) {
+				return -1;
+			}
+			int row = (int) ((y - top - MENU_PADDING) / MENU_ROW_HEIGHT);
+			return row >= 0 && row < labels.size() ? row : -1;
+		}
+	}
+
+	/** Opens the menu for a tile, sized to its entries and kept on screen. */
+	private void openTileMenu(SkinHistory.Entry entry, double x, double y) {
+		List<String> labels = new ArrayList<>();
+		labels.add("Copy File");
+		// Only offered when Essential is really there: the entry doing nothing
+		// would read as the mod being broken rather than the mod being absent.
+		if (EssentialSkins.available()) {
+			labels.add("Add to Essentials Mod");
+		}
+
+		int widest = 0;
+		for (String label : labels) {
+			widest = Math.max(widest, textRenderer.getWidth(label));
+		}
+		int menuWidth = widest + MENU_PADDING * 4;
+		int menuHeight = labels.size() * MENU_ROW_HEIGHT + MENU_PADDING * 2;
+
+		// Nudged back inside the window rather than opening off the edge.
+		int left = (int) Math.min(x, width - menuWidth - 1);
+		int top = (int) Math.min(y, height - menuHeight - 1);
+		tileMenu = new TileMenu(entry, List.copyOf(labels),
+				Math.max(0, left), Math.max(0, top), menuWidth);
+	}
+
+	/** Draws the open menu, if there is one. */
+	private void drawTileMenu(DrawContext graphics, int mouseX, int mouseY) {
+		TileMenu menu = tileMenu;
+		if (menu == null || exporting) {
+			return;
+		}
+		int right = menu.left() + menu.width();
+		int bottom = menu.top() + menu.height();
+		graphics.fill(menu.left(), menu.top(), right, bottom, MENU_FILL);
+		outline(graphics, menu.left(), menu.top(), right, bottom, MENU_BORDER);
+
+		int hovered = menu.rowAt(mouseX, mouseY);
+		for (int i = 0; i < menu.labels().size(); i++) {
+			int rowTop = menu.top() + MENU_PADDING + i * MENU_ROW_HEIGHT;
+			if (i == hovered) {
+				graphics.fill(menu.left() + 1, rowTop,
+						right - 1, rowTop + MENU_ROW_HEIGHT, MENU_HOVER);
+			}
+			graphics.drawTextWithShadow(textRenderer, Text.literal(menu.labels().get(i)),
+					menu.left() + MENU_PADDING * 2,
+					rowTop + (MENU_ROW_HEIGHT - textRenderer.fontHeight) / 2 + 1,
+					LABEL_COLOR);
+		}
+	}
+
+	/**
+	 * Runs the chosen entry.
+	 *
+	 * <p>The skin is written off the render thread -- it may still have to be
+	 * fetched -- and the entry itself then runs back on it, because both the
+	 * clipboard and Essential's modal expect to be touched from there.
+	 */
+	private void runTileMenu(TileMenu menu, int row) {
+		String label = menu.labels().get(row);
+		SkinHistory.Entry entry = menu.entry();
+		MinecraftClient client = MinecraftClient.getInstance();
+		CompletableFuture
+				.supplyAsync(() -> saveSkin(entry), Util.getIoWorkerExecutor())
+				.thenAcceptAsync(file -> {
+					if (file == null) {
+						return;
+					}
+					if (label.equals("Copy File")) {
+						// The file itself rather than a picture of it, so
+						// pasting into a folder or an upload box gives a skin
+						// someone can actually use.
+						WindowsClipboard.putFile(file);
+						return;
+					}
+					EssentialSkins.add(file, skinName(entry), entry.slim());
+				}, client);
+	}
+
+	/**
+	 * Writes one skin to a real file and returns it.
+	 *
+	 * <p>Both entries need a path on disk -- the clipboard hands over a file,
+	 * and Essential reads one when the modal is confirmed -- so it is written
+	 * under the game directory rather than to a temporary file that could be
+	 * swept away before either is done with it.
+	 */
+	private Path saveSkin(SkinHistory.Entry entry) {
+		try {
+			Path dir = MinecraftClient.getInstance().runDirectory.toPath()
+					.resolve("spogtiers-skins");
+			Files.createDirectories(dir);
+			Path file = dir.resolve(skinName(entry) + ".png");
+
+			// Already written by an earlier click: the hash names the content,
+			// so an existing file is the same skin.
+			if (Files.exists(file)) {
+				return file;
+			}
+			try (InputStream in = URI.create(entry.url()).toURL().openStream()) {
+				Files.copy(in, file);
+			}
+			return file;
+		} catch (Exception e) {
+			SpogTiers.LOGGER.warn("Could not save the skin", e);
+			return null;
+		}
+	}
+
+	/** A readable file name: the player, and the hash to keep them apart. */
+	private String skinName(SkinHistory.Entry entry) {
+		return playerName + "-" + entry.hash().substring(0, 8);
 	}
 
 	/** A tile's face: the head and then the hat, from that skin's own sheet. */
@@ -2308,6 +2484,12 @@ public class ProfileScreen extends Screen {
 	 */
 	@Override
 	public boolean keyPressed(net.minecraft.client.input.KeyInput event) {
+		// Escape dismisses an open menu first, so it does not take the whole
+		// screen with it -- the menu is what the key was aimed at.
+		if (tileMenu != null && event.isEscape()) {
+			tileMenu = null;
+			return true;
+		}
 		if (QuickTiers.binding().matchesKey(event)) {
 			close();
 			return true;
