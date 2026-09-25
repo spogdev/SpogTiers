@@ -1,5 +1,10 @@
 name: build
 
+# A compile check across every branch, not a release process. The branches are
+# parallel variants of the same mod, so uploading a jar from each would leave
+# one artifact per branch per push -- copies of the same thing. Releases are
+# published deliberately from dist/ instead.
+
 on:
   push:
     branches: [ "**" ]
@@ -24,8 +29,3 @@ jobs:
       - name: Build
         run: ./gradlew build --stacktrace
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.ref_name }}-artifacts
-          path: dist/*.jar
