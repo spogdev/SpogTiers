@@ -102,6 +102,18 @@ public class SpogTiersConfig {
 	 */
 	public boolean lunarRetired = false;
 
+	/**
+	 * Whether the extra rows are drawn with a text shadow.
+	 *
+	 * <p>On, matching vanilla's own nameplate, so the rows sit on the tag the
+	 * same way the name does. Off suits a plate dark enough that the shadow
+	 * only muddies the text.
+	 *
+	 * <p>Applies to the rows this mod draws in the world. The tab list and chat
+	 * are drawn by the game, which decides shadowing there for itself.
+	 */
+	public boolean textShadow = true;
+
 	/** Where a tier icon's artwork comes from. */
 	public enum IconStyle {
 		DEFAULT("Default", "Default icons for each tierlist"),

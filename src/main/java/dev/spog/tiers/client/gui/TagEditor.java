@@ -773,6 +773,13 @@ public final class TagEditor {
 					+ "list, where there is only one line to use";
 		}
 
+		int shadowTop = y;
+		y = toggle(graphics, "Text Shadow", config.textShadow, x, y,
+				right - PADDING, mouseX, mouseY, "toggle.textshadow");
+		if (overRow(mouseX, mouseY, x, right, shadowTop)) {
+			hover = "Draw the rows with a shadow, the way vanilla draws the name";
+		}
+
 		int retiredTop = y;
 		y = toggle(graphics, "Lunar Retired", config.lunarRetired, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.lunarretired");
@@ -1676,6 +1683,10 @@ public final class TagEditor {
 				remember();
 				working.autoAdjustLines = !working.autoAdjustLines;
 				changed();
+			}
+			case "toggle.textshadow" -> {
+				config.textShadow = !config.textShadow;
+				config.save();
 			}
 			case "toggle.lunarretired" -> {
 				config.lunarRetired = !config.lunarRetired;
