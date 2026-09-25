@@ -2,6 +2,7 @@ package dev.spog.tiers.mixin;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.spog.tiers.SpogTiersClient;
+import dev.spog.tiers.compat.NametagTweaks;
 import dev.spog.tiers.util.DisplayAbove;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -105,6 +106,11 @@ public abstract class TextDisplayAboveMixin {
 		}
 
 		var ordered = collector.order(background != 0 ? 1 : 0);
+		// The display's own flag, but still subject to the Text Shadow setting:
+		// matching the server's tag is the default, and turning shadows off
+		// should turn them off everywhere this mod draws text.
+		boolean shadow = (flags & Display.TextDisplay.FLAG_SHADOW) != 0
+				&& NametagTweaks.textShadow();
 		int line = 0;
 		for (Display.TextDisplay.CachedLine cached : info.lines()) {
 			float x = switch (align) {
@@ -113,7 +119,7 @@ public abstract class TextDisplayAboveMixin {
 				default -> (stripWidth - cached.width()) / 2.0f;
 			};
 			ordered.submitText(poseStack, x, line * LINE_HEIGHT, cached.contents(),
-					(flags & Display.TextDisplay.FLAG_SHADOW) != 0,
+					shadow,
 					seeThrough ? Font.DisplayMode.SEE_THROUGH : Font.DisplayMode.NORMAL,
 					0, opacity << 24 | 0xFFFFFF, light, 0);
 			line++;
