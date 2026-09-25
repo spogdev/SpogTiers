@@ -1,5 +1,10 @@
 name: build
 
+# A compile check across every branch, not a release process. The branches are
+# parallel variants of the same mod, so uploading a jar from each would leave
+# one artifact per branch per push -- copies of the same thing. Releases are
+# published deliberately from dist/ instead.
+
 on:
   push:
     branches: [ "**" ]
