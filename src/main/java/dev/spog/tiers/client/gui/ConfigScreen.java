@@ -798,7 +798,7 @@ public class ConfigScreen extends Screen {
 					return true;
 				}
 			}
-			if (tagEditor.scroll(deltaY)) {
+			if (tagEditor.scroll(mouseX, mouseY, deltaY)) {
 				return true;
 			}
 		}

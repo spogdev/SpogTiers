@@ -235,6 +235,27 @@ public final class TagEditor {
 	private int scroll;
 	private int scrollMax;
 
+	/**
+	 * The same, for the settings panel on the left.
+	 *
+	 * <p>Kept apart from the right panel's offset so each side stays where it
+	 * was put: the two hold unrelated content, and scrolling one to reach a
+	 * toggle should not move the other out from under the pointer.
+	 */
+	private int leftScroll;
+	private int leftScrollMax;
+
+	/**
+	 * Where each side panel was last drawn, so a scroll can be sent to
+	 * whichever one the pointer is over.
+	 */
+	private int leftPaneLeft;
+	private int leftPaneRight;
+	private int paneTop;
+	private int paneBottom;
+	private int rightPaneLeft;
+	private int rightPaneRight;
+
 	/** The element under the pointer while dragging, and where it started. */
 	private TagLayout.Element dragging;
 	private int dragFromX;
@@ -338,6 +359,7 @@ public final class TagEditor {
 		complaint = null;
 		dragging = null;
 		scroll = 0;
+		leftScroll = 0;
 		history.clear();
 		// The player's own name to start with: the preview is most useful
 		// showing the tag they will actually be wearing.
@@ -439,6 +461,15 @@ public final class TagEditor {
 
 		int centreLeft = left + SIDE_WIDTH + PADDING;
 		int centreRight = right - SIDE_WIDTH - PADDING;
+
+		// Remembered so a scroll goes to the panel the pointer is over rather
+		// than always to the right one.
+		leftPaneLeft = left;
+		leftPaneRight = left + SIDE_WIDTH;
+		rightPaneLeft = centreRight + PADDING;
+		rightPaneRight = right;
+		paneTop = top;
+		paneBottom = bottom;
 
 		drawGeneral(graphics, left, top, left + SIDE_WIDTH, bottom, mouseX, mouseY);
 		drawPreview(graphics, centreLeft, top, centreRight, bottom, mouseX, mouseY);
@@ -620,6 +651,9 @@ public final class TagEditor {
 	/** Whether the pointer is over anything clickable, for the cursor. */
 	public boolean isOverControl(int mouseX, int mouseY) {
 		for (Button button : buttons) {
+			if (!visible(button.top(), button.bottom())) {
+				continue;
+			}
 			if (mouseX >= button.left() && mouseX < button.right()
 					&& mouseY >= button.top() && mouseY < button.bottom()) {
 				return true;
@@ -689,7 +723,11 @@ public final class TagEditor {
 		SpogTiersConfig config = SpogTiersClient.config();
 		panel(graphics, left, top, right, bottom);
 		int x = left + PADDING;
-		int y = top + PADDING;
+		int y = top + PADDING - leftScroll;
+
+		// Clipped to the panel so scrolled-away rows do not draw over the
+		// tabs above or the footer below. Inside the border, which stays put.
+		graphics.enableScissor(left + 1, top + 1, right - 1, bottom - 1);
 
 		graphics.drawTextWithShadow(font, Text.literal("Settings"), x, y, LABEL_COLOR);
 		y += font.fontHeight + 6;
@@ -764,12 +802,33 @@ public final class TagEditor {
 		iconStyle.setEntries(styles);
 		iconStyle.setBounds(x, y - 4, right - PADDING - x);
 		iconStyle.draw(graphics, font, config.iconStyle, mouseX, mouseY);
+		// The dropdown is the last thing in the panel, so its own height is
+		// what decides whether the panel overflows.
+		y += BUTTON_HEIGHT;
+
+		graphics.disableScissor();
+
+		// How far the content ran past the bottom, so scrolling knows its
+		// limit. Measured from the unscrolled height, hence adding it back.
+		leftScrollMax = Math.max(0, (y + leftScroll) - bottom + PADDING);
+		if (leftScrollMax == 0) {
+			leftScroll = 0;
+		} else {
+			// A panel that grew -- a window resize, or the tab being reopened
+			// taller -- must not stay scrolled past its own end.
+			leftScroll = Math.min(leftScroll, leftScrollMax);
+		}
+		drawScrollHint(graphics, right, top, bottom, leftScroll, leftScrollMax);
 	}
 
 	/** Whether the pointer is over a settings row, which is 16 tall. */
 	private boolean overRow(int mouseX, int mouseY, int x, int right, int top) {
+		// Bounded by the panel too: a scrolled row keeps the coordinates it was
+		// drawn at, which can be above or below the panel, and a row that is
+		// not on screen must not answer to the pointer.
 		return mouseX >= x && mouseX < right - PADDING
-				&& mouseY >= top && mouseY < top + 16;
+				&& mouseY >= top && mouseY < top + 16
+				&& mouseY >= paneTop && mouseY < paneBottom;
 	}
 
 	/**
@@ -1125,6 +1184,9 @@ public final class TagEditor {
 		}
 
 		int y = top + PADDING - scroll;
+		// Clipped to the area above the footer, so scrolled content passes
+		// under it instead of drawing over the footer and the border.
+		graphics.enableScissor(left + 1, top + 1, right - 1, footer);
 		graphics.drawTextWithShadow(font, Text.literal(selected.title()), x, y, LABEL_COLOR);
 		y += font.fontHeight + 8;
 
@@ -1211,8 +1273,16 @@ public final class TagEditor {
 			y += 28;
 		}
 
+		graphics.disableScissor();
+
 		// How far the content ran past the footer, so scrolling knows its limit.
 		scrollMax = Math.max(0, (y + scroll) - footer + PADDING);
+		if (scrollMax == 0) {
+			scroll = 0;
+		} else {
+			scroll = Math.min(scroll, scrollMax);
+		}
+		drawScrollHint(graphics, right, top, footer, scroll, scrollMax);
 
 		if (nameField != null && nameField.visible) {
 			nameField.renderWidget(graphics, mouseX, mouseY, 0.0f);
@@ -1324,6 +1394,9 @@ public final class TagEditor {
 		double mouseX = event.x();
 		double mouseY = event.y();
 		for (Button button : buttons) {
+			if (!visible(button.top(), button.bottom())) {
+				continue;
+			}
 			if (mouseX >= button.left() && mouseX < button.right()
 					&& mouseY >= button.top() && mouseY < button.bottom()) {
 				return act(button.id());
@@ -1454,12 +1527,72 @@ public final class TagEditor {
 		return null;
 	}
 
-	public boolean scroll(double amount) {
-		if (scrollMax <= 0) {
+	/**
+	 * Whether something drawn between these two rows is actually on screen.
+	 *
+	 * <p>Scrolling moves what is drawn but not what was recorded, so a control
+	 * scrolled out of a panel still has coordinates -- ones that can fall on
+	 * the tab row above or the footer below. Anything wholly outside the panels
+	 * is treated as not there.
+	 */
+	private boolean visible(int top, int bottom) {
+		return bottom > paneTop && top < paneBottom;
+	}
+
+	/**
+	 * A slim bar down the inside edge of a panel that has more than it can show.
+	 *
+	 * <p>Drawn only while there is somewhere to scroll, so a panel that fits
+	 * looks no different from before. Its only job is to say that scrolling
+	 * will do something -- without it, a panel cut off at the bottom looks
+	 * like the end of the list.
+	 */
+	private void drawScrollHint(DrawContext graphics, int right, int top,
+			int bottom, int offset, int max) {
+		if (max <= 0) {
+			return;
+		}
+		int height = bottom - top;
+		if (height <= 0) {
+			return;
+		}
+		int track = height - 4;
+		// Proportional to how much is on show, with a floor so it stays
+		// visible on a very long panel.
+		int thumb = Math.max(12, track * height / (height + max));
+		int travel = track - thumb;
+		int y = top + 2 + (max == 0 ? 0 : travel * offset / max);
+		graphics.fill(right - 4, top + 2, right - 2, bottom - 2, 0x30FFFFFF);
+		graphics.fill(right - 4, y, right - 2, y + thumb, 0x80B9C4D0);
+	}
+
+	/**
+	 * Scrolls whichever side panel the pointer is over.
+	 *
+	 * <p>Takes the pointer because the two panels scroll separately: without
+	 * it the wheel always moved the right one, wherever the cursor was, and
+	 * the settings panel could not be reached at all on a short window.
+	 */
+	public boolean scroll(double mouseX, double mouseY, double amount) {
+		if (mouseY < paneTop || mouseY >= paneBottom) {
 			return false;
 		}
-		scroll = Math.clamp(scroll - (int) (amount * 12), 0, scrollMax);
-		return true;
+		int step = (int) (amount * 12);
+		if (mouseX >= leftPaneLeft && mouseX < leftPaneRight) {
+			if (leftScrollMax <= 0) {
+				return false;
+			}
+			leftScroll = Math.clamp(leftScroll - step, 0, leftScrollMax);
+			return true;
+		}
+		if (mouseX >= rightPaneLeft && mouseX < rightPaneRight) {
+			if (scrollMax <= 0) {
+				return false;
+			}
+			scroll = Math.clamp(scroll - step, 0, scrollMax);
+			return true;
+		}
+		return false;
 	}
 
 	/** Runs whatever a button id means. */
