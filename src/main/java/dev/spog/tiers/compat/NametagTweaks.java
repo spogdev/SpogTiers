@@ -152,10 +152,18 @@ public final class NametagTweaks {
 
 
 
-	/** Whether the mod wants a shadow under nameplate text. */
+	/**
+	 * Whether nameplate text should carry a shadow.
+	 *
+	 * <p>Ours unless the user asked to match Nametag Tweaks, in which case that
+	 * mod's setting wins -- the point of that option is that our rows agree
+	 * with the plate it draws, and a shadow the plate does not have is exactly
+	 * the sort of disagreement it exists to avoid.
+	 */
 	public static boolean textShadow() {
 		if (!following()) {
-			return false;
+			var config = SpogTiersClient.config();
+			return config == null || config.textShadow;
 		}
 		return Boolean.TRUE.equals(read(shadowField));
 	}
