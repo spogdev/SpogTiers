@@ -1,0 +1,100 @@
+plugins {
+	id 'java'
+	// Produces a self-contained fat jar to drop on the VPS.
+	// NOTE: deliberately NOT using the 'application' plugin -- its start-script and
+	// distribution tasks still reference Gradle's removed `mainClassName` property and
+	// fail at configuration time under Gradle 9. Only the fat jar is needed.
+	id 'com.gradleup.shadow' version '8.3.5'
+}
+
+// Standalone service: no Fabric Loom, no Minecraft dependency.
+group = "${project.maven_group}.tiers.backend"
+version = project.backend_version
+
+def mainClassName = 'com.spog.tiers.backend.BackendMain'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// Discord. The voice stack is unused and drags in native binaries, so it is
+	// excluded rather than shipped dead in the jar.
+	implementation('net.dv8tion:JDA:5.6.1') {
+		exclude module: 'opus-java'
+	}
+	implementation 'io.javalin:javalin:6.7.0'
+	implementation 'com.google.code.gson:gson:2.11.0'
+	implementation 'org.slf4j:slf4j-simple:2.0.16'
+
+	testImplementation platform('org.junit:junit-bom:5.11.3')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def targetJavaVersion = 25
+java {
+	toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+}
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release = targetJavaVersion
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	testLogging {
+		events 'passed', 'failed', 'skipped'
+	}
+}
+
+tasks.named('shadowJar') {
+	archiveBaseName = 'doorsmp-backend'
+	archiveClassifier = 'all'
+	archiveVersion = ''
+	manifest {
+		attributes 'Main-Class': mainClassName
+	}
+	// Jetty (inside Javalin) and JDA both ship META-INF/services entries. Without
+	// merging them the shaded jar silently loses ServiceLoader providers and Jetty
+	// fails to start -- which only shows up when running the fat jar, never from
+	// `gradle run`. Hence the fat jar is what the verification steps exercise.
+	mergeServiceFiles()
+}
+
+// Fat jar is the deliverable, so make it part of `build`.
+tasks.named('assemble') {
+	dependsOn tasks.named('shadowJar')
+}
+
+// Collect the fat jar into the top-level dist/ folder, the same place the mod
+// branches drop their jars, so everything shippable is in one place. The names
+// do not collide: the mod jars carry a Minecraft version, this one does not.
+def distDir = rootProject.layout.projectDirectory.dir("dist")
+
+tasks.register('copyToDist', Copy) {
+	group = 'build'
+	description = 'Copies the fat jar into dist/.'
+	dependsOn tasks.named('shadowJar')
+
+	from tasks.named('shadowJar')
+	into distDir
+}
+
+tasks.named('build') {
+	finalizedBy 'copyToDist'
+}
+
+tasks.register('cleanDist', Delete) {
+	group = 'build'
+	description = "Removes the backend jar from dist/."
+	delete distDir.file("doorsmp-backend-all.jar")
+}
+
+// Local testing: ./gradlew :backend:run --args="--port 8081"
+tasks.register('run', JavaExec) {
+	group = 'application'
+	description = 'Run the backend locally.'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = mainClassName
+}

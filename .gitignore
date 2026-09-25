@@ -31,3 +31,10 @@ dist/
 
 # cached vanilla jar used to synthesise identity mappings (26.x+)
 mappings/client-*.jar
+
+# local test data from a dev run of the backend
+/graders.json
+/grades.json
+
+# bot token -- a password, never commit it
+token.txt
