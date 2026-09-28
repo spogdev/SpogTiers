@@ -32,9 +32,10 @@ public final class ModeIcons {
 	 *
 	 * <p>Hard-coded on purpose: it belongs to no TierList, so the index
 	 * arithmetic below cannot reach it. If a list ever gains a mode, this must
-	 * move up with it -- there are 62 generated glyphs, E000 through E03D.
+	 * move up with it -- there are 69 generated glyphs, E000 through E044.
+	 * {@code tools/generate_icon_font.py} prints these three when it runs.
 	 */
-	private static final int DOOR_CODEPOINT = 0xE03E;
+	private static final int DOOR_CODEPOINT = 0xE045;
 
 	/**
 	 * The same door, raised a pixel, for nametags.
@@ -42,7 +43,7 @@ public final class ModeIcons {
 	 * <p>Vertical placement is a property of the font provider rather than the
 	 * draw call, so a glyph that needs a different offset needs its own entry.
 	 */
-	private static final int DOOR_RAISED_CODEPOINT = 0xE03F;
+	private static final int DOOR_RAISED_CODEPOINT = 0xE046;
 
 	/**
 	 * The Discord mark, for the row that carries a linked account.
@@ -51,7 +52,7 @@ public final class ModeIcons {
 	 * a bitmap glyph takes the style's colour, and leaving it to that would
 	 * let a row's own colour repaint the logo.
 	 */
-	private static final int DISCORD_CODEPOINT = 0xE040;
+	private static final int DISCORD_CODEPOINT = 0xE047;
 
 
 	/**
@@ -63,8 +64,9 @@ public final class ModeIcons {
 					"axe", "beast", "bow", "bridge", "cart", "creeper", "dia_smp",
 					"mace", "neth_pot", "pot", "smp", "spear_mace", "uhc", "vanilla"),
 			TierList.MCPVP, List.of(
+					"bow", "cart", "creeper", "crystal", "diamond_smp",
 					"early_game", "end_game", "late_game", "mace", "mcpvp_spear",
-					"pot", "shield", "sword"),
+					"netherite_pot", "pot", "shield", "smp", "sword"),
 			TierList.MCTIERS, List.of(
 					"axe", "mace", "neth_pot", "pot", "smp", "sword", "uhc", "vanilla"),
 			TierList.PVPHQ, List.of(
