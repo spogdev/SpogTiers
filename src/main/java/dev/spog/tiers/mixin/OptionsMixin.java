@@ -16,12 +16,18 @@ import java.util.Arrays;
  * <p>Fabric's key-binding module is compiled against intermediary and cannot be
  * loaded on 26.x (see PORTING.md), so the binding is appended to
  * {@code Options.keyMappings} directly. Being in that array is what makes the
- * game draw it in the Controls screen and persist the chosen key to
- * options.txt, so nothing else is needed.
+ * game draw it in the Controls screen and write the chosen key to options.txt.
+ *
+ * <p>The injection has to land <em>before</em> the constructor's trailing
+ * {@code load()} call, not at RETURN. {@code load()} applies options.txt by
+ * walking {@code keyMappings} and matching each entry's {@code key_<name>} line;
+ * a binding missing from the array at that moment has its saved line read and
+ * discarded. Injecting at RETURN meant the key was saved correctly but dropped
+ * on every load, so the binding silently reverted to its default each restart.
  */
 @Mixin(Options.class)
 public abstract class OptionsMixin {
-	@Inject(method = "<init>", at = @At("RETURN"))
+	@Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Options;load()V"))
 	private void spogtiers$addKeyMappings(CallbackInfo info) {
 		Options options = (Options) (Object) this;
 		KeyMapping binding = QuickTiers.binding();
