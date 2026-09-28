@@ -137,12 +137,14 @@ public enum TierList {
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
 					"dia_smp", "elytra", "manhunt", "minecart", "og_vanilla",
 					"speed", "trident");
-			// Straight from MCPvP's own kit list: five kits and three phases of
-			// a fight. It ranks neither axe nor the SMP modes the other lists
-			// do, and the phases have no equivalent anywhere else.
-			// "shield" is MCPvP's name for axe, so it is listed as axe.
-			case MCPVP -> modes("axe", "early_game", "end_game", "late_game", "mace",
-					"spear_mace", "pot", "sword");
+			// Straight from MCPvP's own kit list: twelve kits and three phases
+			// of a fight, as its search endpoint returns them. "shield" is its
+			// name for axe and "crystal" its name for vanilla, so both are
+			// listed under the shared mode. The phases have no equivalent
+			// anywhere else.
+			case MCPVP -> modes("axe", "bow", "cart", "creeper", "dia_smp",
+					"early_game", "end_game", "late_game", "mace", "neth_pot",
+					"pot", "smp", "spear_mace", "sword", "vanilla");
 			case CATPVP -> modes("axe", "sword", "bow", "bridge", "cart", "creeper",
 					"dia_smp", "mace", "neth_pot", "pot", "smp", "spear_mace",
 					"uhc", "vanilla");
@@ -186,9 +188,14 @@ public enum TierList {
 		return switch (this) {
 			case MCPVP -> switch (modeKey) {
 				case "axe" -> "shield";
-				// MCPvP draws its own spear, so a row from it keeps that
-				// rather than CatPVP's spear mace.
+				// MCPvP ranks the crystal kit under its own name, as PvPTiers
+				// does, so its artwork is filed that way too.
+				case "vanilla" -> "crystal";
+				// The spear keeps a name of its own: CatPVP ranks a spear mace
+				// as well, and the two are one mode with two icons.
 				case "spear_mace" -> "mcpvp_spear";
+				case "neth_pot" -> "netherite_pot";
+				case "dia_smp" -> "diamond_smp";
 				default -> modeKey;
 			};
 			case PVPTIERS -> modeKey.equals("vanilla") ? "crystal" : modeKey;
