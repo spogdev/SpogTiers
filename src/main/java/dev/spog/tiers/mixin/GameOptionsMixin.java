@@ -14,12 +14,18 @@ import java.util.Arrays;
  * Registers our key binding with vanilla.
  *
  * <p>Being in {@code GameOptions.allKeys} is what makes the game draw the
- * binding in the Controls screen and persist the chosen key to options.txt,
- * so appending to that array is all that is needed.
+ * binding in the Controls screen and write the chosen key to options.txt.
+ *
+ * <p>The injection has to land <em>before</em> the constructor's trailing
+ * {@code load()} call, not at RETURN. {@code load()} applies options.txt by
+ * walking {@code allKeys} and matching each entry's {@code key_<name>} line;
+ * a binding missing from the array at that moment has its saved line read and
+ * discarded. Injecting at RETURN meant the key was saved correctly but dropped
+ * on every load, so the binding silently reverted to its default each restart.
  */
 @Mixin(GameOptions.class)
 public abstract class GameOptionsMixin {
-	@Inject(method = "<init>", at = @At("RETURN"))
+	@Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/option/GameOptions;load()V"))
 	private void spogtiers$addKeyBindings(CallbackInfo info) {
 		GameOptions options = (GameOptions) (Object) this;
 		KeyBinding binding = QuickTiers.binding();
