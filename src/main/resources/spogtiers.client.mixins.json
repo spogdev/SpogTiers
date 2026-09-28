@@ -6,6 +6,7 @@
 		"PlayerListHudMixin",
 		"EntityRendererMixin",
 		"LabelMixin",
+		"PlayerLabelMixin",
 		"NameTagFeatureRendererMixin",
 		"NameTagStorageAccessor",
 		"AuraMixin",
