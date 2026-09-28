@@ -39,3 +39,6 @@ mappings/client-*.jar
 
 # screenshots dropped in the project root while debugging
 /Screenshot*.png
+
+# Python bytecode from the tools/ scripts
+__pycache__/
