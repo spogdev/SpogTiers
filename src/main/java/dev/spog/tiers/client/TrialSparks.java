@@ -1,5 +1,6 @@
 package dev.spog.tiers.client;
 
+import dev.spog.tiers.SpogTiers;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
@@ -31,24 +32,45 @@ public final class TrialSparks {
 	/**
 	 * The sprites, in the order the particle plays them.
 	 *
-	 * <p>Vanilla's own files, referenced where they already sit rather than
-	 * copied into this mod: they ship with the game, and a copy would have to
-	 * be kept in step with it by hand.
+	 * <p>Vanilla's shape, but grey: {@code tools/spark_sprites.py} bakes them
+	 * from the game's own files. The draw multiplies the vertex colour by the
+	 * texture, so a teal sprite tinted yellow came out dark green -- a C-tier
+	 * aura was only its own colour on the last, near-white frame. Grey texture
+	 * times grade colour is the grade colour, at the brightness the streak has
+	 * along its length.
 	 */
 	private static final Identifier[] SPRITES = new Identifier[FRAMES];
 
 	static {
 		for (int i = 0; i < FRAMES; i++) {
-			SPRITES[i] = Identifier.withDefaultNamespace(
-					"textures/particle/trial_spawner_detection_ominous_" + i + ".png");
+			SPRITES[i] = Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID,
+					"textures/particle/spark_" + i + ".png");
 		}
 	}
 
 	/**
-	 * How wide the streak is against its height, from the sprite: the drawn
-	 * column is one pixel of eight across and six tall at its longest.
+	 * How tall each sprite is, in pixels. Width is one throughout: vanilla's
+	 * streak is a single column, and the sprites are cropped to it.
+	 *
+	 * <p>The frames shorten as the spark dies, which is the sprite's own way
+	 * of showing it burning out. A caller drawing the texture needs the real
+	 * size to keep that proportion rather than stretching every frame to the
+	 * same box.
 	 */
-	public static final float ASPECT = 1.0f / 6.0f;
+	private static final int[] HEIGHTS = {6, 4, 3, 1, 1};
+
+	/** Every sprite is one pixel across. */
+	public static final int SPRITE_WIDTH = 1;
+
+	/**
+	 * How wide a drawn streak is against its height.
+	 *
+	 * <p>Wider than the sprite's own one-in-six. That ratio is right for a
+	 * texture, where a column of pixels is a column whatever its size, but a
+	 * streak a third of a block tall would come out well under a pixel across
+	 * and all but vanish. A third keeps it a streak and keeps it visible.
+	 */
+	public static final float ASPECT = 1.0f / 3.0f;
 
 	/**
 	 * Vanilla's quad size for this particle, in blocks, before its own scale.
@@ -71,10 +93,19 @@ public final class TrialSparks {
 	private TrialSparks() {
 	}
 
-	/** The sprite for a mote that is {@code life} of the way through its rise. */
+	/** The sprite for a spark that is {@code life} of the way through its rise. */
 	public static Identifier sprite(float life) {
+		return SPRITES[frame(life)];
+	}
+
+	/** That sprite's height in pixels, for a caller that draws the texture. */
+	public static int spriteHeight(float life) {
+		return HEIGHTS[frame(life)];
+	}
+
+	private static int frame(float life) {
 		int frame = (int) (Mth.clamp(life, 0.0f, 1.0f) * FRAMES);
-		return SPRITES[Math.min(frame, FRAMES - 1)];
+		return Math.min(frame, FRAMES - 1);
 	}
 
 	/**
