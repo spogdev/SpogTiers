@@ -47,52 +47,20 @@ BANDS = {
 # dies, which is what vanilla's frames do; the ragged flanks are the flame
 # idiom, not a straight-sided bar.
 #
-# Three pixels across and up to twelve down: drawn tall and thin so the bands
-# survive at the size the aura draws them. A wider sprite squeezed into a thin
-# quad loses its detail to the squash, and a thin quad is what a streak is.
+# One pixel across and up to twelve down, as vanilla's own streak is: all of
+# the texture runs along it, none across.
+#
+# Two earlier attempts added width -- first soft flanks, then pixels stepping
+# out into the columns either side -- and both were wrong. A streak is drawn
+# about a pixel wide on screen at these sizes, so anything across it either
+# blurs into the middle or reads as specks beside the line. The bands down the
+# length are what there is room to see.
 FRAMES = [
-    [
-        ".ab.",
-        ".ab.",
-        "cab.",
-        "cab.",
-        ".acb",
-        ".acb",
-        ".bc.",
-        ".bc.",
-        ".bcd",
-        "..cd",
-        "..c.",
-        "..d.",
-    ],
-    [
-        ".ab.",
-        "cab.",
-        ".ab.",
-        ".acb",
-        ".bc.",
-        ".bcd",
-        "..c.",
-        "..d.",
-    ],
-    [
-        ".aa.",
-        ".ab.",
-        ".acb",
-        ".bc.",
-        "..cd",
-        "..d.",
-    ],
-    [
-        ".aa.",
-        ".ab.",
-        ".bc.",
-        "..c.",
-    ],
-    [
-        ".aa.",
-        ".ab.",
-    ],
+    ["a", "a", "a", "a", "b", "b", "b", "c", "c", "c", "d", "d"],
+    ["a", "a", "a", "b", "b", "c", "c", "d"],
+    ["a", "a", "b", "b", "c", "d"],
+    ["a", "a", "b", "c"],
+    ["a", "a"],
 ]
 
 

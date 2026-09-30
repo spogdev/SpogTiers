@@ -60,7 +60,7 @@ public final class TrialSparks {
 	 */
 	public static final int STREAK_LEFT = 0;
 	public static final int STREAK_TOP = 1;
-	public static final int STREAK_WIDTH = 4;
+	public static final int STREAK_WIDTH = 1;
 
 	/**
 	 * How long the streak is in each frame, in pixels.
@@ -79,11 +79,10 @@ public final class TrialSparks {
 	 * streak that long would come out well under a pixel across and all but
 	 * vanish.
 	 *
-	 * <p>A third is close to the sprite's own four-by-twelve, so the bands are
-	 * drawn at about the shape they were painted at rather than squashed, and
-	 * it still reads as a streak rather than a bar.
+	 * <p>A sixth: skinny, and the widest the streak can be before the bands
+	 * down its length start to look like a bar rather than a spark.
 	 */
-	public static final float ASPECT = 1.0f / 3.0f;
+	public static final float ASPECT = 1.0f / 6.0f;
 
 	/**
 	 * Vanilla's quad size for this particle, in blocks, before its own scale.
