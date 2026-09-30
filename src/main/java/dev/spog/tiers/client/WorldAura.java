@@ -75,14 +75,15 @@ public final class WorldAura {
 	/**
 	 * How opaque a spark stays at its faintest.
 	 *
-	 * <p>One: sparks do not fade at all now. They used to swell in and out
-	 * from nothing, which suits an ember drifting away but not a tinted one --
-	 * a faint spark is mostly whatever is behind it, so each turned the colour
-	 * of the ground at both ends of its rise, and even held at 0.94 the blend
-	 * was costing enough brightness to leave them looking dull. A spark is
-	 * either burning or gone; the flicker below is what keeps them alive.
+	 * <p>Sparks used to fade in and out from nothing, which suits an ember
+	 * drifting away but not a tinted light: a faint yellow spark adds so
+	 * little over grass that the background's own green still dominates, so
+	 * each one turned olive at both ends of its rise. Held this high -- with
+	 * the flicker below, the faintest a spark ever gets is about 0.7 -- the
+	 * grade colour wins over grass, dirt and stone alike, and the swell still
+	 * reads as a fade.
 	 */
-	private static final float MIN_ALPHA = 1.0f;
+	private static final float MIN_ALPHA = 0.8f;
 
 	/**
 	 * Flicker depth: alpha swings between this and one.
@@ -92,7 +93,7 @@ public final class WorldAura {
 	 * one multiplies with {@link #MIN_ALPHA}, and the dips were deep enough to
 	 * let grass show through as green.
 	 */
-	private static final float FLICKER_FLOOR = 0.97f;
+	private static final float FLICKER_FLOOR = 0.88f;
 
 	/** Fixed seed: the drift pattern is the same every time. */
 	private static final long SEED = 0x5D0057;

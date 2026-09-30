@@ -132,11 +132,11 @@ public final class TrialSparks {
 	 * How far the tier colour is pushed towards full saturation.
 	 *
 	 * <p>A grade colour is picked to be readable as text on a dark plate, not
-	 * to glow, so a little deepening keeps a spark from looking washed out.
-	 * Enough to give the colour some depth, short of the point where a grade
-	 * stops looking like the colour on its own tag.
+	 * to glow. Drawn straight it gives a washed-out spark, so the colour is
+	 * taken to its most vivid form at the same hue: the grade stays
+	 * recognisable and the particle actually burns.
 	 */
-	private static final float VIVID = 0.45f;
+	private static final float VIVID = 0.55f;
 
 	/**
 	 * How white the head of a spark goes at its hottest.
@@ -145,21 +145,10 @@ public final class TrialSparks {
 	 * near white, but taking the whole particle there washed the tier colour
 	 * out of it -- which is the one thing the aura is for.
 	 */
-	private static final float HOT = 0.15f;
+	private static final float HOT = 0.3f;
 
 	/** Where in its life a spark starts to whiten. */
 	private static final float HOT_FROM = 0.75f;
-
-	/**
-	 * How far every grade is taken towards having a full-strength channel.
-	 *
-	 * <p>Separate from {@link #VIVID}, which only brightens a colour that has
-	 * little hue to deepen. A saturated grade got almost none of that lift, so
-	 * the sprite's bands and the blend below it left even the head of a streak
-	 * short of full -- lit, but dim. This lifts every grade alike, which is
-	 * what a spark being a light source rather than a painted shape means.
-	 */
-	private static final float GLOW = 0.7f;
 
 	/**
 	 * The tier colour as a spark of it, alpha carried through.
@@ -207,10 +196,8 @@ public final class TrialSparks {
 		float chroma = (peak - floor) / (float) peak;
 		float deepen = VIVID * chroma;
 		// What is not spent deepening is spent brightening, so every grade
-		// gains the same amount of life whichever way it needs it, and then
-		// GLOW lifts them all towards full regardless of hue.
-		float lift = Mth.lerp(VIVID * (1.0f - chroma), 1.0f, 255.0f / peak)
-				* Mth.lerp(GLOW, 1.0f, 255.0f / peak);
+		// gains the same amount of life whichever way it needs it.
+		float lift = Mth.lerp(VIVID * (1.0f - chroma), 1.0f, 255.0f / peak);
 		return ARGB.color(
 				channel(r, floor, peak, deepen, lift),
 				channel(g, floor, peak, deepen, lift),

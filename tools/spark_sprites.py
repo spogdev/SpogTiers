@@ -36,16 +36,11 @@ SIZE = 16
 
 # Four brightness bands, as flame.png uses four colours. Kept high: the
 # darkest is still bright enough to read as the grade's colour once tinted.
-# The bands sit high and very close together. These are multiplied by the grade
-# colour, so a step down here is a step towards black, not towards a cooler
-# shade of the same hue: spread them out and the tail goes muddy rather than
-# dim, and the streak as a whole reads dark. Just enough separation to see a
-# falloff along the length.
 BANDS = {
     "a": 255,   # the hot core
-    "b": 251,
-    "c": 246,
-    "d": 241,   # the coolest edge
+    "b": 226,
+    "c": 196,
+    "d": 166,   # the coolest edge
 }
 
 # The five frames, drawn on a 16x16 sheet. The streak shortens as the spark
@@ -61,10 +56,10 @@ BANDS = {
 # blurs into the middle or reads as specks beside the line. The bands down the
 # length are what there is room to see.
 FRAMES = [
-    ["a", "a", "a", "a", "a", "b", "b", "b", "c", "c", "d", "d"],
-    ["a", "a", "a", "a", "b", "c", "c", "d"],
-    ["a", "a", "a", "b", "c", "d"],
-    ["a", "a", "a", "c"],
+    ["a", "a", "a", "a", "b", "b", "b", "c", "c", "c", "d", "d"],
+    ["a", "a", "a", "b", "b", "c", "c", "d"],
+    ["a", "a", "b", "b", "c", "d"],
+    ["a", "a", "b", "c"],
     ["a", "a"],
 ]
 
