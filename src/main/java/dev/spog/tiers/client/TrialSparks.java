@@ -1,5 +1,6 @@
 package dev.spog.tiers.client;
 
+import dev.spog.tiers.SpogTiers;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
@@ -31,22 +32,68 @@ public final class TrialSparks {
 	/**
 	 * The sprites, in the order the particle plays them.
 	 *
-	 * <p>Vanilla's own files, referenced where they already sit rather than
-	 * copied into this mod: they ship with the game, and a copy would have to
-	 * be kept in step with it by hand.
+	 * <p>Vanilla's shape, but grey: {@code tools/spark_sprites.py} bakes them
+	 * from the game's own files. The draw multiplies the vertex colour by the
+	 * texture, so a teal sprite tinted yellow came out dark green -- a C-tier
+	 * aura was only its own colour on the last, near-white frame. Grey texture
+	 * times grade colour is the grade colour, at the brightness the streak has
+	 * along its length.
 	 */
 	private static final Identifier[] SPRITES = new Identifier[FRAMES];
 
+	/**
+	 * The white head, drawn over the tinted streak.
+	 *
+	 * <p>A second pass rather than part of the sprite above, because that one
+	 * is multiplied by the grade colour and a multiply can only darken: no
+	 * value in it can make a tinted pixel come out whiter than the tint. This
+	 * one is plain white with an alpha ramp, so the top of a streak burns
+	 * near-white and the colour comes back as it falls away.
+	 */
+	private static final Identifier[] HOT_SPRITES = new Identifier[FRAMES];
+
 	static {
 		for (int i = 0; i < FRAMES; i++) {
-			SPRITES[i] = Identifier.withDefaultNamespace(
-					"textures/particle/trial_spawner_detection_ominous_" + i + ".png");
+			SPRITES[i] = Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID,
+					"textures/particle/spark_" + i + ".png");
+			HOT_SPRITES[i] = Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID,
+					"textures/particle/spark_hot_" + i + ".png");
 		}
 	}
 
+	/** The sprite sheet each frame is drawn on, in pixels. */
+	public static final int SPRITE_SIZE = 16;
+
 	/**
-	 * How wide the streak is against its height, from the sprite: the drawn
-	 * column is one pixel of eight across and six tall at its longest.
+	 * Where the drawn streak sits inside that square.
+	 *
+	 * <p>A fixed window, not each frame's own bounds: the frames narrow as the
+	 * spark dies, and sampling each one tightly would snap the streak's width
+	 * between frames instead of letting it shorten in place.
+	 */
+	public static final int STREAK_LEFT = 0;
+	public static final int STREAK_TOP = 1;
+	public static final int STREAK_WIDTH = 1;
+
+	/**
+	 * How long the streak is in each frame, in pixels.
+	 *
+	 * <p>The frames shorten as the spark dies, which is how vanilla shows it
+	 * burning out. A caller drawing the texture needs the real length to keep
+	 * that proportion rather than stretching every frame to the same box.
+	 */
+	private static final int[] HEIGHTS = {12, 8, 6, 4, 2};
+
+	/**
+	 * How wide a drawn streak is against its height.
+	 *
+	 * <p>Wider than the sprite's own one-in-six. That ratio is right for a
+	 * texture, where a column of pixels is a column whatever its size, but a
+	 * streak that long would come out well under a pixel across and all but
+	 * vanish.
+	 *
+	 * <p>A sixth: skinny, and the widest the streak can be before the bands
+	 * down its length start to look like a bar rather than a spark.
 	 */
 	public static final float ASPECT = 1.0f / 6.0f;
 
@@ -71,10 +118,24 @@ public final class TrialSparks {
 	private TrialSparks() {
 	}
 
-	/** The sprite for a mote that is {@code life} of the way through its rise. */
+	/** The sprite for a spark that is {@code life} of the way through its rise. */
 	public static Identifier sprite(float life) {
+		return SPRITES[frame(life)];
+	}
+
+	/** The white head for that same frame, to draw over {@link #sprite}. */
+	public static Identifier hotSprite(float life) {
+		return HOT_SPRITES[frame(life)];
+	}
+
+	/** That frame's streak length in pixels, for a caller drawing the texture. */
+	public static int spriteHeight(float life) {
+		return HEIGHTS[frame(life)];
+	}
+
+	private static int frame(float life) {
 		int frame = (int) (Mth.clamp(life, 0.0f, 1.0f) * FRAMES);
-		return SPRITES[Math.min(frame, FRAMES - 1)];
+		return Math.min(frame, FRAMES - 1);
 	}
 
 	/**

@@ -65,11 +65,15 @@ public class AuraMixin {
 	 * How long a streak is against the mote size the aura hands out.
 	 *
 	 * <p>The sprite is a tall thin column and the aura's sizes were chosen for
-	 * a cube, so without this a spark would be barely a speck. Tuned so the
-	 * longest streak is around a third of a block: big enough to read as a
-	 * deliberate effect from across a fight rather than as flecks of dust.
+	 * a cube, so without this a spark would be barely a speck.
+	 *
+	 * <p>Worked back from the size wanted rather than guessed: the longest
+	 * streak is {@code MAX_SIZE * TrialSparks.QUAD_SIZE * STREAK}, so 11 puts
+	 * it at 0.41 blocks against a player's 1.8. An earlier 44 came from
+	 * mis-estimating MAX_SIZE and drew streaks 1.65 blocks long -- slabs
+	 * nearly as tall as the player, which is what they looked like.
 	 */
-	private static final float STREAK = 44.0f;
+	private static final float STREAK = 11.0f;
 
 	/** How wide the aura is at its widest, as a multiple of the body width. */
 	private static final float SPREAD = 1.7f;
@@ -189,7 +193,13 @@ public class AuraMixin {
 		// vertical only, so the streak stays upright however it is viewed
 		// instead of tipping with the pitch.
 		poseStack.rotate(Axis.YP, -camera.yRot * Mth.DEG_TO_RAD);
-		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall);
+		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall,
+				TrialSparks.spriteHeight(life), false);
+		// The white head over it. Translucent, because its whole job is to
+		// fade out down the streak, and white rather than tinted so it burns
+		// out the colour at the top instead of deepening it.
+		quad(poseStack, collector, TrialSparks.hotSprite(life), 0xFFFFFFFF, wide, tall,
+				TrialSparks.spriteHeight(life), true);
 		poseStack.popPose();
 	}
 
@@ -197,20 +207,42 @@ public class AuraMixin {
 	 * A camera-facing textured quad, {@code wide} by {@code tall}, centred on
 	 * the pose.
 	 *
+	 * <p>Drawn as a cutout: every pixel of the streak is opaque, and the
+	 * transparent margin around it is discarded rather than blended. Nothing
+	 * behind a spark shows through it, so the colour on screen is the grade's
+	 * own rather than a mix of it and the ground -- which is what an additive
+	 * or translucent draw gave, each in its own way.
+	 *
+	 * <p>The lightmap is full-bright, so the pipeline's per-face lighting
+	 * samples maximum light and leaves the colour alone: a spark glows rather
+	 * than being lit.
+	 *
 	 * <p>Wound bottom-left, bottom-right, top-right, top-left. The pose here is
 	 * y-up and the pipeline culls back faces, so the other order draws nothing
 	 * at all and says nothing about why -- see the aura's own history.
 	 */
 	private static void quad(PoseStack poseStack, SubmitNodeCollector collector,
-			Identifier sprite, int colour, float wide, float tall) {
+			Identifier sprite, int colour, float wide, float tall, int length,
+			boolean blend) {
 		float x = wide / 2.0f;
 		float y = tall / 2.0f;
+		// Only the streak's own corner of the sheet. The sprite is drawn on an
+		// 8x8 square -- a power of two, which the GUI loads without the blank
+		// frame a 1-pixel-wide texture cost it -- so the rest is margin, and
+		// spanning the whole thing would shrink the streak into a sliver of
+		// its own quad.
+		float u0 = TrialSparks.STREAK_LEFT / (float) TrialSparks.SPRITE_SIZE;
+		float u1 = (TrialSparks.STREAK_LEFT + TrialSparks.STREAK_WIDTH)
+				/ (float) TrialSparks.SPRITE_SIZE;
+		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
+		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
 		collector.submitCustomGeometry(poseStack,
-				RenderTypes.entityTranslucentEmissive(sprite), (pose, buffer) -> {
-					vertex(buffer, pose, -x, -y, colour, 0.0f, 1.0f);
-					vertex(buffer, pose, x, -y, colour, 1.0f, 1.0f);
-					vertex(buffer, pose, x, y, colour, 1.0f, 0.0f);
-					vertex(buffer, pose, -x, y, colour, 0.0f, 0.0f);
+				blend ? RenderTypes.entityTranslucentEmissive(sprite)
+						: RenderTypes.entityCutout(sprite), (pose, buffer) -> {
+					vertex(buffer, pose, -x, -y, colour, u0, v1);
+					vertex(buffer, pose, x, -y, colour, u1, v1);
+					vertex(buffer, pose, x, y, colour, u1, v0);
+					vertex(buffer, pose, -x, y, colour, u0, v0);
 				});
 	}
 

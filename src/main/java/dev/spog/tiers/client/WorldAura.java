@@ -69,11 +69,31 @@ public final class WorldAura {
 	private static final float BELOW = 0.06f;
 	private static final float ABOVE = 0.18f;
 
-	/** Peak opacity. */
-	private static final float MAX_ALPHA = 0.95f;
+	/**
+	 * Peak opacity.
+	 *
+	 * <p>One, with the two floors below: sparks are drawn solid. They are a
+	 * light, and a light is either burning or gone -- fading one in and out
+	 * only let the ground show through and mix into its colour.
+	 */
+	private static final float MAX_ALPHA = 1.0f;
 
-	/** Flicker depth: alpha swings between this and one. */
-	private static final float FLICKER_FLOOR = 0.7f;
+	/**
+	 * How opaque a spark stays at its faintest.
+	 *
+	 * <p>One as well, so nothing fades. A spark still visibly dies without
+	 * it: the streak shortens as it rises, and the sprite it is drawn from
+	 * shortens with it.
+	 */
+	private static final float MIN_ALPHA = 1.0f;
+
+	/**
+	 * Flicker depth: alpha swings between this and one.
+	 *
+	 * <p>One: no flicker. It multiplied the alpha, so any dip made a spark
+	 * part-transparent and let the ground mix into its colour.
+	 */
+	private static final float FLICKER_FLOOR = 1.0f;
 
 	/** Fixed seed: the drift pattern is the same every time. */
 	private static final long SEED = 0x5D0057;
@@ -123,7 +143,8 @@ public final class WorldAura {
 	 */
 	public float alpha(int mote, float elapsed) {
 		float fade = Mth.sin(life(mote, elapsed) * Mth.PI);
-		return (float) Math.sqrt(fade) * MAX_ALPHA * flicker(mote, elapsed);
+		float swell = (float) Math.sqrt(fade) * MAX_ALPHA;
+		return (MIN_ALPHA + (1.0f - MIN_ALPHA) * swell) * flicker(mote, elapsed);
 	}
 
 	/** The burn, from {@value #FLICKER_FLOOR} to 1, never steady. */

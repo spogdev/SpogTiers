@@ -4,6 +4,7 @@ import dev.spog.tiers.client.TrialSparks;
 import dev.spog.tiers.client.WorldAura;
 import dev.spog.tiers.data.PlayerGrade;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
 
 /**
  * Embers drifting up around the skin model, in the colour of the player's Door
@@ -31,7 +32,7 @@ public final class TierAura {
 	 * the two are not the same number; this is the one that makes a spark on
 	 * the panel look like the spark on the player.
 	 */
-	private static final float STREAK = 4.4f;
+	private static final float STREAK = 6.0f;
 
 	private final WorldAura aura = new WorldAura();
 
@@ -87,11 +88,26 @@ public final class TierAura {
 	 */
 	private void streak(GuiGraphicsExtractor graphics, int mote, float at,
 			int left, int top, int width, int height, int size, int colour) {
-		int tall = Math.max(1, Math.round(size * STREAK
-				* TrialSparks.growth(aura.life(mote, at))));
+		float life = aura.life(mote, at);
+		int tall = Math.max(1, Math.round(size * STREAK * TrialSparks.growth(life)));
 		int wide = Math.max(1, Math.round(tall * TrialSparks.ASPECT));
 		int x = left + Math.round(aura.across(mote, at) * width - wide / 2.0f);
 		int y = top + Math.round((1.0f - aura.up(mote, at)) * height - tall / 2.0f);
-		graphics.fill(x, y, x + wide, y + tall, colour);
+		// The same sprite the world draws, tinted the same way, rather than a
+		// flat bar: the texture is what gives the streak a bright head and a
+		// dim tail, and a rectangle of one colour has none of that.
+		// Only the streak's own corner of the sheet, not the whole 8x8: the
+		// rest is the transparent margin the sprite is drawn on.
+		graphics.blit(RenderPipelines.GUI_TEXTURED, TrialSparks.sprite(life),
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, colour);
+		// The white head over it, as the world draws it: the tint below can
+		// only be darkened by its sprite, so the burn at the top has to be
+		// added rather than multiplied in.
+		graphics.blit(RenderPipelines.GUI_TEXTURED, TrialSparks.hotSprite(life),
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, 0xFFFFFFFF);
 	}
 }
