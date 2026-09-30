@@ -32,7 +32,7 @@ public final class TierAura {
 	 * the two are not the same number; this is the one that makes a spark on
 	 * the panel look like the spark on the player.
 	 */
-	private static final float STREAK = 4.4f;
+	private static final float STREAK = 6.0f;
 
 	private final WorldAura aura = new WorldAura();
 
@@ -96,8 +96,11 @@ public final class TierAura {
 		// The same sprite the world draws, tinted the same way, rather than a
 		// flat bar: the texture is what gives the streak a bright head and a
 		// dim tail, and a rectangle of one colour has none of that.
+		// Only the streak's own corner of the sheet, not the whole 8x8: the
+		// rest is the transparent margin the sprite is drawn on.
 		graphics.blit(RenderPipelines.GUI_TEXTURED, TrialSparks.sprite(life),
-				x, y, 0.0f, 0.0f, wide, tall,
-				TrialSparks.SPRITE_WIDTH, TrialSparks.spriteHeight(life), colour);
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, colour);
 	}
 }

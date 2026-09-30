@@ -48,30 +48,33 @@ public final class TrialSparks {
 		}
 	}
 
+	/** The sprite sheet each frame is drawn on, in pixels. */
+	public static final int SPRITE_SIZE = 8;
+
+	/** Where the drawn streak sits inside that square. */
+	public static final int STREAK_LEFT = 3;
+	public static final int STREAK_TOP = 1;
+	public static final int STREAK_WIDTH = 3;
+
 	/**
-	 * How tall each sprite is, in pixels. Width is one throughout: vanilla's
-	 * streak is a single column, and the sprites are cropped to it.
+	 * How long the streak is in each frame, in pixels.
 	 *
-	 * <p>The frames shorten as the spark dies, which is the sprite's own way
-	 * of showing it burning out. A caller drawing the texture needs the real
-	 * size to keep that proportion rather than stretching every frame to the
-	 * same box.
+	 * <p>The frames shorten as the spark dies, which is how vanilla shows it
+	 * burning out. A caller drawing the texture needs the real length to keep
+	 * that proportion rather than stretching every frame to the same box.
 	 */
 	private static final int[] HEIGHTS = {6, 4, 3, 1, 1};
-
-	/** Every sprite is one pixel across. */
-	public static final int SPRITE_WIDTH = 1;
 
 	/**
 	 * How wide a drawn streak is against its height.
 	 *
 	 * <p>Wider than the sprite's own one-in-six. That ratio is right for a
 	 * texture, where a column of pixels is a column whatever its size, but a
-	 * streak a third of a block tall would come out well under a pixel across
-	 * and all but vanish. A quarter is the compromise: clearly a streak rather
-	 * than a bar, and still over a pixel wide at the sizes actually drawn.
+	 * streak that long would come out well under a pixel across and all but
+	 * vanish. A fifth is the compromise: clearly a streak rather than a bar,
+	 * and still over a pixel wide at the sizes actually drawn.
 	 */
-	public static final float ASPECT = 1.0f / 4.0f;
+	public static final float ASPECT = 1.0f / 5.0f;
 
 	/**
 	 * Vanilla's quad size for this particle, in blocks, before its own scale.
@@ -99,7 +102,7 @@ public final class TrialSparks {
 		return SPRITES[frame(life)];
 	}
 
-	/** That sprite's height in pixels, for a caller that draws the texture. */
+	/** That frame's streak length in pixels, for a caller drawing the texture. */
 	public static int spriteHeight(float life) {
 		return HEIGHTS[frame(life)];
 	}

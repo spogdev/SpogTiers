@@ -68,12 +68,12 @@ public class AuraMixin {
 	 * a cube, so without this a spark would be barely a speck.
 	 *
 	 * <p>Worked back from the size wanted rather than guessed: the longest
-	 * streak is {@code MAX_SIZE * TrialSparks.QUAD_SIZE * STREAK}, so 8 puts
-	 * it at 0.3 blocks against a player's 1.8. An earlier 44 came from
+	 * streak is {@code MAX_SIZE * TrialSparks.QUAD_SIZE * STREAK}, so 11 puts
+	 * it at 0.41 blocks against a player's 1.8. An earlier 44 came from
 	 * mis-estimating MAX_SIZE and drew streaks 1.65 blocks long -- slabs
 	 * nearly as tall as the player, which is what they looked like.
 	 */
-	private static final float STREAK = 8.0f;
+	private static final float STREAK = 11.0f;
 
 	/** How wide the aura is at its widest, as a multiple of the body width. */
 	private static final float SPREAD = 1.7f;
@@ -193,7 +193,8 @@ public class AuraMixin {
 		// vertical only, so the streak stays upright however it is viewed
 		// instead of tipping with the pitch.
 		poseStack.mulPose(Axis.YP.rotation(-camera.yRot * Mth.DEG_TO_RAD));
-		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall);
+		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall,
+				TrialSparks.spriteHeight(life));
 		poseStack.popPose();
 	}
 
@@ -214,15 +215,25 @@ public class AuraMixin {
 	 * at all and says nothing about why -- see the aura's own history.
 	 */
 	private static void quad(PoseStack poseStack, SubmitNodeCollector collector,
-			Identifier sprite, int colour, float wide, float tall) {
+			Identifier sprite, int colour, float wide, float tall, int length) {
 		float x = wide / 2.0f;
 		float y = tall / 2.0f;
+		// Only the streak's own corner of the sheet. The sprite is drawn on an
+		// 8x8 square -- a power of two, which the GUI loads without the blank
+		// frame a 1-pixel-wide texture cost it -- so the rest is margin, and
+		// spanning the whole thing would shrink the streak into a sliver of
+		// its own quad.
+		float u0 = TrialSparks.STREAK_LEFT / (float) TrialSparks.SPRITE_SIZE;
+		float u1 = (TrialSparks.STREAK_LEFT + TrialSparks.STREAK_WIDTH)
+				/ (float) TrialSparks.SPRITE_SIZE;
+		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
+		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
 		collector.submitCustomGeometry(poseStack,
 				RenderTypes.energySwirl(sprite, 0.0f, 0.0f), (pose, buffer) -> {
-					vertex(buffer, pose, -x, -y, colour, 0.0f, 1.0f);
-					vertex(buffer, pose, x, -y, colour, 1.0f, 1.0f);
-					vertex(buffer, pose, x, y, colour, 1.0f, 0.0f);
-					vertex(buffer, pose, -x, y, colour, 0.0f, 0.0f);
+					vertex(buffer, pose, -x, -y, colour, u0, v1);
+					vertex(buffer, pose, x, -y, colour, u1, v1);
+					vertex(buffer, pose, x, y, colour, u1, v0);
+					vertex(buffer, pose, -x, y, colour, u0, v0);
 				});
 	}
 
