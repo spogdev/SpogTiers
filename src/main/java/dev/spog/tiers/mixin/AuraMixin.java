@@ -4,9 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import dev.spog.tiers.SpogTiersClient;
+import dev.spog.tiers.client.TrialSparks;
 import dev.spog.tiers.client.WorldAura;
-import dev.spog.tiers.util.AuraTarget;
 import dev.spog.tiers.data.PlayerGrade;
+import dev.spog.tiers.util.AuraTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -14,7 +15,9 @@ import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.Level;
@@ -58,18 +61,19 @@ public class AuraMixin {
 	private static final float MIN_SIZE = PIXEL;
 	private static final float MAX_SIZE = 4.0f * PIXEL;
 
-	/** How far the glow, and the halo beyond it, reach past the ember's body. */
-	private static final float GLOW = PIXEL;
-	private static final float HALO = 2.0f * PIXEL;
-
 	/**
-	 * How much of the ember's body the lit core takes.
+	 * How long a streak is against the mote size the aura hands out.
 	 *
-	 * <p>Under half, so the core is a bright point sitting inside the glow
-	 * rather than the whole ember: a glow needs something to be glowing around
-	 * to read as one.
+	 * <p>The sprite is a tall thin column and the aura's sizes were chosen for
+	 * a cube, so without this a spark would be barely a speck.
+	 *
+	 * <p>Worked back from the size wanted rather than guessed: the longest
+	 * streak is {@code MAX_SIZE * TrialSparks.QUAD_SIZE * STREAK}, so 11 puts
+	 * it at 0.41 blocks against a player's 1.8. An earlier 44 came from
+	 * mis-estimating MAX_SIZE and drew streaks 1.65 blocks long -- slabs
+	 * nearly as tall as the player, which is what they looked like.
 	 */
-	private static final float CORE_SHARE = 0.45f;
+	private static final float STREAK = 11.0f;
 
 	/** How wide the aura is at its widest, as a multiple of the body width. */
 	private static final float SPREAD = 1.7f;
@@ -91,15 +95,6 @@ public class AuraMixin {
 
 	/** Full-bright lightmap coordinates: embers glow, they are not lit. */
 	private static final int LIGHT = 0xF000F0;
-
-	/**
-	 * How bright each face of a cube is drawn, top to bottom. Not lighting --
-	 * the embers are emissive -- just enough difference between faces for a
-	 * cube to read as a cube instead of a flat spot.
-	 */
-	private static final float TOP = 1.0f;
-	private static final float SIDE = 0.86f;
-	private static final float BOTTOM = 0.7f;
 
 	// On submit() rather than the nameplate's own method, so the aura is not
 	// tied to the plate: vanilla hides the plate out of range, while sneaking,
@@ -169,48 +164,97 @@ public class AuraMixin {
 				continue;
 			}
 			float size = MIN_SIZE + AURA.size(i, elapsed) * (MAX_SIZE - MIN_SIZE);
+			float life = AURA.life(i, elapsed);
 
-			// Tail first, furthest step first, so each nearer part lands on
-			// top and the core lands over everything. Each step is a smaller,
-			// fainter core where the ember was a moment ago, so the tail bends
-			// along the path it took.
-			for (int segment = WorldAura.TAIL_SEGMENTS - 1; segment >= 0; segment--) {
-				if (!AURA.tailVisible(i, elapsed, segment)) {
-					continue;
-				}
-				float then = AURA.tailTime(elapsed, segment);
-				if (checkBlocks && buried(level, state, i, then, height, reach)) {
-					continue;
-				}
-				int colour = AURA.tailColour(rgb, i, elapsed, segment);
-				float half = size * AURA.tailSize(segment) / 2.0f;
-				poseStack.pushPose();
-				place(poseStack, i, then, height, reach);
-				collector.submitCustomGeometry(poseStack, RenderTypes.textBackground(),
-						(pose, buffer) -> cube(pose, buffer, colour, half));
-				poseStack.popPose();
-			}
-
-			// Halo, then glow, then the core, nested: the outer faces of a
-			// bigger cube sit outside the smaller one's, so drawn largest
-			// first the brightest ends up innermost and shows through both.
-			int halo = AURA.haloColour(rgb, i, elapsed);
-			int glow = AURA.glowColour(rgb, i, elapsed);
-			int core = AURA.coreColour(rgb, i, elapsed);
-			float half = size / 2.0f;
-			// The lit centre, small enough that the glow reads as light coming
-			// off it rather than as a second edge around the same square.
-			float coreHalf = Math.max(half * CORE_SHARE, PIXEL / 2.0f);
-			poseStack.pushPose();
-			place(poseStack, i, elapsed, height, reach);
-			collector.submitCustomGeometry(poseStack, RenderTypes.textBackground(), (pose, buffer) -> {
-				cube(pose, buffer, halo, half + HALO);
-				cube(pose, buffer, glow, half + GLOW);
-				cube(pose, buffer, glow, half);
-				cube(pose, buffer, core, coreHalf);
-			});
-			poseStack.popPose();
+			int colour = TrialSparks.colour(rgb, life, AURA.alpha(i, elapsed));
+			spark(poseStack, collector, camera, colour, life, size, i, elapsed, height, reach);
 		}
+	}
+
+	/**
+	 * One streak, billboarded and posed at the mote's place.
+	 *
+	 * <p>Sized the way vanilla sizes this particle: its own quad size times
+	 * the growth curve, so a spark snaps to full length as it is struck. The
+	 * sprite is a thin column, so the quad is drawn to the same proportion
+	 * rather than square -- a square would stretch the streak sideways.
+	 */
+	private static void spark(PoseStack poseStack, SubmitNodeCollector collector,
+			CameraRenderState camera, int colour, float life, float size,
+			int mote, float at, float height, float reach) {
+		float tall = size * TrialSparks.QUAD_SIZE * TrialSparks.growth(life) * STREAK;
+		if (tall <= 0.0f) {
+			return;
+		}
+		float wide = tall * TrialSparks.ASPECT;
+		poseStack.pushPose();
+		place(poseStack, mote, at, height, reach);
+		// LOOKAT_Y, as the particle uses: turned to the camera about the
+		// vertical only, so the streak stays upright however it is viewed
+		// instead of tipping with the pitch.
+		poseStack.mulPose(Axis.YP.rotation(-camera.yRot * Mth.DEG_TO_RAD));
+		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall,
+				TrialSparks.spriteHeight(life), false);
+		// The white head over it. Translucent, because its whole job is to
+		// fade out down the streak, and white rather than tinted so it burns
+		// out the colour at the top instead of deepening it.
+		quad(poseStack, collector, TrialSparks.hotSprite(life), 0xFFFFFFFF, wide, tall,
+				TrialSparks.spriteHeight(life), true);
+		poseStack.popPose();
+	}
+
+	/**
+	 * A camera-facing textured quad, {@code wide} by {@code tall}, centred on
+	 * the pose.
+	 *
+	 * <p>Drawn as a cutout: every pixel of the streak is opaque, and the
+	 * transparent margin around it is discarded rather than blended. Nothing
+	 * behind a spark shows through it, so the colour on screen is the grade's
+	 * own rather than a mix of it and the ground -- which is what an additive
+	 * or translucent draw gave, each in its own way.
+	 *
+	 * <p>The lightmap is full-bright, so the pipeline's per-face lighting
+	 * samples maximum light and leaves the colour alone: a spark glows rather
+	 * than being lit.
+	 *
+	 * <p>Wound bottom-left, bottom-right, top-right, top-left. The pose here is
+	 * y-up and the pipeline culls back faces, so the other order draws nothing
+	 * at all and says nothing about why -- see the aura's own history.
+	 */
+	private static void quad(PoseStack poseStack, SubmitNodeCollector collector,
+			Identifier sprite, int colour, float wide, float tall, int length,
+			boolean blend) {
+		float x = wide / 2.0f;
+		float y = tall / 2.0f;
+		// Only the streak's own corner of the sheet. The sprite is drawn on an
+		// 8x8 square -- a power of two, which the GUI loads without the blank
+		// frame a 1-pixel-wide texture cost it -- so the rest is margin, and
+		// spanning the whole thing would shrink the streak into a sliver of
+		// its own quad.
+		float u0 = TrialSparks.STREAK_LEFT / (float) TrialSparks.SPRITE_SIZE;
+		float u1 = (TrialSparks.STREAK_LEFT + TrialSparks.STREAK_WIDTH)
+				/ (float) TrialSparks.SPRITE_SIZE;
+		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
+		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
+		collector.submitCustomGeometry(poseStack,
+				blend ? RenderTypes.entityTranslucentEmissive(sprite)
+						: RenderTypes.entityCutout(sprite), (pose, buffer) -> {
+					vertex(buffer, pose, -x, -y, colour, u0, v1);
+					vertex(buffer, pose, x, -y, colour, u1, v1);
+					vertex(buffer, pose, x, y, colour, u1, v0);
+					vertex(buffer, pose, -x, y, colour, u0, v0);
+				});
+	}
+
+	/** One corner, with everything the entity format wants. */
+	private static void vertex(VertexConsumer buffer, PoseStack.Pose pose,
+			float x, float y, int colour, float u, float v) {
+		buffer.addVertex(pose, x, y, 0.0f)
+				.setColor(colour)
+				.setUv(u, v)
+				.setOverlay(OverlayTexture.NO_OVERLAY)
+				.setLight(LIGHT)
+				.setNormal(pose, 0.0f, 0.0f, 1.0f);
 	}
 
 	/**
@@ -244,9 +288,10 @@ public class AuraMixin {
 	}
 
 	/**
-	 * Moves the pose to the ember's position at {@code at} seconds, turned so
-	 * one face looks straight out from the player's axis: the cubes then sit
-	 * square to the ring they are on rather than all square to the world.
+	 * Moves the pose to the ember's position at {@code at} seconds.
+	 *
+	 * <p>Position only: the streak is turned to the camera by its caller, so
+	 * any turn applied here would be undone a moment later.
 	 *
 	 * <p>Measured from the pose's own origin, which is the entity's: its feet.
 	 * The nameplate's attachment point would have served as well, but only
@@ -263,44 +308,6 @@ public class AuraMixin {
 		float z = Mth.sin(theta) * radius;
 		float y = AURA.up(mote, at) * height;
 		poseStack.translate(x, y, z);
-		// The +z face, turned about the vertical by a quarter less the angle,
-		// looks along (cos theta, 0, sin theta): outward.
-		poseStack.mulPose(Axis.YP.rotation(Mth.HALF_PI - theta));
 	}
 
-	/**
-	 * One cube centred on the pose, {@code half} to each face, faces wound
-	 * to look outward so the culled back faces are exactly the far side.
-	 */
-	private static void cube(PoseStack.Pose pose, VertexConsumer buffer, int colour, float half) {
-		int top = shade(colour, TOP);
-		int side = shade(colour, SIDE);
-		int bottom = shade(colour, BOTTOM);
-		// Each face is spanned by two edge directions u and v whose cross
-		// product is the outward normal; walking -u-v, +u-v, +u+v, -u+v is
-		// then counter-clockwise from outside.
-		face(pose, buffer, top, 0, half, 0, 0, 0, half, half, 0, 0);       // +y: z x y
-		face(pose, buffer, bottom, 0, -half, 0, half, 0, 0, 0, 0, half);   // -y: x x z
-		face(pose, buffer, side, 0, 0, half, half, 0, 0, 0, half, 0);      // +z: x x y
-		face(pose, buffer, side, 0, 0, -half, 0, half, 0, half, 0, 0);     // -z: y x x
-		face(pose, buffer, side, half, 0, 0, 0, half, 0, 0, 0, half);      // +x: y x z
-		face(pose, buffer, side, -half, 0, 0, 0, 0, half, 0, half, 0);     // -x: z x y
-	}
-
-	/** One face: centre {@code c}, spanned by half-edge vectors {@code u} and {@code v}. */
-	private static void face(PoseStack.Pose pose, VertexConsumer buffer, int colour,
-			float cx, float cy, float cz, float ux, float uy, float uz, float vx, float vy, float vz) {
-		buffer.addVertex(pose, cx - ux - vx, cy - uy - vy, cz - uz - vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx + ux - vx, cy + uy - vy, cz + uz - vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx + ux + vx, cy + uy + vy, cz + uz + vz).setColor(colour).setLight(LIGHT);
-		buffer.addVertex(pose, cx - ux + vx, cy - uy + vy, cz - uz + vz).setColor(colour).setLight(LIGHT);
-	}
-
-	/** The colour with its red, green and blue scaled by {@code by}; alpha untouched. */
-	private static int shade(int argb, float by) {
-		int r = (int) (((argb >> 16) & 0xFF) * by);
-		int g = (int) (((argb >> 8) & 0xFF) * by);
-		int b = (int) ((argb & 0xFF) * by);
-		return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
-	}
 }
