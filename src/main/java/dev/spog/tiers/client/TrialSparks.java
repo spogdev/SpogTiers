@@ -151,6 +151,17 @@ public final class TrialSparks {
 	private static final float HOT_FROM = 0.75f;
 
 	/**
+	 * How far every grade is taken towards having a full-strength channel.
+	 *
+	 * <p>Separate from {@link #VIVID}, which only brightens a colour that has
+	 * little hue to deepen. A saturated grade got almost none of that lift, so
+	 * the sprite's bands and the blend below it left even the head of a streak
+	 * short of full -- lit, but dim. This lifts every grade alike, which is
+	 * what a spark being a light source rather than a painted shape means.
+	 */
+	private static final float GLOW = 0.7f;
+
+	/**
 	 * The tier colour as a spark of it, alpha carried through.
 	 *
 	 * <p>Saturated first so the colour reads as light rather than as paint,
@@ -196,8 +207,10 @@ public final class TrialSparks {
 		float chroma = (peak - floor) / (float) peak;
 		float deepen = VIVID * chroma;
 		// What is not spent deepening is spent brightening, so every grade
-		// gains the same amount of life whichever way it needs it.
-		float lift = Mth.lerp(VIVID * (1.0f - chroma), 1.0f, 255.0f / peak);
+		// gains the same amount of life whichever way it needs it, and then
+		// GLOW lifts them all towards full regardless of hue.
+		float lift = Mth.lerp(VIVID * (1.0f - chroma), 1.0f, 255.0f / peak)
+				* Mth.lerp(GLOW, 1.0f, 255.0f / peak);
 		return ARGB.color(
 				channel(r, floor, peak, deepen, lift),
 				channel(g, floor, peak, deepen, lift),
