@@ -1,15 +1,19 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.tiers.client.TrialSparks;
 import dev.spog.tiers.client.WorldAura;
 import dev.spog.tiers.data.PlayerGrade;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gl.RenderPipelines;
 
 /**
  * Embers drifting up around the skin model, in the colour of the player's Door
  * SMP tier.
  *
- * <p>Drawn as small fills rather than real particles: the model is a GUI
- * widget, not a world entity, so there is no particle system to hand.
+ * <p>Drawn as fills rather than real particles: the model is a GUI widget, not
+ * a world entity, so there is no particle system to hand. The shape and the
+ * colour ramp are {@link TrialSparks}', the same the world aura draws with a
+ * real sprite, so the panel shows the effect the player wears.
  *
  * <p>The ember itself lives in {@link WorldAura} -- its motion, its parts and
  * their colours -- shared with the copy drawn around the player in the world,
@@ -21,18 +25,14 @@ public final class TierAura {
 	private static final int MIN_SIZE = 1;
 	private static final int MAX_SIZE = 4;
 
-	/** How far the glow, and the halo beyond it, reach past the ember's body, in pixels. */
-	private static final int GLOW = 1;
-	private static final int HALO = 2;
-
 	/**
-	 * How much of the ember's body the lit core takes.
+	 * How long a streak is against the mote size, in pixels.
 	 *
-	 * <p>Under half, so the core is a bright point sitting inside the glow
-	 * rather than the whole ember: a glow needs something to be glowing around
-	 * to read as one.
+	 * <p>The world's own multiplier is in blocks against a different size, so
+	 * the two are not the same number; this is the one that makes a spark on
+	 * the panel look like the spark on the player.
 	 */
-	private static final float CORE_SHARE = 0.45f;
+	private static final float STREAK = 6.0f;
 
 	private final WorldAura aura = new WorldAura();
 
@@ -71,48 +71,43 @@ public final class TierAura {
 				continue;
 			}
 
+			float life = aura.life(i, elapsed);
 			int s = MIN_SIZE + Math.round(aura.size(i, elapsed) * (MAX_SIZE - MIN_SIZE));
-			int px = pixelX(i, elapsed, left, width, s);
-			int py = pixelY(i, elapsed, top, height, s);
 
-			// Halo, then glow, then the tail, then the core over all of them:
-			// the parts overlap, and the brightest must land on top.
-			graphics.fill(px - HALO, py - HALO, px + s + HALO, py + s + HALO,
-					aura.haloColour(rgb, i, elapsed));
-			graphics.fill(px - GLOW, py - GLOW, px + s + GLOW, py + s + GLOW,
-					aura.glowColour(rgb, i, elapsed));
-
-			// Each tail step is a smaller, fainter core where the ember was a
-			// moment ago, so the tail bends along the path it took. Furthest
-			// first, so nearer steps land on top.
-			for (int segment = WorldAura.TAIL_SEGMENTS - 1; segment >= 0; segment--) {
-				if (!aura.tailVisible(i, elapsed, segment)) {
-					continue;
-				}
-				float then = aura.tailTime(elapsed, segment);
-				int ts = Math.max(1, Math.round(s * aura.tailSize(segment)));
-				int tx = pixelX(i, then, left, width, ts);
-				int ty = pixelY(i, then, top, height, ts);
-				graphics.fill(tx, ty, tx + ts, ty + ts, aura.tailColour(rgb, i, elapsed, segment));
-			}
-
-			// The body in the glow colour, then the lit centre inside it: the
-			// core is a bright point the glow surrounds, not the whole ember.
-			graphics.fill(px, py, px + s, py + s, aura.glowColour(rgb, i, elapsed));
-			int core = Math.max(1, Math.round(s * CORE_SHARE));
-			int inset = (s - core) / 2;
-			graphics.fill(px + inset, py + inset, px + inset + core, py + inset + core,
-					aura.coreColour(rgb, i, elapsed));
+			streak(graphics, i, elapsed, left, top, width, height, s,
+					TrialSparks.colour(rgb, life, aura.alpha(i, elapsed)));
 		}
 	}
 
-	/** Left edge of a square of {@code size} centred on the ember at {@code at} seconds. */
-	private int pixelX(int mote, float at, int left, int width, int size) {
-		return left + Math.round(aura.across(mote, at) * width - size / 2.0f);
-	}
-
-	/** Top edge of a square of {@code size} centred on the ember at {@code at} seconds. */
-	private int pixelY(int mote, float at, int top, int height, int size) {
-		return top + Math.round((1.0f - aura.up(mote, at)) * height - size / 2.0f);
+	/**
+	 * One streak, drawn where the mote is at {@code at} seconds.
+	 *
+	 * <p>A tall thin bar rather than a square, in the proportion the trial
+	 * chamber sprite has, and grown the way that particle grows: the panel and
+	 * the world then show the same spark, one in pixels and one in blocks.
+	 */
+	private void streak(DrawContext graphics, int mote, float at,
+			int left, int top, int width, int height, int size, int colour) {
+		float life = aura.life(mote, at);
+		int tall = Math.max(1, Math.round(size * STREAK * TrialSparks.growth(life)));
+		int wide = Math.max(1, Math.round(tall * TrialSparks.ASPECT));
+		int x = left + Math.round(aura.across(mote, at) * width - wide / 2.0f);
+		int y = top + Math.round((1.0f - aura.up(mote, at)) * height - tall / 2.0f);
+		// The same sprite the world draws, tinted the same way, rather than a
+		// flat bar: the texture is what gives the streak a bright head and a
+		// dim tail, and a rectangle of one colour has none of that.
+		// Only the streak's own corner of the sheet, not the whole 8x8: the
+		// rest is the transparent margin the sprite is drawn on.
+		graphics.drawTexture(RenderPipelines.GUI_TEXTURED, TrialSparks.sprite(life),
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, colour);
+		// The white head over it, as the world draws it: the tint below can
+		// only be darkened by its sprite, so the burn at the top has to be
+		// added rather than multiplied in.
+		graphics.drawTexture(RenderPipelines.GUI_TEXTURED, TrialSparks.hotSprite(life),
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, 0xFFFFFFFF);
 	}
 }

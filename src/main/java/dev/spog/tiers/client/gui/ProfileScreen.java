@@ -63,6 +63,20 @@ import java.util.function.Supplier;
  * {@code textures} property or the model falls back to the default skin.
  */
 public class ProfileScreen extends Screen {
+	/**
+	 * The GUI scale this screen always draws at, whatever the game is set to.
+	 *
+	 * <p>The profile is a dense layout -- a panel, a column of cards, a model
+	 * and a row of tiles -- and the game's scale decides how much of it fits.
+	 * At 4 on a small window the cards ran off the edge; at 1 the text was too
+	 * small to read. Pinning it means the screen looks the same for everyone
+	 * and can be laid out against a size that is actually known.
+	 *
+	 * <p>Three is the game's own default for most window sizes, so for most
+	 * people nothing changes.
+	 */
+	private static final int FIXED_SCALE = 3;
+
 	private static final int MARGIN = 10;
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
@@ -278,8 +292,44 @@ public class ProfileScreen extends Screen {
 		this.playerName = profile.name();
 	}
 
+	/**
+	 * How much the screen is scaled against the game's own GUI scale.
+	 *
+	 * <p>One when the two agree. Above one the game is set smaller than this
+	 * screen wants and everything is drawn larger; below one, the reverse.
+	 */
+	private float scaleFactor() {
+		int game = MinecraftClient.getInstance().getWindow().getScaleFactor();
+		return game <= 0 ? 1.0f : FIXED_SCALE / (float) game;
+	}
+
+	/** The mouse's x in this screen's own space. */
+	private int toLocalX(double mouseX) {
+		return (int) Math.round(mouseX / scaleFactor());
+	}
+
+	/** The mouse's y in this screen's own space. */
+	private int toLocalY(double mouseY) {
+		return (int) Math.round(mouseY / scaleFactor());
+	}
+
+	/**
+	 * Lays the screen out against its own scale rather than the game's.
+	 *
+	 * <p>{@code width} and {@code height} are the room the layout believes it
+	 * has, and everything here is positioned against them, so redefining them
+	 * is what makes the screen a fixed size: the matrices are scaled to match
+	 * in {@link #render}, and mouse coordinates are divided back in
+	 * {@link #toLocalX}.
+	 */
 	@Override
 	protected void init() {
+		// Before anything is placed: every position below is worked out from
+		// these two.
+		float initFactor = scaleFactor();
+		this.width = Math.max(1, Math.round(this.width / initFactor));
+		this.height = Math.max(1, Math.round(this.height / initFactor));
+
 		MinecraftClient client = MinecraftClient.getInstance();
 
 		// Queued here rather than before the screen opens: the screen shows a
@@ -371,8 +421,28 @@ public class ProfileScreen extends Screen {
 		addDrawableChild(refreshButton);
 	}
 
+	/**
+	 * Draws the screen at its own scale.
+	 *
+	 * <p>The matrices are scaled so that one unit of the layout below is one
+	 * unit of this screen's pixels rather than the game's, and the mouse is
+	 * brought into the same space, so a hover lands where it looks like it
+	 * should.
+	 */
 	@Override
 	public void render(DrawContext graphics, int mouseX, int mouseY, float partialTick) {
+		float factor = scaleFactor();
+		if (factor == 1.0f) {
+			drawScreen(graphics, mouseX, mouseY, partialTick);
+			return;
+		}
+		graphics.getMatrices().pushMatrix();
+		graphics.getMatrices().scale(factor, factor);
+		drawScreen(graphics, toLocalX(mouseX), toLocalY(mouseY), partialTick);
+		graphics.getMatrices().popMatrix();
+	}
+
+	private void drawScreen(DrawContext graphics, int mouseX, int mouseY, float partialTick) {
 		// NB: the blurred background is drawn for us by the framework, which
 		// calls extractBackground immediately before this method. Blurring again
 		// here throws "Can only blur once per frame".
@@ -953,6 +1023,14 @@ public class ProfileScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(Click event, boolean doubled) {
+		// Brought into this screen's own space before anything is hit-tested,
+		// so a click lands where the layout drew the thing it hits. Widgets
+		// are reached through super, which gets the same remapped event.
+		float factor = scaleFactor();
+		if (factor != 1.0f) {
+			event = new Click(event.x() / factor, event.y() / factor,
+					event.buttonInfo());
+		}
 		// The name and the linked handle copy on click. Both are things people
 		// retype into a search or a DM, and retyping a Minecraft name is where
 		// a typo costs a failed lookup.
@@ -1021,6 +1099,9 @@ public class ProfileScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		float scrollFactor = scaleFactor();
+		mouseX /= scrollFactor;
+		mouseY /= scrollFactor;
 		// The menu is positioned against the card, so anything that moves the
 		// card underneath it should take it away rather than leave it floating.
 		tileMenu = null;
@@ -1949,8 +2030,15 @@ public class ProfileScreen extends Screen {
 	private void finishExport() {
 		captureQueued = false;
 		cleanFrameDrawn = false;
-		ProfileExport.copy(exportLeft, exportTop,
-				exportRight - exportLeft, exportBottom - exportTop,
+		// Back into the game's own GUI space, which is what the crop works in.
+		// These bounds were measured in this screen's space, and the two differ
+		// whenever the game's scale is not this screen's -- without this the
+		// picture is cropped from the wrong part of the frame.
+		float factor = scaleFactor();
+		ProfileExport.copy(
+				Math.round(exportLeft * factor), Math.round(exportTop * factor),
+				Math.round((exportRight - exportLeft) * factor),
+				Math.round((exportBottom - exportTop) * factor),
 				() -> exporting = false);
 	}
 
