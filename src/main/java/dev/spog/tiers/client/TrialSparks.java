@@ -49,12 +49,18 @@ public final class TrialSparks {
 	}
 
 	/** The sprite sheet each frame is drawn on, in pixels. */
-	public static final int SPRITE_SIZE = 8;
+	public static final int SPRITE_SIZE = 16;
 
-	/** Where the drawn streak sits inside that square. */
-	public static final int STREAK_LEFT = 3;
+	/**
+	 * Where the drawn streak sits inside that square.
+	 *
+	 * <p>A fixed window, not each frame's own bounds: the frames narrow as the
+	 * spark dies, and sampling each one tightly would snap the streak's width
+	 * between frames instead of letting it shorten in place.
+	 */
+	public static final int STREAK_LEFT = 0;
 	public static final int STREAK_TOP = 1;
-	public static final int STREAK_WIDTH = 3;
+	public static final int STREAK_WIDTH = 4;
 
 	/**
 	 * How long the streak is in each frame, in pixels.
@@ -63,7 +69,7 @@ public final class TrialSparks {
 	 * burning out. A caller drawing the texture needs the real length to keep
 	 * that proportion rather than stretching every frame to the same box.
 	 */
-	private static final int[] HEIGHTS = {6, 4, 3, 1, 1};
+	private static final int[] HEIGHTS = {12, 8, 6, 4, 2};
 
 	/**
 	 * How wide a drawn streak is against its height.
@@ -71,10 +77,13 @@ public final class TrialSparks {
 	 * <p>Wider than the sprite's own one-in-six. That ratio is right for a
 	 * texture, where a column of pixels is a column whatever its size, but a
 	 * streak that long would come out well under a pixel across and all but
-	 * vanish. A fifth is the compromise: clearly a streak rather than a bar,
-	 * and still over a pixel wide at the sizes actually drawn.
+	 * vanish.
+	 *
+	 * <p>A third is close to the sprite's own four-by-twelve, so the bands are
+	 * drawn at about the shape they were painted at rather than squashed, and
+	 * it still reads as a streak rather than a bar.
 	 */
-	public static final float ASPECT = 1.0f / 5.0f;
+	public static final float ASPECT = 1.0f / 3.0f;
 
 	/**
 	 * Vanilla's quad size for this particle, in blocks, before its own scale.
