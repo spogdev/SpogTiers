@@ -65,11 +65,15 @@ public class AuraMixin {
 	 * How long a streak is against the mote size the aura hands out.
 	 *
 	 * <p>The sprite is a tall thin column and the aura's sizes were chosen for
-	 * a cube, so without this a spark would be barely a speck. Tuned so the
-	 * longest streak is around a third of a block: big enough to read as a
-	 * deliberate effect from across a fight rather than as flecks of dust.
+	 * a cube, so without this a spark would be barely a speck.
+	 *
+	 * <p>Worked back from the size wanted rather than guessed: the longest
+	 * streak is {@code MAX_SIZE * TrialSparks.QUAD_SIZE * STREAK}, so 8 puts
+	 * it at 0.3 blocks against a player's 1.8. An earlier 44 came from
+	 * mis-estimating MAX_SIZE and drew streaks 1.65 blocks long -- slabs
+	 * nearly as tall as the player, which is what they looked like.
 	 */
-	private static final float STREAK = 44.0f;
+	private static final float STREAK = 8.0f;
 
 	/** How wide the aura is at its widest, as a multiple of the body width. */
 	private static final float SPREAD = 1.7f;

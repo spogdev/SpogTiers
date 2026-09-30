@@ -34,6 +34,16 @@ FRAMES = 5
 # proportions the eye reads it.
 LUMA = (0.2126, 0.7152, 0.0722)
 
+# How dark the dimmest part of a streak is allowed to get, as a share of full.
+#
+# Vanilla's sprite runs from about 40% to 100% brightness, which is right for a
+# teal streak that supplies its own colour. Multiplied through a tint it is not:
+# the darkest step of a yellow grade came out #605A13, a muddy olive, and since
+# most of a spark's life is spent on the darker frames the whole aura read that
+# way rather than yellow. Lifting the floor keeps the head-to-tail shading while
+# letting the grade colour through at something close to its real strength.
+FLOOR = 0.72
+
 
 def luminance(pixel):
     return LUMA[0] * pixel[0] + LUMA[1] * pixel[1] + LUMA[2] * pixel[2]
@@ -74,7 +84,8 @@ def main():
                     pixel = image.getpixel((x, y))
                     if not pixel[3]:
                         continue
-                    value = min(255, round(luminance(pixel) * 255.0 / peak))
+                    lit = luminance(pixel) / peak
+                    value = min(255, round((FLOOR + (1.0 - FLOOR) * lit) * 255.0))
                     grey.putpixel((x, y), (value, value, value, pixel[3]))
             # Cropped to the lit column. Vanilla's sprite is a 1x6 streak in
             # an 8x8 square, which is right for a particle whose quad is sized
