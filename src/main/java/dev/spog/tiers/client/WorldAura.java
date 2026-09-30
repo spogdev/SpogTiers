@@ -72,8 +72,28 @@ public final class WorldAura {
 	/** Peak opacity. */
 	private static final float MAX_ALPHA = 0.95f;
 
-	/** Flicker depth: alpha swings between this and one. */
-	private static final float FLICKER_FLOOR = 0.7f;
+	/**
+	 * How opaque a spark stays at its faintest.
+	 *
+	 * <p>Sparks used to fade in and out from nothing, which suits an ember
+	 * drifting away but not a tinted light: a faint yellow spark adds so
+	 * little over grass that the background's own green still dominates, so
+	 * each one turned olive at both ends of its rise. Held this high -- with
+	 * the flicker below, the faintest a spark ever gets is about 0.7 -- the
+	 * grade colour wins over grass, dirt and stone alike, and the swell still
+	 * reads as a fade.
+	 */
+	private static final float MIN_ALPHA = 0.8f;
+
+	/**
+	 * Flicker depth: alpha swings between this and one.
+	 *
+	 * <p>Shallow. A deep flicker belonged to the ember look, where a mote
+	 * guttering almost to nothing read as burning; against a background this
+	 * one multiplies with {@link #MIN_ALPHA}, and the dips were deep enough to
+	 * let grass show through as green.
+	 */
+	private static final float FLICKER_FLOOR = 0.88f;
 
 	/** Fixed seed: the drift pattern is the same every time. */
 	private static final long SEED = 0x5D0057;
@@ -123,7 +143,8 @@ public final class WorldAura {
 	 */
 	public float alpha(int mote, float elapsed) {
 		float fade = Mth.sin(life(mote, elapsed) * Mth.PI);
-		return (float) Math.sqrt(fade) * MAX_ALPHA * flicker(mote, elapsed);
+		float swell = (float) Math.sqrt(fade) * MAX_ALPHA;
+		return (MIN_ALPHA + (1.0f - MIN_ALPHA) * swell) * flicker(mote, elapsed);
 	}
 
 	/** The burn, from {@value #FLICKER_FLOOR} to 1, never steady. */

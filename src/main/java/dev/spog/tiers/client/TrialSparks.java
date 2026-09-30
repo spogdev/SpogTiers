@@ -68,9 +68,10 @@ public final class TrialSparks {
 	 * <p>Wider than the sprite's own one-in-six. That ratio is right for a
 	 * texture, where a column of pixels is a column whatever its size, but a
 	 * streak a third of a block tall would come out well under a pixel across
-	 * and all but vanish. A third keeps it a streak and keeps it visible.
+	 * and all but vanish. A quarter is the compromise: clearly a streak rather
+	 * than a bar, and still over a pixel wide at the sizes actually drawn.
 	 */
-	public static final float ASPECT = 1.0f / 3.0f;
+	public static final float ASPECT = 1.0f / 4.0f;
 
 	/**
 	 * Vanilla's quad size for this particle, in blocks, before its own scale.
