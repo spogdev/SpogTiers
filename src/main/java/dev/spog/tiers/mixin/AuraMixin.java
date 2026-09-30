@@ -194,7 +194,12 @@ public class AuraMixin {
 		// instead of tipping with the pitch.
 		poseStack.mulPose(Axis.YP.rotation(-camera.yRot * Mth.DEG_TO_RAD));
 		quad(poseStack, collector, TrialSparks.sprite(life), colour, wide, tall,
-				TrialSparks.spriteHeight(life));
+				TrialSparks.spriteHeight(life), false);
+		// The white head over it. Translucent, because its whole job is to
+		// fade out down the streak, and white rather than tinted so it burns
+		// out the colour at the top instead of deepening it.
+		quad(poseStack, collector, TrialSparks.hotSprite(life), 0xFFFFFFFF, wide, tall,
+				TrialSparks.spriteHeight(life), true);
 		poseStack.popPose();
 	}
 
@@ -217,7 +222,8 @@ public class AuraMixin {
 	 * at all and says nothing about why -- see the aura's own history.
 	 */
 	private static void quad(PoseStack poseStack, SubmitNodeCollector collector,
-			Identifier sprite, int colour, float wide, float tall, int length) {
+			Identifier sprite, int colour, float wide, float tall, int length,
+			boolean blend) {
 		float x = wide / 2.0f;
 		float y = tall / 2.0f;
 		// Only the streak's own corner of the sheet. The sprite is drawn on an
@@ -231,7 +237,8 @@ public class AuraMixin {
 		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
 		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
 		collector.submitCustomGeometry(poseStack,
-				RenderTypes.entityCutout(sprite), (pose, buffer) -> {
+				blend ? RenderTypes.entityTranslucentEmissive(sprite)
+						: RenderTypes.entityCutout(sprite), (pose, buffer) -> {
 					vertex(buffer, pose, -x, -y, colour, u0, v1);
 					vertex(buffer, pose, x, -y, colour, u1, v1);
 					vertex(buffer, pose, x, y, colour, u1, v0);

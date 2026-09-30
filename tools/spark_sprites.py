@@ -64,6 +64,35 @@ FRAMES = [
 ]
 
 
+# How white the very top of a streak burns, and how far down that reaches.
+#
+# This cannot come from the sprite above. That one is multiplied by the grade
+# colour, and a multiply only ever darkens: for a tinted pixel to come out
+# near-white the sprite would have to hold values well past 255. So the white
+# is a second sprite, drawn over the first, solid at the head and falling away
+# down the streak.
+HIGHLIGHT_TOP = 235
+HIGHLIGHT_REACH = 0.55
+
+
+def highlight(rows):
+    """The white head, as an alpha ramp down the streak."""
+    image = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    reach = max(1.0, len(rows) * HIGHLIGHT_REACH)
+    for y, row in enumerate(rows):
+        # Full at the top and gone by the end of its reach, squared so the
+        # falloff is quick rather than a long even wash over the whole streak.
+        fade = max(0.0, 1.0 - y / reach)
+        alpha = int(round(HIGHLIGHT_TOP * fade * fade))
+        if alpha <= 0:
+            continue
+        for x, cell in enumerate(row):
+            if cell == ".":
+                continue
+            image.putpixel((x, y + 1), (255, 255, 255, alpha))
+    return image
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for index, rows in enumerate(FRAMES):
@@ -74,11 +103,11 @@ def main():
                     continue
                 shade = BANDS[cell]
                 image.putpixel((x, y + 1), (shade, shade, shade, 255))
-        path = os.path.join(OUT, "spark_%d.png" % index)
-        image.save(path)
-        print(f"  spark_{index}.png  {len(rows)} rows")
+        image.save(os.path.join(OUT, "spark_%d.png" % index))
+        highlight(rows).save(os.path.join(OUT, "spark_hot_%d.png" % index))
+        print(f"  spark_{index}.png + spark_hot_{index}.png  {len(rows)} rows")
 
-    print(f"\nwrote {len(FRAMES)} sprites to {OUT}")
+    print(f"\nwrote {len(FRAMES) * 2} sprites to {OUT}")
     return 0
 
 

@@ -102,5 +102,12 @@ public final class TierAura {
 				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
 				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
 				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, colour);
+		// The white head over it, as the world draws it: the tint below can
+		// only be darkened by its sprite, so the burn at the top has to be
+		// added rather than multiplied in.
+		graphics.blit(RenderPipelines.GUI_TEXTURED, TrialSparks.hotSprite(life),
+				x, y, TrialSparks.STREAK_LEFT, TrialSparks.STREAK_TOP, wide, tall,
+				TrialSparks.STREAK_WIDTH, TrialSparks.spriteHeight(life),
+				TrialSparks.SPRITE_SIZE, TrialSparks.SPRITE_SIZE, 0xFFFFFFFF);
 	}
 }

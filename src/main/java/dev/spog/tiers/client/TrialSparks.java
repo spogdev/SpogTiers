@@ -41,10 +41,23 @@ public final class TrialSparks {
 	 */
 	private static final Identifier[] SPRITES = new Identifier[FRAMES];
 
+	/**
+	 * The white head, drawn over the tinted streak.
+	 *
+	 * <p>A second pass rather than part of the sprite above, because that one
+	 * is multiplied by the grade colour and a multiply can only darken: no
+	 * value in it can make a tinted pixel come out whiter than the tint. This
+	 * one is plain white with an alpha ramp, so the top of a streak burns
+	 * near-white and the colour comes back as it falls away.
+	 */
+	private static final Identifier[] HOT_SPRITES = new Identifier[FRAMES];
+
 	static {
 		for (int i = 0; i < FRAMES; i++) {
 			SPRITES[i] = Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID,
 					"textures/particle/spark_" + i + ".png");
+			HOT_SPRITES[i] = Identifier.fromNamespaceAndPath(SpogTiers.MOD_ID,
+					"textures/particle/spark_hot_" + i + ".png");
 		}
 	}
 
@@ -108,6 +121,11 @@ public final class TrialSparks {
 	/** The sprite for a spark that is {@code life} of the way through its rise. */
 	public static Identifier sprite(float life) {
 		return SPRITES[frame(life)];
+	}
+
+	/** The white head for that same frame, to draw over {@link #sprite}. */
+	public static Identifier hotSprite(float life) {
+		return HOT_SPRITES[frame(life)];
 	}
 
 	/** That frame's streak length in pixels, for a caller drawing the texture. */
