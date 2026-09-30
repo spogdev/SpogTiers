@@ -202,13 +202,15 @@ public class AuraMixin {
 	 * A camera-facing textured quad, {@code wide} by {@code tall}, centred on
 	 * the pose.
 	 *
-	 * <p>Drawn additively, through the pipeline vanilla lights its energy
-	 * swirls with. A translucent draw averages the spark with whatever is
-	 * behind it, and a yellow streak averaged with grass is olive -- which is
-	 * what the aura looked like over a field, worst at the start and end of
-	 * each spark where the alpha is lowest. Light does not average with what
-	 * it falls on, it adds, so an additive blend both looks right and keeps
-	 * the grade colour whatever the background.
+	 * <p>Drawn as a cutout: every pixel of the streak is opaque, and the
+	 * transparent margin around it is discarded rather than blended. Nothing
+	 * behind a spark shows through it, so the colour on screen is the grade's
+	 * own rather than a mix of it and the ground -- which is what an additive
+	 * or translucent draw gave, each in its own way.
+	 *
+	 * <p>The lightmap is full-bright, so the pipeline's per-face lighting
+	 * samples maximum light and leaves the colour alone: a spark glows rather
+	 * than being lit.
 	 *
 	 * <p>Wound bottom-left, bottom-right, top-right, top-left. The pose here is
 	 * y-up and the pipeline culls back faces, so the other order draws nothing
@@ -229,7 +231,7 @@ public class AuraMixin {
 		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
 		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
 		collector.submitCustomGeometry(poseStack,
-				RenderTypes.energySwirl(sprite, 0.0f, 0.0f), (pose, buffer) -> {
+				RenderTypes.entityCutout(sprite), (pose, buffer) -> {
 					vertex(buffer, pose, -x, -y, colour, u0, v1);
 					vertex(buffer, pose, x, -y, colour, u1, v1);
 					vertex(buffer, pose, x, y, colour, u1, v0);

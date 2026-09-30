@@ -69,31 +69,31 @@ public final class WorldAura {
 	private static final float BELOW = 0.06f;
 	private static final float ABOVE = 0.18f;
 
-	/** Peak opacity. */
-	private static final float MAX_ALPHA = 0.95f;
+	/**
+	 * Peak opacity.
+	 *
+	 * <p>One, with the two floors below: sparks are drawn solid. They are a
+	 * light, and a light is either burning or gone -- fading one in and out
+	 * only let the ground show through and mix into its colour.
+	 */
+	private static final float MAX_ALPHA = 1.0f;
 
 	/**
 	 * How opaque a spark stays at its faintest.
 	 *
-	 * <p>Sparks used to fade in and out from nothing, which suits an ember
-	 * drifting away but not a tinted light: a faint yellow spark adds so
-	 * little over grass that the background's own green still dominates, so
-	 * each one turned olive at both ends of its rise. Held this high -- with
-	 * the flicker below, the faintest a spark ever gets is about 0.7 -- the
-	 * grade colour wins over grass, dirt and stone alike, and the swell still
-	 * reads as a fade.
+	 * <p>One as well, so nothing fades. A spark still visibly dies without
+	 * it: the streak shortens as it rises, and the sprite it is drawn from
+	 * shortens with it.
 	 */
-	private static final float MIN_ALPHA = 0.8f;
+	private static final float MIN_ALPHA = 1.0f;
 
 	/**
 	 * Flicker depth: alpha swings between this and one.
 	 *
-	 * <p>Shallow. A deep flicker belonged to the ember look, where a mote
-	 * guttering almost to nothing read as burning; against a background this
-	 * one multiplies with {@link #MIN_ALPHA}, and the dips were deep enough to
-	 * let grass show through as green.
+	 * <p>One: no flicker. It multiplied the alpha, so any dip made a spark
+	 * part-transparent and let the ground mix into its colour.
 	 */
-	private static final float FLICKER_FLOOR = 0.88f;
+	private static final float FLICKER_FLOOR = 1.0f;
 
 	/** Fixed seed: the drift pattern is the same every time. */
 	private static final long SEED = 0x5D0057;
