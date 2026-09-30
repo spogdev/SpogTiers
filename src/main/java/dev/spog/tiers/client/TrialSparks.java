@@ -132,11 +132,11 @@ public final class TrialSparks {
 	 * How far the tier colour is pushed towards full saturation.
 	 *
 	 * <p>A grade colour is picked to be readable as text on a dark plate, not
-	 * to glow. Drawn straight it gives a washed-out spark, so the colour is
-	 * taken to its most vivid form at the same hue: the grade stays
-	 * recognisable and the particle actually burns.
+	 * to glow, so a little deepening keeps a spark from looking washed out.
+	 * Enough to give the colour some depth, short of the point where a grade
+	 * stops looking like the colour on its own tag.
 	 */
-	private static final float VIVID = 0.55f;
+	private static final float VIVID = 0.45f;
 
 	/**
 	 * How white the head of a spark goes at its hottest.
@@ -145,7 +145,7 @@ public final class TrialSparks {
 	 * near white, but taking the whole particle there washed the tier colour
 	 * out of it -- which is the one thing the aura is for.
 	 */
-	private static final float HOT = 0.3f;
+	private static final float HOT = 0.15f;
 
 	/** Where in its life a spark starts to whiten. */
 	private static final float HOT_FROM = 0.75f;

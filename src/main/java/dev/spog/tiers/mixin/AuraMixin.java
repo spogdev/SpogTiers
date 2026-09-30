@@ -202,13 +202,13 @@ public class AuraMixin {
 	 * A camera-facing textured quad, {@code wide} by {@code tall}, centred on
 	 * the pose.
 	 *
-	 * <p>Drawn additively, through the pipeline vanilla lights its energy
-	 * swirls with. A translucent draw averages the spark with whatever is
-	 * behind it, and a yellow streak averaged with grass is olive -- which is
-	 * what the aura looked like over a field, worst at the start and end of
-	 * each spark where the alpha is lowest. Light does not average with what
-	 * it falls on, it adds, so an additive blend both looks right and keeps
-	 * the grade colour whatever the background.
+	 * <p>Drawn translucent rather than additive. Additive was the fix for
+	 * sparks turning olive over grass, and it worked, but it washes the colour
+	 * out: adding to a lit background drives the bright channels to full while
+	 * lifting the dark ones, so a strong orange came out near-white. What
+	 * actually keeps the hue is the alpha never falling far -- see
+	 * {@code WorldAura.MIN_ALPHA} -- and with that in place a translucent draw
+	 * keeps the grade's own colour instead of bleaching it.
 	 *
 	 * <p>Wound bottom-left, bottom-right, top-right, top-left. The pose here is
 	 * y-up and the pipeline culls back faces, so the other order draws nothing
@@ -229,7 +229,7 @@ public class AuraMixin {
 		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
 		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
 		collector.submitCustomGeometry(poseStack,
-				RenderTypes.energySwirl(sprite, 0.0f, 0.0f), (pose, buffer) -> {
+				RenderTypes.entityTranslucentEmissive(sprite), (pose, buffer) -> {
 					vertex(buffer, pose, -x, -y, colour, u0, v1);
 					vertex(buffer, pose, x, -y, colour, u1, v1);
 					vertex(buffer, pose, x, y, colour, u1, v0);
