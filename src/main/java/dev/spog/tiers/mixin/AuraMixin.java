@@ -94,8 +94,26 @@ public class AuraMixin {
 	 */
 	private static final float STANDING_HEIGHT = 1.8f;
 
-	/** Which batch the sparks are queued in, as the rest of the aura was. */
+	/**
+	 * Which batch the tinted streak is queued in.
+	 *
+	 * <p>A batching queue groups what it is given by render layer before it
+	 * draws, so submission order within one batch says nothing about what ends
+	 * up on top. The streak and the white head use different layers -- cutout
+	 * and translucent emissive -- so queued together the emissive head was
+	 * drawn over the whole streak rather than only burning out its tip, and
+	 * every spark came out white with no colour in it.
+	 */
 	private static final int BATCH = 0;
+
+	/**
+	 * Which batch the white head is queued in: the one after the streak.
+	 *
+	 * <p>Batches are drawn in order, so this is what actually puts the head
+	 * over the streak. The same thing TextDisplayAboveMixin does to keep its
+	 * text above its own backdrop.
+	 */
+	private static final int HEAD_BATCH = 1;
 
 	/** Full-bright lightmap coordinates: embers glow, they are not lit. */
 	private static final int LIGHT = 0xF000F0;
@@ -209,12 +227,12 @@ public class AuraMixin {
 		// makes on the horizontal plane.
 		matrices.multiply(RotationAxis.POSITIVE_Y.rotation(cameraYaw(camera)));
 		quad(matrices, queue, TrialSparks.sprite(life), colour, wide, tall,
-				TrialSparks.spriteHeight(life), false);
+				TrialSparks.spriteHeight(life), false, BATCH);
 		// The white head over it. Translucent, because its whole job is to
 		// fade out down the streak, and white rather than tinted so it burns
 		// out the colour at the top instead of deepening it.
 		quad(matrices, queue, TrialSparks.hotSprite(life), 0xFFFFFFFF, wide, tall,
-				TrialSparks.spriteHeight(life), true);
+				TrialSparks.spriteHeight(life), true, HEAD_BATCH);
 		matrices.pop();
 	}
 
@@ -238,7 +256,7 @@ public class AuraMixin {
 	 */
 	private static void quad(MatrixStack matrices, OrderedRenderCommandQueue queue,
 			Identifier sprite, int colour, float wide, float tall, int length,
-			boolean blend) {
+			boolean blend, int batch) {
 		float x = wide / 2.0f;
 		float y = tall / 2.0f;
 		// Only the streak's own corner of the sheet. The sprite is drawn on an
@@ -251,7 +269,7 @@ public class AuraMixin {
 				/ (float) TrialSparks.SPRITE_SIZE;
 		float v0 = TrialSparks.STREAK_TOP / (float) TrialSparks.SPRITE_SIZE;
 		float v1 = (TrialSparks.STREAK_TOP + length) / (float) TrialSparks.SPRITE_SIZE;
-		queue.getBatchingQueue(BATCH).submitCustom(matrices,
+		queue.getBatchingQueue(batch).submitCustom(matrices,
 				blend ? RenderLayers.entityTranslucentEmissive(sprite)
 						: RenderLayers.entityCutout(sprite), (pose, buffer) -> {
 					vertex(buffer, pose, -x, -y, colour, u0, v1);
