@@ -495,7 +495,10 @@ public class ProfileScreen extends Screen {
 				skinWidget.setY(skinScreenY);
 			}
 			closeButton.visible = true;
-			copyButton.visible = true;
+			// Back to whatever the option says, not unconditionally on: the
+			// export hid it along with the rest of the row, and forcing it
+			// back would put a disabled button on screen.
+			copyButton.visible = copyShown();
 			refreshButton.visible = true;
 			// Now that the stripped-down frame has been laid out, the panel
 			// and the cards are at their exported sizes and can be measured.
@@ -537,7 +540,11 @@ public class ProfileScreen extends Screen {
 		// Tested against the pointer rather than the widget's own flag: the
 		// flag is only set while the screen is handling input, and the export
 		// frame renders with none.
-		if (copyButton != null && copyButton.isMouseOver(mouseX, mouseY)) {
+		// visible is checked too: isMouseOver is a bounds test, and a hidden
+		// Copy button still covers its old corner of the row -- which Close
+		// now occupies, so without this it would show Copy's tooltip.
+		if (copyButton != null && copyButton.visible
+				&& copyButton.isMouseOver(mouseX, mouseY)) {
 			drawLabelTooltip(graphics, "Copy", mouseX, mouseY);
 		} else if (refreshButton != null && refreshButton.isMouseOver(mouseX, mouseY)) {
 			drawLabelTooltip(graphics, "Refresh", mouseX, mouseY);
@@ -2361,6 +2368,12 @@ public class ProfileScreen extends Screen {
 	 * because the panel's width follows the window, which {@code init} cannot
 	 * know about ahead of time.
 	 */
+	/** Whether the copy-as-image button is on, per the config. */
+	private boolean copyShown() {
+		var config = SpogTiersClient.config();
+		return config == null || config.showCopyButton;
+	}
+
 	private void layoutButtons() {
 		if (closeButton == null) {
 			return;
@@ -2384,9 +2397,15 @@ public class ProfileScreen extends Screen {
 
 		int gap = Math.max(2, Math.round(4 * scale));
 
+		// How many icons sit to the right of Close. Refresh always does; Copy
+		// only when it is switched on, and when it is not, Close is given the
+		// width it would have taken rather than leaving a hole in the row.
+		boolean copyShown = copyShown();
+		int icons = copyShown ? 2 : 1;
+
 		closeButton.setX(left);
 		closeButton.setY(top);
-		closeButton.setWidth(Math.max(20, rowWidth - iconSize * 2 - gap * 2));
+		closeButton.setWidth(Math.max(20, rowWidth - iconSize * icons - gap * icons));
 		closeButton.setHeight(buttonHeight);
 
 		copyButton.setX(left + rowWidth - iconSize * 2 - gap);
@@ -2396,6 +2415,11 @@ public class ProfileScreen extends Screen {
 		refreshButton.setX(left + rowWidth - iconSize);
 		refreshButton.setY(top);
 		refreshButton.setSize(iconSize, buttonHeight);
+
+		// Set here rather than in init: the option can be changed while the
+		// screen is open, and this runs every frame.
+		copyButton.visible = copyShown;
+		copyButton.active = copyShown;
 	}
 
 	/** The panel's width, capped to its share of the window. */
