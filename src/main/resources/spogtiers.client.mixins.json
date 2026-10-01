@@ -7,7 +7,6 @@
 		"EntityRendererMixin",
 		"LabelMixin",
 		"NameTagFeatureRendererMixin",
-		"NameTagIconMixin",
 		"AuraMixin",
 		"TextDisplayMixin",
 		"TextDisplayAboveMixin",
