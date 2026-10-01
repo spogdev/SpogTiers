@@ -630,12 +630,36 @@ public class ConfigScreen extends Screen {
 	/**
 	 * A sliding switch: green when on, red when off, with the knob at the
 	 * end it is set to. The same control the nametag editor draws.
+	 *
+	 * <p>Ringed in white while the pointer is on it, so a switch says it can
+	 * be clicked the way the tabs and buttons already do.
 	 */
 	private void drawSlider(DrawContext graphics, int x, int y, boolean on) {
 		int height = 12;
 		graphics.fill(x, y, x + SLIDER_WIDTH, y + height, on ? SLIDER_ON : SLIDER_OFF);
 		int knob = on ? x + SLIDER_WIDTH - 10 : x + 2;
 		graphics.fill(knob, y + 2, knob + 8, y + height - 2, 0xFFFFFFFF);
+		// Measured against the zone that takes the click, not the painted
+		// switch: the zone is the taller of the two, so ringing the fill would
+		// light up only after the pointer was already well inside it.
+		if (hoverMouseX >= x && hoverMouseX < x + SLIDER_WIDTH
+				&& hoverMouseY >= y - 2 && hoverMouseY < y + height + 2) {
+			ring(graphics, x - 1, y - 1, x + SLIDER_WIDTH + 1, y + height + 1);
+		}
+	}
+
+	/**
+	 * A one-pixel outline, drawn just outside what it marks.
+	 *
+	 * <p>Four edges rather than {@link #drawFrame}, which fills its middle: a
+	 * ring has to leave the switch underneath it visible.
+	 */
+	private void ring(DrawContext graphics, int left, int top, int right,
+			int bottom) {
+		graphics.fill(left, top, right, top + 1, 0xFFFFFFFF);
+		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
+		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
+		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
 	}
 
 	private void drawToggle(DrawContext graphics, int x, int y, int boxWidth,
