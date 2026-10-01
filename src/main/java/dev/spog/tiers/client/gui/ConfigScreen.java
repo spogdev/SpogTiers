@@ -495,6 +495,14 @@ public class ConfigScreen extends Screen {
 					config.save();
 				});
 
+		y = drawSwitch(graphics, "Show Copy Button", config.showCopyButton, x, y,
+				() -> {
+					config.showCopyButton = !config.showCopyButton;
+					config.save();
+				},
+				"Offer the copy-as-image button on a profile; Close takes its "
+						+ "place when it is off");
+
 		return y + CARD_PADDING - top;
 	}
 
