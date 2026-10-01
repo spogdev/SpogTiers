@@ -274,7 +274,17 @@ public final class TagEditor {
 	private record Hit(TagLayout.Element element, int left, int top, int right, int bottom) {
 	}
 
-	private record Button(String id, int left, int top, int right, int bottom) {
+	/**
+	 * A control's hit box.
+	 *
+	 * <p>{@code clipped} says whether it lives inside the scrolling panels. Most
+	 * do, and a press on one that has scrolled out of view has to be ignored.
+	 * The footer's own controls do not: they are drawn below the panels and
+	 * never scroll, so testing them against the panel bounds only ever threw
+	 * the press away.
+	 */
+	private record Button(String id, int left, int top, int right, int bottom,
+			boolean clipped) {
 	}
 
 	private record RowBand(TagLayout.Row row, int top, int bottom) {
@@ -591,7 +601,7 @@ public final class TagEditor {
 		outline(graphics, x, y, x + width, y + BUTTON_HEIGHT,
 				focused ? ACCENT : PANEL_BORDER);
 		codeField.extractWidgetRenderState(graphics, mouseX, mouseY, 0.0f);
-		codeBox = new Button("code", x, y, x + width, y + BUTTON_HEIGHT);
+		codeBox = new Button("code", x, y, x + width, y + BUTTON_HEIGHT, true);
 	}
 
 	/** The code box, so the screen can route typing to it. */
@@ -651,7 +661,7 @@ public final class TagEditor {
 	/** Whether the pointer is over anything clickable, for the cursor. */
 	public boolean isOverControl(int mouseX, int mouseY) {
 		for (Button button : buttons) {
-			if (!visible(button.top(), button.bottom())) {
+			if (button.clipped() && !visible(button.top(), button.bottom())) {
 				continue;
 			}
 			if (mouseX >= button.left() && mouseX < button.right()
@@ -1137,8 +1147,12 @@ public final class TagEditor {
 				cursor += font.width(icon) + font.width(" ");
 			}
 			String label = labelFor(element, sample);
+			// colourFor rather than the sample's own colour: a Door SMP
+			// element has no tier to read, so tierFor hands back a stand-in
+			// whose colour is tier 1's orange. Asking colourFor instead gets
+			// the grade's own colour, which is what the tag will draw.
 			graphics.text(font, Component.literal(label), cursor, y,
-					chosen ? 0xFFFFFFFF : sample.color());
+					chosen ? 0xFFFFFFFF : colourFor(element));
 			if (chosen) {
 				underline(graphics, x, y, (cursor - x) + font.width(label));
 			}
@@ -1270,7 +1284,7 @@ public final class TagEditor {
 				if (colour == selected.colour) {
 					outline(graphics, sx - 1, y - 1, sx + 19, y + 19, ACCENT);
 				}
-				buttons.add(new Button("colour." + colour, sx, y, sx + 18, y + 18));
+				buttons.add(new Button("colour." + colour, sx, y, sx + 18, y + 18, true));
 				sx += 20;
 				if (sx + 18 > right - PADDING) {
 					sx = x;
@@ -1401,7 +1415,7 @@ public final class TagEditor {
 		double mouseX = event.x();
 		double mouseY = event.y();
 		for (Button button : buttons) {
-			if (!visible(button.top(), button.bottom())) {
+			if (button.clipped() && !visible(button.top(), button.bottom())) {
 				continue;
 			}
 			if (mouseX >= button.left() && mouseX < button.right()
@@ -1415,6 +1429,19 @@ public final class TagEditor {
 				selected = hit.element();
 				scroll = 0;
 				closeDropdowns();
+				// The boxes give up focus when an element is picked up. A
+				// focused box owns the drag -- it is selecting text -- and
+				// returns before the held element is tracked, so a box left
+				// focused from an earlier click meant the element never
+				// started moving: it stayed invisible on the pointer, since
+				// it is only drawn once the drag has travelled.
+				EditBox focused = nameField();
+				if (focused != null) {
+					focused.setFocused(false);
+				}
+				if (codeField != null) {
+					codeField.setFocused(false);
+				}
 				// Held rather than moved: a drag only begins once the pointer
 				// has travelled, so a plain click still just selects.
 				dragging = hit.element();
@@ -2054,6 +2081,11 @@ public final class TagEditor {
 	/** A button in the same style as Done and the rest of the screen. */
 	private void pushButton(GuiGraphicsExtractor graphics, String label, int x, int y,
 			int width, int mouseX, int mouseY, String id) {
+		pushButton(graphics, label, x, y, width, mouseX, mouseY, id, true);
+	}
+
+	private void pushButton(GuiGraphicsExtractor graphics, String label, int x, int y,
+			int width, int mouseX, int mouseY, String id, boolean clipped) {
 		int height = 20;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
@@ -2063,7 +2095,7 @@ public final class TagEditor {
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
 				y + (height - font.lineHeight) / 2, TEXT_COLOR);
-		buttons.add(new Button(id, x, y, x + width, y + height));
+		buttons.add(new Button(id, x, y, x + width, y + height, clipped));
 	}
 
 	/**
@@ -2077,7 +2109,7 @@ public final class TagEditor {
 		// Done alone here, in the plain style, because it only closes: the
 		// layout is already saved by the time anyone reaches it, and the
 		// session's own controls live beside the element creator instead.
-		pushButton(graphics, "Done", x, y, width, mouseX, mouseY, "done");
+		pushButton(graphics, "Done", x, y, width, mouseX, mouseY, "done", false);
 	}
 
 	/**
@@ -2112,7 +2144,7 @@ public final class TagEditor {
 		graphics.text(font, Component.literal(label),
 				x + (width - font.width(label)) / 2,
 				y + (20 - font.lineHeight) / 2, tint.text());
-		buttons.add(new Button(id, x, y, x + width, y + height));
+		buttons.add(new Button(id, x, y, x + width, y + height, true));
 		if (hovered && explains != null) {
 			hoverButton = new Explained(explains, tint);
 		}
@@ -2132,7 +2164,7 @@ public final class TagEditor {
 		graphics.text(font, Component.literal(label),
 				x + (size - font.width(label)) / 2,
 				y + (size - font.lineHeight) / 2, TEXT_COLOR);
-		buttons.add(new Button(id, x, y, x + size, y + size));
+		buttons.add(new Button(id, x, y, x + size, y + size, true));
 	}
 
 	/**
@@ -2158,7 +2190,7 @@ public final class TagEditor {
 		int half = thickness / 2;
 		graphics.fill(cx - arm, cy - half, cx + arm, cy + thickness - half, GREEN.text());
 		graphics.fill(cx - half, cy - arm, cx + thickness - half, cy + arm, GREEN.text());
-		buttons.add(new Button("create", x, y, x + size, y + size));
+		buttons.add(new Button("create", x, y, x + size, y + size, true));
 		if (hovered) {
 			hoverButton = new Explained("Create element of this type", GREEN);
 		}
@@ -2203,7 +2235,7 @@ public final class TagEditor {
 		graphics.fill(cx - 2, top + 4, cx - 1, top + 8, ink);
 		graphics.fill(cx + 1, top + 4, cx + 2, top + 8, ink);
 		if (allowed) {
-			buttons.add(new Button("delete", x, y, x + size, y + size));
+			buttons.add(new Button("delete", x, y, x + size, y + size, true));
 		}
 		if (hovered) {
 			hoverButton = new Explained("Delete selected element", RED);
@@ -2238,7 +2270,7 @@ public final class TagEditor {
 		graphics.fill(boxX, y + 2, boxX + boxWidth, y + height - 2, on ? ON_FILL : OFF_FILL);
 		int knob = on ? boxX + boxWidth - 10 : boxX + 2;
 		graphics.fill(knob, y + 4, knob + 8, y + height - 4, 0xFFFFFFFF);
-		buttons.add(new Button(id, x, y, right, y + height));
+		buttons.add(new Button(id, x, y, right, y + height, true));
 		return y + height + 6;
 	}
 }
