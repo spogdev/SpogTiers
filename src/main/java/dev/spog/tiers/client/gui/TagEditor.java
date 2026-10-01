@@ -1229,6 +1229,14 @@ public final class TagEditor {
 			// Our own list has one grade per player and no modes to choose
 			// between, so the second dropdown would only offer nothing.
 			if (selected.doorSmp) {
+				// The scissor opened above has to be closed on the way out. This
+				// return used to jump straight past the disableScissor at the end
+				// of the method, leaving the clip set to this panel for the rest of
+				// the frame -- so everything drawn after it was clipped away:
+				// Done, the held element, whatever else came later. Selecting a
+				// Door SMP element is not supposed to differ from selecting any
+				// other, and now it does not.
+				graphics.disableScissor();
 				scrollMax = Math.max(0, (y + scroll) - (bottom - FOOTER_HEIGHT) + PADDING);
 				drawElementFooter(graphics, left, right, bottom, mouseX, mouseY);
 				return;
