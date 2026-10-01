@@ -365,6 +365,17 @@ public class SpogTiersConfig {
 	/** Slowly spin the skin model in the profile panel. */
 	public boolean rotateSkin = true;
 
+	/**
+	 * Offer the copy-as-image button in the profile's button row.
+	 *
+	 * <p>Off by default. Copying a profile to the clipboard is a thing people
+	 * do to share a result, not something most need every time they look
+	 * someone up, and the row has only so much width: with the button gone
+	 * Close takes the space, which makes the one button everyone does use
+	 * easier to hit.
+	 */
+	public boolean showCopyButton = false;
+
 	private static Map<TierList, Boolean> defaultLists() {
 		Map<TierList, Boolean> map = new EnumMap<>(TierList.class);
 		for (TierList list : TierList.values()) {
