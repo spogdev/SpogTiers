@@ -1435,9 +1435,15 @@ public final class TagEditor {
 				// focused from an earlier click meant the element never
 				// started moving: it stayed invisible on the pointer, since
 				// it is only drawn once the drag has travelled.
-				EditBox focused = nameField();
-				if (focused != null) {
-					focused.setFocused(false);
+				//
+				// The field itself, not nameField(): that accessor only hands
+				// back the box while a Name element is the selected one, and
+				// selected has just been reassigned to the element being picked
+				// up. Asking through it cleared the focus only when moving a
+				// Name element -- picking up any other kind got null and left
+				// the box focused, which is what still swallowed the drag.
+				if (nameField != null) {
+					nameField.setFocused(false);
 				}
 				if (codeField != null) {
 					codeField.setFocused(false);
@@ -1467,6 +1473,14 @@ public final class TagEditor {
 	 */
 	public void drag(net.minecraft.client.input.MouseButtonEvent event,
 			double dragX, double dragY) {
+		// An element being held wins over a focused box. A box only owns a
+		// drag when it is selecting text, and nothing is selecting text while
+		// something is in the air -- picking one up drops the boxes' focus, so
+		// a box still claiming it here is stale.
+		if (dragging != null) {
+			drag(event.x(), event.y());
+			return;
+		}
 		// A box with focus owns the drag: it is selecting text, and nothing
 		// on the tag is being moved.
 		EditBox field = nameField();
