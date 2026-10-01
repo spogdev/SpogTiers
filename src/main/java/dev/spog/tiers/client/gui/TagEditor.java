@@ -2275,7 +2275,12 @@ public final class TagEditor {
 
 
 
-	/** A labelled switch, returning the y to carry on from. */
+	/**
+	 * A labelled switch, returning the y to carry on from.
+	 *
+	 * <p>Ringed in white while the pointer is on it, as the config tab's
+	 * switches and this editor's buttons already are.
+	 */
 	private int toggle(DrawContext graphics, String label, boolean on, int x, int y,
 			int right, int mouseX, int mouseY, String id) {
 		int height = 16;
@@ -2285,7 +2290,27 @@ public final class TagEditor {
 		graphics.fill(boxX, y + 2, boxX + boxWidth, y + height - 2, on ? ON_FILL : OFF_FILL);
 		int knob = on ? boxX + boxWidth - 10 : boxX + 2;
 		graphics.fill(knob, y + 4, knob + 8, y + height - 4, 0xFFFFFFFF);
+		// Asked of overRow rather than of the painted box, because the whole
+		// row takes the click here: ringing only on the box would leave most
+		// of what is clickable saying nothing.
+		if (overRow(mouseX, mouseY, x, right + PADDING, y)) {
+			ring(graphics, boxX - 1, y + 1, boxX + boxWidth + 1, y + height - 1);
+		}
 		buttons.add(new Button(id, x, y, right, y + height, true));
 		return y + height + 6;
+	}
+
+	/**
+	 * A one-pixel outline, drawn just outside what it marks.
+	 *
+	 * <p>Four edges rather than a filled box: a ring has to leave the switch
+	 * underneath it visible.
+	 */
+	private void ring(DrawContext graphics, int left, int top, int right,
+			int bottom) {
+		graphics.fill(left, top, right, top + 1, 0xFFFFFFFF);
+		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
+		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
+		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
 	}
 }
