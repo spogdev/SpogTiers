@@ -258,7 +258,19 @@ public class AuraMixin {
 		// instead is what left these sparks grey and stubby.
 		queue.submitCustom(matrices,
 				blend ? RenderLayers.entityTranslucentEmissive(sprite)
-						: RenderLayers.entityCutout(sprite), (pose, buffer) -> {
+						// entityCutoutNoCull rather than entityCutout: on this
+						// version ENTITY_CUTOUT is built without the
+						// PER_FACE_LIGHTING shader define, so entity.vsh takes
+						// its other branch and runs the vertex colour through
+						// minecraft_mix_light against the quad's normal. The
+						// normal points at the camera rather than at either
+						// scene light, so the tint was multiplied down to grey
+						// -- while the white head, whose emissive layer does
+						// set the define, stayed bright. 26.1.2 sets it on
+						// ENTITY_CUTOUT too, which is why only this branch is
+						// affected. NO_CULL sets it, and is right for a
+						// billboard regardless.
+						: RenderLayers.entityCutoutNoCull(sprite), (pose, buffer) -> {
 					vertex(buffer, pose, -x, -y, colour, u0, v1);
 					vertex(buffer, pose, x, -y, colour, u1, v1);
 					vertex(buffer, pose, x, y, colour, u1, v0);
