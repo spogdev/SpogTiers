@@ -1227,33 +1227,34 @@ public final class TagEditor {
 			y += ROW_HEIGHT + 8;
 
 			// Our own list has one grade per player and no modes to choose
-			// between, so the second dropdown would only offer nothing.
-			if (selected.doorSmp) {
-				scrollMax = Math.max(0, (y + scroll) - (bottom - FOOTER_HEIGHT) + PADDING);
-				drawElementFooter(graphics, left, right, bottom, mouseX, mouseY);
-				return;
+			// between, so the second dropdown would only offer nothing. Skipped
+			// rather than returned early: this method still has a scissor to
+			// close, a scroll to clamp, a hint to draw and a footer to put at the
+			// bottom, and a return here jumped past all of it -- which is what
+			// left the panel clipped, with no bin and no Done. Dropping one
+			// dropdown is the only way a Door SMP element differs from any other.
+			if (!selected.doorSmp) {
+				graphics.text(font, Component.literal("Gamemode"), x, y, MUTED_COLOR);
+				y += font.lineHeight + 4;
+				// Only the modes the chosen list actually ranks. Offering all of
+				// them let someone pick a mode their list has never heard of,
+				// which then resolved to nothing and looked like a broken tag.
+				// A Best element has no one list, so it offers every mode any
+				// enabled list ranks.
+				List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
+				modes.add(new Dropdown.Entry<>(null, "Best", null));
+				for (Gamemode mode : modesFor(selected.list())) {
+					// A Best element has no one list to take artwork from, so its
+					// modes are drawn from whichever list ranks them.
+					TierList owner = selected.list() != null ? selected.list() : ownerOf(mode);
+					modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
+							ConfigScreen.modeIcon(owner, mode)));
+				}
+				tierMode.setEntries(modes);
+				tierMode.setBounds(x, y, right - x - PADDING);
+				tierMode.draw(graphics, font, selected.gamemode, mouseX, mouseY);
+				y += ROW_HEIGHT + 8;
 			}
-
-			graphics.text(font, Component.literal("Gamemode"), x, y, MUTED_COLOR);
-			y += font.lineHeight + 4;
-			// Only the modes the chosen list actually ranks. Offering all of
-			// them let someone pick a mode their list has never heard of,
-			// which then resolved to nothing and looked like a broken tag.
-			// A Best element has no one list, so it offers every mode any
-			// enabled list ranks.
-			List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
-			modes.add(new Dropdown.Entry<>(null, "Best", null));
-			for (Gamemode mode : modesFor(selected.list())) {
-				// A Best element has no one list to take artwork from, so its
-				// modes are drawn from whichever list ranks them.
-				TierList owner = selected.list() != null ? selected.list() : ownerOf(mode);
-				modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
-						ConfigScreen.modeIcon(owner, mode)));
-			}
-			tierMode.setEntries(modes);
-			tierMode.setBounds(x, y, right - x - PADDING);
-			tierMode.draw(graphics, font, selected.gamemode, mouseX, mouseY);
-			y += ROW_HEIGHT + 8;
 		}
 
 		if (selected.kind == TagLayout.Kind.SEPARATOR) {
@@ -1435,9 +1436,15 @@ public final class TagEditor {
 				// focused from an earlier click meant the element never
 				// started moving: it stayed invisible on the pointer, since
 				// it is only drawn once the drag has travelled.
-				EditBox focused = nameField();
-				if (focused != null) {
-					focused.setFocused(false);
+				//
+				// The field itself, not nameField(): that accessor only hands
+				// back the box while a Name element is the selected one, and
+				// selected has just been reassigned to the element being picked
+				// up. Asking through it cleared the focus only when moving a
+				// Name element -- picking up any other kind got null and left
+				// the box focused, which is what still swallowed the drag.
+				if (nameField != null) {
+					nameField.setFocused(false);
 				}
 				if (codeField != null) {
 					codeField.setFocused(false);
@@ -1467,6 +1474,14 @@ public final class TagEditor {
 	 */
 	public void drag(net.minecraft.client.input.MouseButtonEvent event,
 			double dragX, double dragY) {
+		// An element being held wins over a focused box. A box only owns a
+		// drag when it is selecting text, and nothing is selecting text while
+		// something is in the air -- picking one up drops the boxes' focus, so
+		// a box still claiming it here is stale.
+		if (dragging != null) {
+			drag(event.x(), event.y());
+			return;
+		}
 		// A box with focus owns the drag: it is selecting text, and nothing
 		// on the tag is being moved.
 		EditBox field = nameField();
