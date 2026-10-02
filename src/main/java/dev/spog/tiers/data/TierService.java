@@ -903,10 +903,17 @@ public class TierService {
 				result.putUnknown(entry.getKey(), tier);
 			}
 
+			// Asked for the value rather than the key: PvPTiers sends
+			// "peak_tier": null for a placement it has no peak on record for,
+			// and has() is true for a key whose value is null, so reading it
+			// as an int threw UnsupportedOperationException. That landed in
+			// fetchAll's catch, which logs at debug and moves on, so one such
+			// gamemode quietly cost the whole profile every one of its tiers.
 			Tier peak = null;
-			if (value.has("peak_tier")) {
+			JsonElement peakTier = value.get("peak_tier");
+			if (peakTier != null && !peakTier.isJsonNull()) {
 				peak = new Tier(
-						value.get("peak_tier").getAsInt(),
+						peakTier.getAsInt(),
 						intOr(value, "peak_pos", 0) == 0 ? Tier.Position.HIGH : Tier.Position.LOW,
 						false);
 			}
