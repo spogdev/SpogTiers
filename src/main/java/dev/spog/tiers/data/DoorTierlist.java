@@ -28,8 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * screen is open. Keeping them apart means opening the screen cannot disturb
  * the per-player cache, and a badge lookup cannot be delayed behind a roster.
  *
- * <p>Retired players are dropped, as the Discord picture drops them: the
- * tierlist is about who is currently ranked.
+ * <p>Both the main and the retired list are kept, grouped as they arrive, so
+ * the screen can switch between them without a second request -- the service
+ * flags each player and sends them all.
  */
 public final class DoorTierlist {
 
@@ -60,8 +61,29 @@ public final class DoorTierlist {
 	public record Row(String label, int colour, List<Player> players) {
 	}
 
-	/** The list as drawn: tiers in our order, empty ones left out. */
-	public record Snapshot(List<Row> rows) {
+	/**
+	 * Both lists, in tier order, every tier present.
+	 *
+	 * <p>Empty tiers are kept rather than dropped: the grid is a picture of the
+	 * whole ladder, and a tier nobody holds says something -- a row that simply
+	 * vanishes reads as a tier that does not exist.
+	 */
+	public record Snapshot(List<Row> main, List<Row> retired) {
+
+		/** Whichever list is being shown. */
+		public List<Row> rows(boolean showRetired) {
+			return showRetired ? retired : main;
+		}
+
+		/** Whether anybody at all is on the given list. */
+		public boolean any(boolean showRetired) {
+			for (Row row : rows(showRetired)) {
+				if (!row.players().isEmpty()) {
+					return true;
+				}
+			}
+			return false;
+		}
 	}
 
 	/**
@@ -87,10 +109,14 @@ public final class DoorTierlist {
 			return List.of();
 		}
 		List<String> out = new ArrayList<>();
-		for (Row row : snapshot.rows()) {
-			for (Player player : row.players()) {
-				if (!player.name().isEmpty()) {
-					out.add(player.name());
+		// Both lists: a retired player is still on the tierlist, and the
+		// command can show them.
+		for (boolean retired : new boolean[] {false, true}) {
+			for (Row row : snapshot.rows(retired)) {
+				for (Player player : row.players()) {
+					if (!player.name().isEmpty()) {
+						out.add(player.name());
+					}
 				}
 			}
 		}
@@ -156,8 +182,9 @@ public final class DoorTierlist {
 	 * left out, as it is on Discord.
 	 */
 	private static Snapshot parse(JsonObject root) {
-		Map<String, List<Player>> byTier = new LinkedHashMap<>();
 		Map<String, Integer> colours = new LinkedHashMap<>();
+		Map<String, List<Player>> main = new LinkedHashMap<>();
+		Map<String, List<Player>> retired = new LinkedHashMap<>();
 
 		JsonElement tiers = root.get("tiers");
 		if (tiers != null && tiers.isJsonArray()) {
@@ -170,8 +197,9 @@ public final class DoorTierlist {
 				if (label.isEmpty()) {
 					continue;
 				}
-				byTier.put(label, new ArrayList<>());
 				colours.put(label, parseHex(string(tier, "color")));
+				main.put(label, new ArrayList<>());
+				retired.put(label, new ArrayList<>());
 			}
 		}
 
@@ -182,36 +210,38 @@ public final class DoorTierlist {
 					continue;
 				}
 				JsonObject entry = element.getAsJsonObject();
-				// Retired players keep their tier on the service but are not
-				// part of this picture.
-				if (entry.has("retired") && entry.get("retired").getAsBoolean()) {
-					continue;
-				}
 				String label = string(entry, "grade");
 				String name = string(entry, "name");
 				UUID uuid = parseUuid(string(entry, "uuid"));
 				if (label.isEmpty() || uuid == null) {
 					continue;
 				}
-				// An unknown tier still gets a row rather than losing its
-				// players, so a tier added to the backend shows up here
-				// without this needing to change.
-				byTier.computeIfAbsent(label, key -> new ArrayList<>());
+				// A tier the served list did not declare still gets a row
+				// rather than losing its players, so a tier added to the
+				// backend shows up here without this needing to change.
 				colours.putIfAbsent(label, parseHex(string(entry, "color")));
-				byTier.get(label).add(new Player(uuid, name));
+				main.computeIfAbsent(label, key -> new ArrayList<>());
+				retired.computeIfAbsent(label, key -> new ArrayList<>());
+
+				boolean isRetired = entry.has("retired")
+						&& entry.get("retired").getAsBoolean();
+				(isRetired ? retired : main).get(label).add(new Player(uuid, name));
 			}
 		}
 
-		List<Row> rows = new ArrayList<>();
+		return new Snapshot(rows(main, colours), rows(retired, colours));
+	}
+
+	/** One grouping as rows, in the order the tiers were declared. */
+	private static List<Row> rows(Map<String, List<Player>> byTier,
+			Map<String, Integer> colours) {
+		List<Row> out = new ArrayList<>();
 		for (Map.Entry<String, List<Player>> entry : byTier.entrySet()) {
-			if (entry.getValue().isEmpty()) {
-				continue;
-			}
-			rows.add(new Row(entry.getKey(),
+			out.add(new Row(entry.getKey(),
 					colours.getOrDefault(entry.getKey(), 0xFFFFFF),
 					List.copyOf(entry.getValue())));
 		}
-		return new Snapshot(List.copyOf(rows));
+		return List.copyOf(out);
 	}
 
 	private static String string(JsonObject object, String key) {
