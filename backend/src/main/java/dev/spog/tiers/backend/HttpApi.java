@@ -1,5 +1,6 @@
 package dev.spog.tiers.backend;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -59,6 +60,7 @@ public final class HttpApi {
 				"status", "ok",
 				"grades", grades.size())));
 
+		app.get("/api/v1/tierlist", this::tierlist);
 		app.get("/api/v1/grade/{uuid}", this::byUuid);
 		app.get("/api/v1/grade/name/{name}", this::byName);
 
@@ -68,6 +70,49 @@ public final class HttpApi {
 		});
 
 		return app;
+	}
+
+	/**
+	 * The whole tierlist, in the order it is drawn.
+	 *
+	 * <p>Serves the data rather than a picture: the mod draws its own grid with
+	 * the game's renderer, so it stays sharp at any GUI scale and costs this
+	 * process nothing per request. {@code order} is published here, unlike on a
+	 * single grade, because laying players out side by side is exactly what it
+	 * is for.
+	 *
+	 * <p>Retired players are included and flagged. Hiding them would make a
+	 * client unable to draw the retired section the Discord picture draws, and
+	 * the flag is already published per grade.
+	 */
+	private void tierlist(Context ctx) {
+		JsonArray players = new JsonArray();
+		for (GradeStore.Record record : grades.all()) {
+			JsonObject entry = new JsonObject();
+			entry.addProperty("uuid", record.uuid().toString());
+			entry.addProperty("name", record.name());
+			entry.addProperty("grade", record.grade().label());
+			entry.addProperty("color", record.grade().hex());
+			entry.addProperty("order", record.order());
+			entry.addProperty("retired", record.retired());
+			players.add(entry);
+		}
+
+		JsonObject out = new JsonObject();
+		// The tier order itself, so a client draws the rows in our order rather
+		// than guessing one from the grades that happen to be occupied.
+		JsonArray tiers = new JsonArray();
+		for (Grade grade : Grade.values()) {
+			JsonObject tier = new JsonObject();
+			tier.addProperty("label", grade.label());
+			tier.addProperty("color", grade.hex());
+			tiers.add(tier);
+		}
+		out.add("tiers", tiers);
+		out.add("players", players);
+
+		ctx.header("Cache-Control", CACHE_CONTROL);
+		ctx.contentType("application/json").result(out.toString());
 	}
 
 	private void byUuid(Context ctx) {
