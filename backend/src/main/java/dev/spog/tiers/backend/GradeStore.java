@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -214,6 +214,19 @@ public final class GradeStore {
 	}
 
 	/**
+	 * What {@link #bump} answers when a player has no place to be moved
+	 * within: either they hold no grade, or they are retired and so are not
+	 * drawn in a row at all.
+	 *
+	 * <p>A distinct value rather than a negative one, because a downward bump
+	 * is itself negative -- bump() returns how far it moved, so {@code -1} is
+	 * a successful move down one place. Testing {@code moved < 0} read every
+	 * such move as a missing player, which is what made /bump answer "not on
+	 * the tierlist" about someone it had just moved.
+	 */
+	public static final int BUMP_ABSENT = Integer.MIN_VALUE;
+
+	/**
 	 * Move a player within their own tier.
 	 *
 	 * <p>Positive moves them earlier in the row, negative later, by that many
@@ -224,15 +237,16 @@ public final class GradeStore {
 	 * <p>Ordering is display only. It never reaches the mod: the API serves one
 	 * badge per player, which has no notion of who stands beside them.
 	 *
-	 * @return how many places they actually moved, 0 if already at the end, or
-	 *     -1 if they are not on the tierlist at all
+	 * @return how many places they actually moved -- positive up, negative
+	 *     down, 0 if already at the end -- or {@link #BUMP_ABSENT} if there is
+	 *     no drawn row position to move them within
 	 */
 	public int bump(UUID player, int places) {
 		lock.writeLock().lock();
 		try {
 			Record target = grades.get(player);
 			if (target == null) {
-				return -1;
+				return BUMP_ABSENT;
 			}
 
 			// The tier as it is drawn, so a move is against what was on screen.
@@ -249,7 +263,7 @@ public final class GradeStore {
 
 			// A retired player has no place on the drawn list to move within.
 			if (target.retired()) {
-				return -1;
+				return BUMP_ABSENT;
 			}
 			tier.sort(Comparator.comparingInt(Record::order)
 					.thenComparing(r -> r.name().toLowerCase(Locale.ROOT)));
@@ -262,7 +276,7 @@ public final class GradeStore {
 				}
 			}
 			if (from < 0) {
-				return -1;
+				return BUMP_ABSENT;
 			}
 			// Positive is "up", which is towards the front of the row.
 			int to = Math.clamp(from - places, 0, tier.size() - 1);

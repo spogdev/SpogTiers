@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

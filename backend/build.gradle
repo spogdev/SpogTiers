@@ -11,7 +11,7 @@ plugins {
 group = "${project.maven_group}.tiers.backend"
 version = project.backend_version
 
-def mainClassName = 'com.spog.tiers.backend.BackendMain'
+def mainClassName = 'dev.spog.tiers.backend.BackendMain'
 
 repositories {
 	mavenCentral()

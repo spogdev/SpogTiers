@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
@@ -518,7 +518,10 @@ public final class DiscordBot extends ListenerAdapter {
 		}
 
 		int moved = grades.bump(id, places);
-		if (moved < 0) {
+		// Against the sentinel, not the sign: a downward bump returns how far
+		// it moved, so "moved < 0" called every move down a missing player and
+		// said so about someone it had just moved.
+		if (moved == GradeStore.BUMP_ABSENT) {
 			event.getHook().sendMessage("**" + name + "** is not on the tierlist")
 					.setEphemeral(true).queue();
 			return;

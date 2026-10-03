@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import io.javalin.Javalin;
 import net.dv8tion.jda.api.JDA;

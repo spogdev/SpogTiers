@@ -13,7 +13,7 @@ plugins {
 group = "${project.maven_group}.tiers.resolver"
 version = project.resolver_version
 
-def mainClassName = 'com.spog.tiers.resolver.ResolverMain'
+def mainClassName = 'dev.spog.tiers.resolver.ResolverMain'
 
 repositories {
 	mavenCentral()

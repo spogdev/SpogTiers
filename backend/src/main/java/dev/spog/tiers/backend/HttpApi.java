@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import com.google.gson.JsonObject;
 import io.javalin.Javalin;

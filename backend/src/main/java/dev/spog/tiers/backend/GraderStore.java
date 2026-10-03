@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

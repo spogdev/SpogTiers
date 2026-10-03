@@ -1,4 +1,4 @@
-package com.spog.tiers.backend;
+package dev.spog.tiers.backend;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -55,6 +55,7 @@ class BumpTest {
 	@Test
 	void negativeMovesDown(@TempDir Path dir) {
 		GradeStore store = seeded(dir);
+		// -1 here is a distance, not an error: moved down one place.
 		assertEquals(-1, store.bump(A, -1));
 		assertEquals(List.of("Bo", "Ana", "Cy"), order(store, Grade.S));
 	}
@@ -92,7 +93,7 @@ class BumpTest {
 	@Test
 	void reportsWhenThePlayerIsNotListed(@TempDir Path dir) {
 		GradeStore store = seeded(dir);
-		assertEquals(-1, store.bump(D, 1));
+		assertEquals(GradeStore.BUMP_ABSENT, store.bump(D, 1));
 	}
 
 	@Test
@@ -222,7 +223,7 @@ class BumpTest {
 		assertTrue(store.retire(C, true));
 
 		// They are not on the drawn list, so there is no place to move within.
-		assertEquals(-1, store.bump(C, 1));
+		assertEquals(GradeStore.BUMP_ABSENT, store.bump(C, 1));
 	}
 
 	@Test
@@ -253,5 +254,68 @@ class BumpTest {
 		// And it tracks a bump, so a place read off the picture stays right.
 		store.bump(D, 2);
 		assertEquals(List.of("Di", "Ana", "Cy"), visible(store, Grade.S));
+	}
+
+	/**
+	 * A graded player whose tier holds a retired member is still bumpable, and
+	 * the answer must not claim they are absent.
+	 *
+	 * <p>What /bump reported: "not on the tierlist", while the move happened
+	 * anyway. set() counted retired players when handing out an order, bump()
+	 * left them out when numbering the row, so the two disagreed and a player
+	 * could end up holding an order no visible row position matched.
+	 */
+	@Test
+	void bumpingPastARetiredPlayerDoesNotReportThemMissing(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(B, true));
+		// Added after the retirement, so set() picks its order with a retired
+		// player already in the tier.
+		store.set(D, "Di", Grade.S, "t", "1");
+
+		int moved = store.bump(D, 1);
+		assertNotEquals(GradeStore.BUMP_ABSENT, moved, "Di is on the tierlist");
+		assertEquals(List.of("Ana", "Di", "Cy"), visible(store, Grade.S));
+	}
+
+	/** Every visible member of a tier is bumpable, whatever retirements sit in it. */
+	@Test
+	void everyVisiblePlayerIsBumpable(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		store.set(D, "Di", Grade.S, "t", "1");
+		assertTrue(store.retire(B, true));
+
+		for (UUID id : List.of(A, C, D)) {
+			assertNotEquals(GradeStore.BUMP_ABSENT, store.bump(id, 1),
+					"visible player reported as not on the tierlist");
+		}
+	}
+
+	/**
+	 * A downward bump is a success, and must be distinguishable from "absent".
+	 *
+	 * <p>The reported bug: /bump tested {@code moved < 0}, but bump() returns
+	 * {@code from - to}, which is negative for every downward move. So moving
+	 * someone down answered "not on the tierlist" and moved them anyway.
+	 */
+	@Test
+	void aDownwardBumpIsNotMistakenForAMissingPlayer(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		int moved = store.bump(A, -1);
+		assertTrue(moved != GradeStore.BUMP_ABSENT,
+				"a move that happened must not read as the absent code");
+		assertEquals(List.of("Bo", "Ana", "Cy"), visible(store, Grade.S),
+				"and it really moved");
+	}
+
+	/** A retired player is on the list, but has no drawn row to move within. */
+	@Test
+	void bumpingARetiredPlayerIsRefusedWithoutMovingAnyone(@TempDir Path dir) {
+		GradeStore store = seeded(dir);
+		assertTrue(store.retire(B, true));
+		List<String> before = visible(store, Grade.S);
+
+		assertEquals(GradeStore.BUMP_ABSENT, store.bump(B, 1));
+		assertEquals(before, visible(store, Grade.S), "nobody moved");
 	}
 }
