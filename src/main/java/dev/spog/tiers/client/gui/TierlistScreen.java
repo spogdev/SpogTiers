@@ -177,6 +177,23 @@ public class TierlistScreen extends Screen {
 	/** Set while drawing the grid, read after it so the box is not clipped. */
 	private String hoveredName;
 
+	/**
+	 * A player whose profile was clicked before their textures had arrived.
+	 *
+	 * <p>Held rather than opened with what was available: see
+	 * {@link #mouseClicked}. Cleared once the screen opens, or when the fetch
+	 * gives up for good.
+	 */
+	private DoorTierlist.Player pendingOpen;
+
+	/**
+	 * The name of a player whose profile could not be opened, or null.
+	 *
+	 * <p>Shown under the frame instead of the waiting line, so a click that
+	 * goes nowhere says why rather than appearing to be ignored.
+	 */
+	private String failedOpen;
+
 	private PanelButton closeButton;
 	private PanelButton toggleButton;
 
@@ -319,6 +336,61 @@ public class TierlistScreen extends Screen {
 		if (hoveredName != null) {
 			drawNameTooltip(graphics, hoveredName, mouseX, mouseY);
 		}
+
+		if (pendingOpen != null) {
+			servePendingOpen(graphics, font, frameX, frameY, frameWidth, frameHeight);
+		} else if (failedOpen != null) {
+			String failed = "Could not load " + failedOpen + "'s skin";
+			graphics.text(font, Component.literal(failed),
+					frameX + (frameWidth - font.width(failed)) / 2,
+					frameY + frameHeight + 4, MUTED);
+		}
+	}
+
+	/**
+	 * Opens a click that was waiting on its textures, or says it is waiting.
+	 *
+	 * <p>Gives up only when the fetch has: the same attempt limit that stops a
+	 * face being retried forever also stops this, so a player whose textures
+	 * cannot be read does not leave the screen waiting on them.
+	 */
+	private void servePendingOpen(GuiGraphicsExtractor graphics, Font font,
+			int frameX, int frameY, int frameWidth, int frameHeight) {
+		UUID id = pendingOpen.uuid();
+		GameProfile profile = profiles.get(id);
+		if (profile != null) {
+			pendingOpen = null;
+			open(profile);
+			return;
+		}
+		// Not given up on while an attempt is still running: attempts is
+		// counted up when a fetch starts, so on the last one this would
+		// otherwise abandon the click a moment before its answer arrives.
+		if (attempts.getOrDefault(id, 0) >= MAX_ATTEMPTS && !fetching.containsKey(id)) {
+			// Out of attempts, so this will not arrive. Dropped rather than
+			// opened with a bare profile, which would show a skin that is not
+			// theirs. Said on the screen rather than in chat: the message
+			// belongs to the thing that was clicked.
+			failedOpen = pendingOpen.name();
+			pendingOpen = null;
+			return;
+		}
+		// Nudged here as well as by the draw, so a player scrolled out of view
+		// still gets one, and urgently: a click must not wait behind faces
+		// nobody asked for.
+		requestSkin(pendingOpen, true);
+
+		String waiting = "Opening " + pendingOpen.name() + "...";
+		graphics.text(font, Component.literal(waiting),
+				frameX + (frameWidth - font.width(waiting)) / 2,
+				frameY + frameHeight + 4, MUTED);
+	}
+
+	/** Opens a profile, returning here when it closes. */
+	private void open(GameProfile profile) {
+		// This screen, not a copy: coming back lands on the instance with its
+		// list, its scroll and its loaded faces still in place.
+		minecraft.setScreen(new ProfileScreen(profile, this));
 	}
 
 	/** How tall one tier's row is, given how many lines its players need. */
@@ -442,12 +514,22 @@ public class TierlistScreen extends Screen {
 	 * the lookup is registered back on it.
 	 */
 	private void requestSkin(DoorTierlist.Player player) {
+		requestSkin(player, false);
+	}
+
+	/**
+	 * @param urgent true for a player someone is waiting on, which skips both
+	 *     the in-flight cap and the backoff -- a click must not queue behind
+	 *     faces nobody asked for, and with the cap full it otherwise could not
+	 *     start at all
+	 */
+	private void requestSkin(DoorTierlist.Player player, boolean urgent) {
 		UUID id = player.uuid();
-		if (fetching.containsKey(id) || inFlight >= MAX_IN_FLIGHT) {
+		if (fetching.containsKey(id) || (!urgent && inFlight >= MAX_IN_FLIGHT)) {
 			return;
 		}
 		Long waitUntil = retryAt.get(id);
-		if (waitUntil != null && System.currentTimeMillis() < waitUntil) {
+		if (!urgent && waitUntil != null && System.currentTimeMillis() < waitUntil) {
 			return;
 		}
 		int attempt = attempts.getOrDefault(id, 0);
@@ -561,9 +643,11 @@ public class TierlistScreen extends Screen {
 	 * Clicking a face opens that player's profile, the same screen
 	 * {@code /tiers <player>} opens.
 	 *
-	 * <p>Uses the textured profile already fetched for the face when there is
-	 * one, so the model is dressed immediately; otherwise the bare profile is
-	 * handed over and the screen's own lookup dresses it a moment later.
+	 * <p>Opens only once the textured profile is in hand. The profile screen
+	 * resolves its skin once, from the profile it is given, and never asks
+	 * again -- so handing it a bare profile leaves that player as a default
+	 * skin for as long as the screen is open. A click on a face whose textures
+	 * have not arrived marks it wanted and opens as soon as they do.
 	 */
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
@@ -576,12 +660,18 @@ public class TierlistScreen extends Screen {
 		}
 		if (hovered != null) {
 			GameProfile profile = profiles.get(hovered.uuid());
-			GameProfile target = profile != null
-					? profile
-					: new GameProfile(hovered.uuid(), hovered.name());
-			// This screen, not a copy: coming back lands on the instance with
-			// its list, its scroll and its loaded faces still in place.
-			minecraft.setScreen(new ProfileScreen(target, this));
+			if (profile != null) {
+				open(profile);
+			} else {
+				// Not yet fetched, or fetched and failed. Remembered so the
+				// draw opens it the moment the textures land, and the attempt
+				// counter is cleared so a player who had given up is tried
+				// again now that someone is waiting on them.
+				pendingOpen = hovered;
+				failedOpen = null;
+				attempts.remove(hovered.uuid());
+				retryAt.remove(hovered.uuid());
+			}
 			return true;
 		}
 		// super has already had its turn above, so this is not another call.
