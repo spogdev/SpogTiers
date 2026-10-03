@@ -195,13 +195,21 @@ public class TierlistScreen extends Screen {
 		snapshot = DoorTierlist.snapshot();
 		DoorTierlist.request();
 
+		// Cleared first: init runs again every time this screen is shown, and
+		// coming back from a profile would otherwise add a second pair of
+		// buttons on top of the first.
+		clearChildren();
+
 		// Positioned in the draw rather than here: where it goes depends on the
 		// frame, and the frame's size depends on a roster that may not have
 		// arrived yet.
 		closeButton = addDrawableChild(new PanelButton(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,
 				Text.literal("Close"), button -> close()));
+		// Labelled from the current state, not hardcoded: init runs again when
+		// this screen is shown a second time -- coming back from a profile --
+		// and a fresh "Retired" button over the retired list would be a lie.
 		toggleButton = addDrawableChild(new PanelButton(0, 0, TOGGLE_WIDTH, BUTTON_HEIGHT,
-				Text.literal("Retired"), button -> {
+				Text.literal(showRetired ? "Main" : "Retired"), button -> {
 					showRetired = !showRetired;
 					// Reset, or switching to a shorter list leaves the view
 					// scrolled past the end of it.
@@ -260,7 +268,7 @@ public class TierlistScreen extends Screen {
 		int x = frameX + FRAME_PADDING;
 		int y = frameY + FRAME_PADDING;
 		graphics.drawTextWithShadow(font, Text.literal(showRetired
-				? "Door SMP Tierlist -- Retired" : "Door SMP Tierlist"),
+				? "Door SMP Tierlist - Retired" : "Door SMP Tierlist"),
 				x, y, 0xFFFFFFFF);
 		y += font.fontHeight + 6;
 
@@ -571,7 +579,9 @@ public class TierlistScreen extends Screen {
 			GameProfile target = profile != null
 					? profile
 					: new GameProfile(hovered.uuid(), hovered.name());
-			client.setScreen(new ProfileScreen(target));
+			// This screen, not a copy: coming back lands on the instance with
+			// its list, its scroll and its loaded faces still in place.
+			client.setScreen(new ProfileScreen(target, this));
 			return true;
 		}
 		// super has already had its turn above, so this is not another call.

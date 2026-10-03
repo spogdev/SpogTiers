@@ -179,6 +179,9 @@ public class ProfileScreen extends Screen {
 	private final String playerName;
 	private final GameProfile profile;
 
+	/** Where closing goes, or null to close to the game. See the constructor. */
+	private final Screen back;
+
 	private Supplier<SkinTextures> skin;
 	/**
 	 * The skin the tiles have switched to, or null to wear the live one.
@@ -286,10 +289,37 @@ public class ProfileScreen extends Screen {
 	private int historyMaxScroll;
 
 	public ProfileScreen(GameProfile profile) {
+		this(profile, null);
+	}
+
+	/**
+	 * A profile that returns to the screen it was opened from when closed.
+	 *
+	 * <p>The screen itself is kept rather than its identity, so going back
+	 * lands on the same instance with whatever state it had -- the tierlist
+	 * keeps which list it was showing, where it was scrolled and the faces it
+	 * had already loaded, instead of starting again.
+	 *
+	 * @param back the screen to return to, or null to close to the game
+	 */
+	public ProfileScreen(GameProfile profile, Screen back) {
 		super(Text.literal(profile.name()));
 		this.profile = profile;
 		this.target = profile.id();
 		this.playerName = profile.name();
+		this.back = back;
+	}
+
+	@Override
+	public void close() {
+		// Back to where it came from when there is one. Without this the
+		// profile closes to the game, which is right for /tiers and wrong for
+		// a profile reached by clicking a face on the tierlist.
+		if (back != null) {
+			client.setScreen(back);
+			return;
+		}
+		super.close();
 	}
 
 	/**
