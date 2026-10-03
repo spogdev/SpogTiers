@@ -14,7 +14,9 @@ import net.minecraft.world.level.GameType;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -70,6 +72,25 @@ public final class TabSorter {
 	}
 
 	/**
+	 * One player's sort keys, worked out once before the sort begins.
+	 *
+	 * <p>Every key is a plain field rather than a lookup. A player's tier and
+	 * region are read from a cache a background thread fills in, so asking for
+	 * them inside a comparison lets the same pair compare differently from one
+	 * moment to the next. That breaks the transitivity a sort requires, and
+	 * TimSort notices and throws "Comparison method violates its general
+	 * contract".
+	 *
+	 * <p>Asking once also matters on its own: the grade lookup queues a fetch
+	 * when it misses, so a comparator that called it made a request per
+	 * comparison rather than per player.
+	 */
+	private record Key(int primary, int secondary, int regionPrimary,
+			int regionSecondary, String regionNamePrimary, String regionNameSecondary,
+			String name, int listOrder, int spectator) {
+	}
+
+	/**
 	 * The tab list in the configured order.
 	 *
 	 * <p>Returns the list it was given, untouched, whenever there is nothing to
@@ -90,40 +111,89 @@ public final class TabSorter {
 			return players;
 		}
 
-		Comparator<PlayerInfo> order = comparator(primary)
-				.thenComparing(comparator(secondary))
+		// Measured first, then sorted: see Key. The comparison below reads
+		// nothing but these fields.
+		Map<UUID, Key> keys = new HashMap<>();
+		for (PlayerInfo player : players) {
+			UUID id = idOf(player);
+			if (id != null && !keys.containsKey(id)) {
+				keys.put(id, keyFor(player, id, primary, secondary));
+			}
+		}
+		// For an entry with no profile id, which cannot be measured. Every
+		// such entry shares it, so they tie with each other and sort last.
+		Key fallback = new Key(UNRANKED, UNRANKED, REGION_ORDER.size() + 1,
+				REGION_ORDER.size() + 1, "", "", "", 0, 0);
+
+		Comparator<Key> order = Comparator.comparingInt(Key::primary)
+				.thenComparingInt(Key::regionPrimary)
+				.thenComparing(Key::regionNamePrimary)
+				.thenComparingInt(Key::secondary)
+				.thenComparingInt(Key::regionSecondary)
+				.thenComparing(Key::regionNameSecondary)
+				.thenComparingInt(Key::listOrder)
 				// Vanilla's last resort, kept as ours: two players who tie on
 				// everything above must still come out in a stable order, or
 				// the list reshuffles between frames.
-				.thenComparing(TabSorter::nameOf, String.CASE_INSENSITIVE_ORDER);
+				.thenComparing(Key::name, String.CASE_INSENSITIVE_ORDER);
 
 		if (!config.tabSortSpectators) {
 			// Spectators pinned after everyone else, as vanilla has them, and
 			// sorted among themselves rather than left in arrival order.
-			order = Comparator.comparingInt(TabSorter::spectatorRank).thenComparing(order);
+			order = Comparator.<Key>comparingInt(Key::spectator).thenComparing(order);
 		}
+		Comparator<Key> keyOrder = order;
 
 		List<PlayerInfo> sorted = new ArrayList<>(players);
-		sorted.sort(order);
+		sorted.sort((left, right) -> keyOrder.compare(
+				keys.getOrDefault(idOf(left), fallback),
+				keys.getOrDefault(idOf(right), fallback)));
 		return sorted;
 	}
 
-	/** One sort key. Ties are left to whatever comparator follows. */
-	private static Comparator<PlayerInfo> comparator(SpogTiersConfig.TabSort sort) {
+	/**
+	 * Every key this player could be sorted on, for the two chosen sorts.
+	 *
+	 * <p>A field per sort slot rather than per sort kind, because the primary
+	 * and the secondary may be the same kind. A field the chosen sorts do not
+	 * use is filled with a neutral value, so the comparison passes through it.
+	 */
+	private static Key keyFor(PlayerInfo player, UUID id,
+			SpogTiersConfig.TabSort primary, SpogTiersConfig.TabSort secondary) {
+		String name = nameOf(player);
+		boolean wantsRegion = primary == SpogTiersConfig.TabSort.REGION
+				|| secondary == SpogTiersConfig.TabSort.REGION;
+		// Resolved once even though two slots may want it.
+		String region = wantsRegion ? regionOf(id) : "";
+		int regionRank = wantsRegion ? regionRank(region) : 0;
+		boolean wantsServer = primary == SpogTiersConfig.TabSort.SERVER
+				|| secondary == SpogTiersConfig.TabSort.SERVER;
+
+		return new Key(
+				rankOf(primary, id),
+				rankOf(secondary, id),
+				primary == SpogTiersConfig.TabSort.REGION ? regionRank : 0,
+				secondary == SpogTiersConfig.TabSort.REGION ? regionRank : 0,
+				primary == SpogTiersConfig.TabSort.REGION ? region : "",
+				secondary == SpogTiersConfig.TabSort.REGION ? region : "",
+				name,
+				// Negated exactly as vanilla negates it, so a higher order
+				// sorts earlier.
+				wantsServer ? -player.getTabListOrder() : 0,
+				spectatorRank(player));
+	}
+
+	/**
+	 * The tier rank this sort kind orders by, or zero for a kind that orders
+	 * on one of the Key's other fields.
+	 */
+	private static int rankOf(SpogTiersConfig.TabSort sort, UUID id) {
 		return switch (sort) {
-			case TIER_BEST -> Comparator.comparingInt(player -> bestRank(idOf(player)));
-			case TIER_FIRST -> Comparator.comparingInt(player -> shownRank(idOf(player)));
-			// Typed explicitly: the chained thenComparing leaves the lambda
-			// parameter uninferable inside a switch arm.
-			case REGION -> Comparator
-					.<PlayerInfo>comparingInt(player -> regionRank(idOf(player)))
-					.thenComparing(player -> regionOf(idOf(player)));
-			case ALPHABETICAL -> Comparator.comparing(TabSorter::nameOf,
-					String.CASE_INSENSITIVE_ORDER);
-			// The server's own ordering, which is what vanilla sorts by first.
-			// Negated exactly as vanilla negates it, so a higher order sorts
-			// earlier.
-			case SERVER -> Comparator.comparingInt(player -> -player.getTabListOrder());
+			case TIER_BEST -> bestRank(id);
+			case TIER_FIRST -> shownRank(id);
+			// Region orders on regionPrimary/regionNamePrimary, Alphabetical on
+			// name and Server on listOrder, so none of them has a rank here.
+			case REGION, ALPHABETICAL, SERVER -> 0;
 		};
 	}
 
@@ -273,8 +343,7 @@ public final class TabSorter {
 	 * Where a region sorts: the listed ones in their given order, then any
 	 * other region, then players whose region is unknown.
 	 */
-	private static int regionRank(UUID uuid) {
-		String code = regionOf(uuid);
+	private static int regionRank(String code) {
 		if (code.isEmpty()) {
 			return REGION_ORDER.size() + 1;
 		}
