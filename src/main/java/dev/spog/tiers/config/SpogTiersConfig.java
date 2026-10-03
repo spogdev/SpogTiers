@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /** User-editable settings, persisted to {@code config/spogtiers.json}. */
@@ -73,6 +74,39 @@ public class SpogTiersConfig {
 	 * mixing them in is wanted.
 	 */
 	public boolean tabSortSpectators = false;
+
+	/**
+	 * Stop sorting the tab list once a server has more players than this.
+	 *
+	 * <p>Sorting measures a tier for every player on the list, so the work
+	 * grows with the player count, and on a big server the ordering is mostly
+	 * noise anyway -- a few hundred names reshuffled by tier is harder to read
+	 * than the order the server chose. Over the limit the list is handed back
+	 * exactly as vanilla built it.
+	 */
+	public boolean tabSortLimited = false;
+
+	/**
+	 * The player count {@link #tabSortLimited} compares against.
+	 *
+	 * <p>Inclusive: a limit of 100 sorts a list of exactly 100 and leaves 101
+	 * alone.
+	 */
+	public int tabSortLimit = 100;
+
+	/** The range {@link #tabSortLimit} is held to. */
+	public static final int TAB_SORT_LIMIT_MIN = 10;
+	public static final int TAB_SORT_LIMIT_MAX = 1000;
+
+	/**
+	 * The limits the config screen offers.
+	 *
+	 * <p>A list rather than a typed number: the screen has no numeric field,
+	 * and a handful of round figures covers the decision -- the exact number
+	 * matters far less than roughly where it sits.
+	 */
+	public static final List<Integer> TAB_SORT_LIMITS =
+			List.of(10, 20, 50, 100, 200, 500, 1000);
 
 	/**
 	 * Show retirement, rather than presenting a retired rank as an active one.
@@ -588,6 +622,15 @@ public class SpogTiersConfig {
 		}
 		if (tabSecondarySort == null) {
 			tabSecondarySort = TabSort.SERVER;
+		}
+		// Clamped rather than trusted: the config is a file anyone can edit,
+		// and a limit of zero or a negative one would switch sorting off while
+		// the screen still said it was on.
+		if (tabSortLimit < TAB_SORT_LIMIT_MIN) {
+			tabSortLimit = TAB_SORT_LIMIT_MIN;
+		}
+		if (tabSortLimit > TAB_SORT_LIMIT_MAX) {
+			tabSortLimit = TAB_SORT_LIMIT_MAX;
 		}
 		if (iconStyle == null) {
 			iconStyle = IconStyle.DEFAULT;
