@@ -449,8 +449,8 @@ public class ConfigScreen extends Screen {
 					config.tabSortLimited = !config.tabSortLimited;
 					config.save();
 				},
-				"Stop sorting on servers with more players than the limit, "
-						+ "where the order is mostly noise and the work is not");
+				"Stop sorting once the tab list holds more names than the "
+						+ "limit, where the order is mostly noise and the work is not");
 
 		// Only offered while the switch is on: a limit with nothing limiting
 		// by it reads as a setting that does nothing.
@@ -464,7 +464,8 @@ public class ConfigScreen extends Screen {
 			tabLimit.setBounds(x + 118, y - 4, 152);
 			tabLimit.draw(graphics, font, config.tabSortLimit, mouseX, mouseY);
 			hoverFor(x, y, "Player Limit",
-					"Sorting stops above this many players on the server");
+					"Sorting stops above this many names in the tab list, which "
+							+ "vanilla caps at 80 however many players are online");
 			y += ROW_HEIGHT + 8;
 		}
 
