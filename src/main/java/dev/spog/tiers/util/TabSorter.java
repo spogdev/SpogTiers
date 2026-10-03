@@ -37,11 +37,24 @@ public final class TabSorter {
 	private static final int UNRANKED = 10_000;
 
 	/**
-	 * Region order, best-known first. Anything else sorts after these in
-	 * alphabetical order, so an unlisted region is grouped rather than
-	 * scattered -- the brief named NA, EU, AS and OC and expected others.
+	 * Region order, best first.
+	 *
+	 * <p>The first four were asked for; the rest are every other region the
+	 * mod recognises, taken from the profile screen's own region table --
+	 * South America, Africa and the Middle East. Anything unrecognised sorts
+	 * after all of them, grouped rather than scattered.
 	 */
-	private static final List<String> REGION_ORDER = List.of("NA", "EU", "AS", "OC");
+	private static final List<String> REGION_ORDER =
+			List.of("NA", "EU", "AS", "OC", "SA", "AF", "ME");
+
+	/**
+	 * Region spellings that mean one of the above.
+	 *
+	 * <p>{@link Regions#normalise} folds OCE to OC but leaves AU alone, and
+	 * NovaTiers sends AU -- so without this an Oceanian player sorts into the
+	 * unrecognised group at the end rather than with Oceania.
+	 */
+	private static final Map<String, String> REGION_ALIASES = Map.of("AU", "OC", "OCE", "OC");
 
 	/**
 	 * Door SMP's ladder, best first.
@@ -249,7 +262,11 @@ public final class TabSorter {
 			return "";
 		}
 		String code = Regions.resolve(SpogTiersClient.cache().allLists(uuid));
-		return code == null ? "" : Regions.normalise(code);
+		if (code == null) {
+			return "";
+		}
+		String normalised = Regions.normalise(code);
+		return REGION_ALIASES.getOrDefault(normalised, normalised);
 	}
 
 	/**
