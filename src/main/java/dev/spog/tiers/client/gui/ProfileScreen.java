@@ -557,13 +557,26 @@ public class ProfileScreen extends Screen {
 		// looking like the lookup had failed.
 		// After the widgets so the row is not painted over by the model, and
 		// before the aura so the embers still read as being in front.
+		// Measured first, then underpainted, then drawn: drawSkinTiles is what
+		// fills the tiles list, and the aura needs to know whether there is a
+		// row at all and how far down it reaches before it can sit behind it.
+		measureSkinTiles();
+		drawTileAura(graphics);
 		drawSkinTiles(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
 		drawTileMenu(graphics, mouseX, mouseY);
 
 		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
+			// Clipped to the model, so the front layer stays a layer about the
+			// player. The row asked for embers behind it, and an unclipped
+			// front layer would scatter them across the faces as well --
+			// which reads as dirt on the tiles rather than an aura under them.
+			graphics.enableScissor(MARGIN, skinWidget.getY(),
+					MARGIN + profileWidth(),
+					skinWidget.getY() + skinWidget.getHeight());
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
 					skinWidget.getX(), skinWidget.getY(),
-					skinWidget.getWidth(), skinWidget.getHeight(), true);
+					skinWidget.getWidth(), auraHeight(), true);
+			graphics.disableScissor();
 		}
 
 		// Tooltip last and outside the card transform, so it is never clipped
@@ -797,8 +810,15 @@ public class ProfileScreen extends Screen {
 		// after this method, so the embers land behind the player.
 		// As above: the Particles setting is about the world, not this card.
 		if (skinWidget != null && SpogTiersClient.config().extraTierlists) {
+			// Clipped to the model's own band, because the box now reaches
+			// past it: the band below belongs to drawTileAura, and without
+			// this both would paint the same motes there at double strength.
+			graphics.enableScissor(MARGIN, skinWidget.getY(),
+					MARGIN + profileWidth(),
+					skinWidget.getY() + skinWidget.getHeight());
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
-					skinWidget.getWidth(), skinWidget.getHeight(), false);
+					skinWidget.getWidth(), auraHeight(), false);
+			graphics.disableScissor();
 		}
 	}
 
@@ -1407,6 +1427,68 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
+	 * The aura's box: the model's bounds, carried down past the tile row.
+	 *
+	 * <p>Taller than the model so the embers keep rising through the row
+	 * instead of stopping at the player's feet. The box is the mote field's
+	 * own coordinate space -- {@code up()} runs 0 at the bottom to 1 at the
+	 * top -- so growing it is what moves motes through the lower band, and
+	 * clipping decides which part of that field a given layer shows.
+	 *
+	 * @return the box height, or -1 when there is no model to measure
+	 */
+	private int auraHeight() {
+		if (skinWidget == null) {
+			return -1;
+		}
+		// Only as far as the tiles actually reach: with no row drawn the box
+		// is the model's own, so a profile with no past skins looks untouched.
+		//
+		// Asked of the entries rather than of the measured tiles, because the
+		// card draws before the row is measured: reading the list there would
+		// see the previous frame's, and on the frame a row first appears the
+		// two layers would take different box heights and the embers would
+		// jump between them.
+		return skinWidget.getHeight()
+				+ (tileEntries().isEmpty() || exporting ? 0 : tileRowHeight());
+	}
+
+	/**
+	 * The embers behind the tile row.
+	 *
+	 * <p>A third layer, between the model and the tiles. The other two sit
+	 * either side of the model, and neither can do this: the back layer is
+	 * drawn before the row and would be painted over by the tile backdrops,
+	 * and the front layer is drawn after it and would put embers on top of
+	 * the faces.
+	 *
+	 * <p>Clipped to the row's own band rather than given a shorter box,
+	 * because a shorter box would be a different mote field -- the same mote
+	 * would sit at two heights in the two layers and the drift would break
+	 * at the model's feet. One field, two windows onto it.
+	 *
+	 * <p>Both depth layers are drawn here, unlike around the model. The split
+	 * exists so the model can come between them; in this band there is nothing
+	 * to come between, and taking only one would thin the row's embers to half
+	 * the model's for no visible reason.
+	 */
+	private void drawTileAura(DrawContext graphics) {
+		if (skinWidget == null || exporting || tiles.isEmpty()
+				|| !SpogTiersClient.config().extraTierlists) {
+			return;
+		}
+		int top = skinWidget.getY() + skinWidget.getHeight();
+		PlayerGrade grade = SpogTiersClient.service().grade(target);
+		graphics.enableScissor(MARGIN, top, MARGIN + profileWidth(),
+				top + tileRowHeight());
+		aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
+				skinWidget.getWidth(), auraHeight(), false);
+		aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
+				skinWidget.getWidth(), auraHeight(), true);
+		graphics.disableScissor();
+	}
+
+	/**
 	 * The skins the tiles offer, the worn one first.
 	 *
 	 * <p>Only skins whose texture has finished loading are included: a tile is
@@ -1430,13 +1512,18 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * Draws the row of past skins under the model.
+	 * Works out where the row of past skins goes, without drawing it.
+	 *
+	 * <p>Split from the drawing because the aura has to be laid underneath:
+	 * that needs the row's extent, and the extent is only known once the
+	 * tiles have been placed. {@link #tiles} is the result either way, so the
+	 * click test reads the same list it always did.
 	 *
 	 * <p>Left out of the export on purpose: the picture is of a player, and a
 	 * strip of skins they used to wear is a browser for the person looking, not
 	 * part of what they are sharing.
 	 */
-	private void drawSkinTiles(DrawContext graphics, int mouseX, int mouseY) {
+	private void measureSkinTiles() {
 		tiles.clear();
 		if (skinWidget == null || exporting) {
 			return;
@@ -1459,24 +1546,41 @@ public class ProfileScreen extends Screen {
 
 		for (int i = 0; i < shown; i++) {
 			SkinHistory.Entry entry = entries.get(i);
-			SkinTextures loaded = PastSkins.ready(entry);
-            if (loaded == null) {
+			if (PastSkins.ready(entry) == null) {
 				continue;
 			}
 			int x = left + i * (TILE_SIZE + TILE_GAP);
-			boolean hovered = mouseX >= x && mouseX < x + TILE_SIZE
-					&& mouseY >= top && mouseY < top + TILE_SIZE;
+			tiles.add(new TileBounds(entry, x, top, x + TILE_SIZE, top + TILE_SIZE));
+		}
+	}
+
+	/**
+	 * Draws the row {@link #measureSkinTiles} placed.
+	 *
+	 * <p>Reads the measured bounds rather than recomputing them, so the tiles
+	 * cannot land anywhere other than where the aura was just drawn.
+	 */
+	private void drawSkinTiles(DrawContext graphics, int mouseX, int mouseY) {
+		for (TileBounds tile : tiles) {
+			SkinTextures loaded = PastSkins.ready(tile.entry());
+			// Measured a moment ago with the texture in hand, so this is only
+			// a guard against it being dropped between the two passes.
+			if (loaded == null) {
+				continue;
+			}
+			int x = tile.left();
+			int top = tile.top();
+			boolean hovered = mouseX >= x && mouseX < tile.right()
+					&& mouseY >= top && mouseY < tile.bottom();
 			// The worn skin reads as selected until a tile is picked, so the row
 			// always shows where the model came from.
-			boolean selected = chosenSkin == null ? entry.active()
+			boolean selected = chosenSkin == null ? tile.entry().active()
 					: chosenSkin.body().texturePath().equals(loaded.body().texturePath());
 
-			graphics.fill(x, top, x + TILE_SIZE, top + TILE_SIZE, TILE_BACKDROP);
+			graphics.fill(x, top, tile.right(), tile.bottom(), TILE_BACKDROP);
 			drawTileFace(graphics, loaded, x, top);
-			outline(graphics, x, top, x + TILE_SIZE, top + TILE_SIZE,
+			outline(graphics, x, top, tile.right(), tile.bottom(),
 					selected ? TILE_BORDER_ACTIVE : hovered ? TILE_BORDER_HOVER : TILE_BORDER);
-
-			tiles.add(new TileBounds(entry, x, top, x + TILE_SIZE, top + TILE_SIZE));
 		}
 	}
 
