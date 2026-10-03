@@ -195,13 +195,21 @@ public class TierlistScreen extends Screen {
 		snapshot = DoorTierlist.snapshot();
 		DoorTierlist.request();
 
+		// Cleared first: init runs again every time this screen is shown, and
+		// coming back from a profile would otherwise add a second pair of
+		// buttons on top of the first.
+		clearWidgets();
+
 		// Positioned in the draw rather than here: where it goes depends on the
 		// frame, and the frame's size depends on a roster that may not have
 		// arrived yet.
 		closeButton = addRenderableWidget(new PanelButton(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,
 				Component.literal("Close"), button -> onClose()));
+		// Labelled from the current state, not hardcoded: init runs again when
+		// this screen is shown a second time -- coming back from a profile --
+		// and a fresh "Retired" button over the retired list would be a lie.
 		toggleButton = addRenderableWidget(new PanelButton(0, 0, TOGGLE_WIDTH, BUTTON_HEIGHT,
-				Component.literal("Retired"), button -> {
+				Component.literal(showRetired ? "Main" : "Retired"), button -> {
 					showRetired = !showRetired;
 					// Reset, or switching to a shorter list leaves the view
 					// scrolled past the end of it.
@@ -571,7 +579,9 @@ public class TierlistScreen extends Screen {
 			GameProfile target = profile != null
 					? profile
 					: new GameProfile(hovered.uuid(), hovered.name());
-			minecraft.gui.setScreen(new ProfileScreen(target));
+			// This screen, not a copy: coming back lands on the instance with
+			// its list, its scroll and its loaded faces still in place.
+			minecraft.gui.setScreen(new ProfileScreen(target, this));
 			return true;
 		}
 		// super has already had its turn above, so this is not another call.
