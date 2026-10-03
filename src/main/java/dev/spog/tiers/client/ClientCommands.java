@@ -15,6 +15,8 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.client.gui.ProfileScreen;
+import dev.spog.tiers.client.gui.TierlistScreen;
+import dev.spog.tiers.data.DoorTierlist;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
@@ -47,6 +49,9 @@ public final class ClientCommands {
 	 * and whichever registers last wins: the namespaced one is always ours.
 	 */
 	private static final List<String> PREFIXES = List.of("tiers", "spogtiers");
+
+	/** The command that shows the whole Door SMP tierlist as a grid. */
+	private static final String TIERLIST = "tierlist";
 	private static final String MOJANG_PROFILE =
 			"https://api.mojang.com/users/profiles/minecraft/";
 	/** Session server: unlike the profile API, this returns skin textures. */
@@ -85,6 +90,24 @@ public final class ClientCommands {
 							.suggests(players)
 							.executes(context -> 0)));
 		}
+
+		// Suggests only the players actually on our tierlist, rather than
+		// everyone online: the command does nothing for anybody else, and a
+		// suggestion that leads nowhere is worse than none.
+		//
+		// Asks for the roster as it suggests, so the names are there by the
+		// time someone finishes typing. request() is cheap to call repeatedly.
+		SuggestionProvider<ClientSuggestionProvider> graded = (context, builder) -> {
+			DoorTierlist.request();
+			return SharedSuggestionProvider.suggest(DoorTierlist.names(), builder);
+		};
+
+		dispatcher.register(LiteralArgumentBuilder.<ClientSuggestionProvider>literal(TIERLIST)
+				.executes(context -> 0)
+				.then(RequiredArgumentBuilder
+						.<ClientSuggestionProvider, String>argument("player", StringArgumentType.word())
+						.suggests(graded)
+						.executes(context -> 0)));
 	}
 
 	/**
@@ -94,6 +117,16 @@ public final class ClientCommands {
 	public static boolean handle(String command) {
 		String trimmed = command.trim();
 		String lower = trimmed.toLowerCase(Locale.ROOT);
+
+		if (lower.equals(TIERLIST) || lower.startsWith(TIERLIST + " ")) {
+			String[] args = trimmed.split("\s+");
+			// A named player is picked out in the grid rather than filtered to:
+			// the point of the picture is where someone stands relative to
+			// everyone else, which a single highlighted row still shows.
+			openTierlist(args.length > 1 ? args[1] : null);
+			return true;
+		}
+
 		boolean ours = false;
 		for (String prefix : PREFIXES) {
 			if (lower.equals(prefix) || lower.startsWith(prefix + " ")) {
@@ -114,6 +147,19 @@ public final class ClientCommands {
 
 		open(parts[1]);
 		return true;
+	}
+
+	/**
+	 * Opens the tierlist grid.
+	 *
+	 * <p>Deferred through {@code execute} for the same reason as the profile
+	 * screen: this runs while the chat screen is still up, and chat closes
+	 * itself afterwards.
+	 */
+	private static void openTierlist(String highlight) {
+		Minecraft client = Minecraft.getInstance();
+		DoorTierlist.request();
+		client.execute(() -> client.setScreen(new TierlistScreen(client.screen, highlight)));
 	}
 
 	/**
