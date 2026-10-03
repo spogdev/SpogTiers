@@ -90,6 +90,9 @@ public class ConfigScreen extends Screen {
 	private Dropdown<SpogTiersConfig.TabSort> tabPrimary;
 	private Dropdown<SpogTiersConfig.TabSort> tabSecondary;
 
+	/** Tab tab: the player count above which sorting is left alone. */
+	private Dropdown<Integer> tabLimit;
+
 	/** The nametag tab, which is its own editor rather than a list of rows. */
 	private final TagEditor tagEditor = new TagEditor(
 			MinecraftClient.getInstance().textRenderer, null);
@@ -159,6 +162,10 @@ public class ConfigScreen extends Screen {
 		});
 		tabSecondary = new Dropdown<>(value -> {
 			config.tabSecondarySort = value;
+			config.save();
+		});
+		tabLimit = new Dropdown<>(value -> {
+			config.tabSortLimit = value;
 			config.save();
 		});
 		sortOrder = new Dropdown<>(value -> {
@@ -287,6 +294,10 @@ public class ConfigScreen extends Screen {
 					mouseX, mouseY);
 			tabSecondary.drawOverlay(graphics, textRenderer, config().tabSecondarySort,
 					mouseX, mouseY);
+			if (config().tabSortLimited) {
+				tabLimit.drawOverlay(graphics, textRenderer, config().tabSortLimit,
+						mouseX, mouseY);
+			}
 		}
 	}
 
@@ -365,7 +376,11 @@ public class ConfigScreen extends Screen {
 			return tagEditor.dropdowns();
 		}
 		if (active == Tab.TAB) {
-			return List.of(tabPrimary, tabSecondary);
+			// The limit is only listed while it is in use, so a click where it
+			// would be does not land on a control that is not drawn.
+			return config().tabSortLimited
+					? List.of(tabPrimary, tabSecondary, tabLimit)
+					: List.of(tabPrimary, tabSecondary);
 		}
 		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
@@ -483,6 +498,31 @@ public class ConfigScreen extends Screen {
 				},
 				"Sort spectators with everyone else, rather than leaving them "
 						+ "at the end as vanilla does");
+
+		y = drawSwitch(graphics, "Limit By Players", config.tabSortLimited, x, y,
+				() -> {
+					config.tabSortLimited = !config.tabSortLimited;
+					config.save();
+				},
+				"Stop sorting on servers with more players than the limit, "
+						+ "where the order is mostly noise and the work is not");
+
+		// Only offered while the switch is on: a limit with nothing limiting
+		// by it reads as a setting that does nothing.
+		if (config.tabSortLimited) {
+			graphics.drawTextWithShadow(textRenderer, Text.literal("Player Limit"),
+					x, y, LABEL_COLOR);
+			List<Dropdown.Entry<Integer>> limits = new ArrayList<>();
+			for (int value : SpogTiersConfig.TAB_SORT_LIMITS) {
+				limits.add(new Dropdown.Entry<>(value, Integer.toString(value), null));
+			}
+			tabLimit.setEntries(limits);
+			tabLimit.setBounds(x + 118, y - 4, 152);
+			tabLimit.draw(graphics, textRenderer, config.tabSortLimit, mouseX, mouseY);
+			hoverFor(x, y, "Player Limit",
+					"Sorting stops above this many players on the server");
+			y += ROW_HEIGHT + 8;
+		}
 
 		return y + CARD_PADDING - top;
 	}
@@ -834,6 +874,7 @@ public class ConfigScreen extends Screen {
 		tabSecondary.close();
 			regionSlot.close();
 		}
+		tabLimit.close();
 	}
 
 	@Override
@@ -841,7 +882,9 @@ public class ConfigScreen extends Screen {
 		// Dropdowns first: an open list sits above everything else.
 		if (active == Tab.TAB
 				&& (tabPrimary.click(textRenderer, event.x(), event.y())
-						|| tabSecondary.click(textRenderer, event.x(), event.y()))) {
+						|| tabSecondary.click(textRenderer, event.x(), event.y())
+						|| (config().tabSortLimited
+								&& tabLimit.click(textRenderer, event.x(), event.y())))) {
 			return true;
 		}
 		if (active == Tab.GENERAL && sortOrder.click(textRenderer, event.x(), event.y())) {
@@ -911,7 +954,8 @@ public class ConfigScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-		if (active == Tab.TAB && (tabPrimary.scroll(deltaY) || tabSecondary.scroll(deltaY))) {
+		if (active == Tab.TAB && (tabPrimary.scroll(deltaY) || tabSecondary.scroll(deltaY)
+				|| (config().tabSortLimited && tabLimit.scroll(deltaY)))) {
 			return true;
 		}
 		if (active == Tab.GENERAL && sortOrder.scroll(deltaY)) {
