@@ -50,6 +50,24 @@ public class SpogTiersConfig {
 	/** How the rows inside each tier list card are ordered. */
 	public SortOrder sortOrder = SortOrder.RANKING;
 
+	/** How players are ordered in the tab list. */
+	public TabSort tabPrimarySort = TabSort.TIER_BEST;
+
+	/**
+	 * How players level on {@link #tabPrimarySort} are ordered against each
+	 * other.
+	 */
+	public TabSort tabSecondarySort = TabSort.ALPHABETICAL;
+
+	/**
+	 * Sort spectators along with everyone else.
+	 *
+	 * <p>Off by default: vanilla puts spectators at the end of the tab list,
+	 * and servers that rely on that reading are more common than servers where
+	 * mixing them in is wanted.
+	 */
+	public boolean tabSortSpectators = false;
+
 	/**
 	 * Show retirement, rather than presenting a retired rank as an active one.
 	 *
@@ -341,6 +359,38 @@ public class SpogTiersConfig {
 		}
 	}
 
+	/**
+	 * How players are ordered in the tab list.
+	 *
+	 * <p>{@link #SERVER} is vanilla's own ordering, which is the server's
+	 * {@code listOrder} first and the player's name last -- so picking it
+	 * leaves the list exactly as it would be without this mod.
+	 */
+	public enum TabSort {
+		/** The player's best tier across every enabled list, Door SMP included. */
+		TIER_BEST("Tier (Best)"),
+		/**
+		 * The first tier the nametag actually shows, middle row first.
+		 *
+		 * <p>Read off the layout rather than the data, so the list sorts by
+		 * what is on screen beside each name.
+		 */
+		TIER_FIRST("Tier (First)"),
+		REGION("Region"),
+		ALPHABETICAL("Alphabetical"),
+		SERVER("Server");
+
+		private final String title;
+
+		TabSort(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
+		}
+	}
+
 	public enum SortOrder {
 		/** Whatever order the provider sent, which is its own default. */
 		DEFAULT("Received"),
@@ -526,6 +576,12 @@ public class SpogTiersConfig {
 		}
 		if (sortOrder == null) {
 			sortOrder = SortOrder.RANKING;
+		}
+		if (tabPrimarySort == null) {
+			tabPrimarySort = TabSort.TIER_BEST;
+		}
+		if (tabSecondarySort == null) {
+			tabSecondarySort = TabSort.ALPHABETICAL;
 		}
 		if (iconStyle == null) {
 			iconStyle = IconStyle.DEFAULT;

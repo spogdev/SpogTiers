@@ -40,6 +40,7 @@ public class ConfigScreen extends Screen {
 
 	private enum Tab {
 		GENERAL("General"),
+		TAB("Tab"),
 		TIER_LISTS("Tierlists"),
 		NAMETAG("Nametag"),
 		INTEGRATIONS("Integrations");
@@ -84,6 +85,10 @@ public class ConfigScreen extends Screen {
 	private Dropdown<TierList> rightList;
 	private Dropdown<Gamemode> rightMode;
 	private Dropdown<SpogTiersConfig.SortOrder> sortOrder;
+
+	/** Tab tab: how players are ordered, and how ties are broken. */
+	private Dropdown<SpogTiersConfig.TabSort> tabPrimary;
+	private Dropdown<SpogTiersConfig.TabSort> tabSecondary;
 
 	/** The nametag tab, which is its own editor rather than a list of rows. */
 	private final TagEditor tagEditor = new TagEditor(
@@ -147,6 +152,14 @@ public class ConfigScreen extends Screen {
 			config.aboveTag.gamemode = value;
 			config.save();
 			click();
+		});
+		tabPrimary = new Dropdown<>(value -> {
+			config.tabPrimarySort = value;
+			config.save();
+		});
+		tabSecondary = new Dropdown<>(value -> {
+			config.tabSecondarySort = value;
+			config.save();
 		});
 		sortOrder = new Dropdown<>(value -> {
 			config.sortOrder = value;
@@ -212,6 +225,8 @@ public class ConfigScreen extends Screen {
 		switch (active) {
 			case GENERAL -> contentHeight =
 					drawGeneral(graphics, left, originY, mouseX, mouseY);
+			case TAB -> contentHeight =
+					drawTab(graphics, left, originY, mouseX, mouseY);
 			case TIER_LISTS -> contentHeight =
 					drawTierLists(graphics, left, originY, right, mouseX, mouseY);
 			case INTEGRATIONS -> contentHeight =
@@ -266,6 +281,12 @@ public class ConfigScreen extends Screen {
 			}
 		} else if (active == Tab.GENERAL) {
 			sortOrder.drawOverlay(graphics, textRenderer, config().sortOrder, mouseX, mouseY);
+		}
+		if (active == Tab.TAB) {
+			tabPrimary.drawOverlay(graphics, textRenderer, config().tabPrimarySort,
+					mouseX, mouseY);
+			tabSecondary.drawOverlay(graphics, textRenderer, config().tabSecondarySort,
+					mouseX, mouseY);
 		}
 	}
 
@@ -343,6 +364,9 @@ public class ConfigScreen extends Screen {
 		if (active == Tab.NAMETAG) {
 			return tagEditor.dropdowns();
 		}
+		if (active == Tab.TAB) {
+			return List.of(tabPrimary, tabSecondary);
+		}
 		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
 
@@ -413,6 +437,56 @@ public class ConfigScreen extends Screen {
 	 * <p>A section per mod, and each says plainly when the mod it is about is
 	 * not installed rather than offering a switch that would do nothing.
 	 */
+	/**
+	 * How the tab list is ordered.
+	 *
+	 * <p>Two sorts rather than one: the first decides a player's place, the
+	 * second decides it between players the first leaves level -- a tier sort
+	 * puts every HT1 together, and the secondary says in what order.
+	 */
+	private int drawTab(DrawContext graphics, int left, int top,
+			int mouseX, int mouseY) {
+		SpogTiersConfig config = config();
+		int x = left + CARD_PADDING;
+		int y = top + CARD_PADDING;
+
+		graphics.drawTextWithShadow(textRenderer, Text.literal("Tab List Sorting"),
+				x, y, 0xFFFFFFFF);
+		y += textRenderer.fontHeight + 10;
+
+		List<Dropdown.Entry<SpogTiersConfig.TabSort>> sorts = new ArrayList<>();
+		for (SpogTiersConfig.TabSort value : SpogTiersConfig.TabSort.values()) {
+			sorts.add(new Dropdown.Entry<>(value, value.title(), null));
+		}
+
+		graphics.drawTextWithShadow(textRenderer, Text.literal("Primary Sort"),
+				x, y, LABEL_COLOR);
+		tabPrimary.setEntries(sorts);
+		tabPrimary.setBounds(x + 118, y - 4, 152);
+		tabPrimary.draw(graphics, textRenderer, config.tabPrimarySort, mouseX, mouseY);
+		hoverFor(x, y, "Primary Sort", "What decides a player's place in the tab list");
+		y += ROW_HEIGHT + 8;
+
+		graphics.drawTextWithShadow(textRenderer, Text.literal("Secondary Sort"),
+				x, y, LABEL_COLOR);
+		tabSecondary.setEntries(sorts);
+		tabSecondary.setBounds(x + 118, y - 4, 152);
+		tabSecondary.draw(graphics, textRenderer, config.tabSecondarySort, mouseX, mouseY);
+		hoverFor(x, y, "Secondary Sort",
+				"How players the primary sort leaves level are ordered");
+		y += ROW_HEIGHT + 8;
+
+		y = drawSwitch(graphics, "Sort Spectators", config.tabSortSpectators, x, y,
+				() -> {
+					config.tabSortSpectators = !config.tabSortSpectators;
+					config.save();
+				},
+				"Sort spectators with everyone else, rather than leaving them "
+						+ "at the end as vanilla does");
+
+		return y + CARD_PADDING - top;
+	}
+
 	private int drawIntegrations(DrawContext graphics, int left, int top,
 			int mouseX, int mouseY) {
 		SpogTiersConfig config = config();
@@ -611,20 +685,29 @@ public class ConfigScreen extends Screen {
 			onClick.run();
 			click();
 		}));
-		if (description != null) {
-			// Recorded rather than drawn here: the body is scissored, so a
-			// tooltip drawn now would be clipped to the panel.
-			//
-			// Kept only when nothing else has already claimed the cursor, so
-			// that two explained rows next to each other each show their own
-			// line rather than the later one overwriting the earlier.
-			HoverLabel candidate =
-					new HoverLabel(x, y - 2, x + textRenderer.getWidth(title), y + 10, description);
-			if (hoverLabel == null || candidate.contains(hoverMouseX, hoverMouseY)) {
-				hoverLabel = candidate;
-			}
-		}
+		hoverFor(x, y, title, description);
 		return y + ROW_HEIGHT;
+	}
+
+	/**
+	 * Records the tooltip for a labelled row, to be drawn after the panel.
+	 *
+	 * <p>Recorded rather than drawn here: the body is scissored, so a tooltip
+	 * drawn now would be clipped to the panel.
+	 *
+	 * <p>Kept only when nothing else has already claimed the cursor, so that
+	 * two explained rows next to each other each show their own line rather
+	 * than the later one overwriting the earlier.
+	 */
+	private void hoverFor(int x, int y, String title, String description) {
+		if (description == null) {
+			return;
+		}
+		HoverLabel candidate = new HoverLabel(x, y - 2,
+				x + textRenderer.getWidth(title), y + 10, description);
+		if (hoverLabel == null || candidate.contains(hoverMouseX, hoverMouseY)) {
+			hoverLabel = candidate;
+		}
 	}
 
 	/**
@@ -747,6 +830,8 @@ public class ConfigScreen extends Screen {
 			rightList.close();
 			rightMode.close();
 			sortOrder.close();
+		tabPrimary.close();
+		tabSecondary.close();
 			regionSlot.close();
 		}
 	}
@@ -754,6 +839,11 @@ public class ConfigScreen extends Screen {
 	@Override
 	public boolean mouseClicked(net.minecraft.client.gui.Click event, boolean doubled) {
 		// Dropdowns first: an open list sits above everything else.
+		if (active == Tab.TAB
+				&& (tabPrimary.click(textRenderer, event.x(), event.y())
+						|| tabSecondary.click(textRenderer, event.x(), event.y()))) {
+			return true;
+		}
 		if (active == Tab.GENERAL && sortOrder.click(textRenderer, event.x(), event.y())) {
 			click();
 			return true;
@@ -821,6 +911,9 @@ public class ConfigScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
+		if (active == Tab.TAB && (tabPrimary.scroll(deltaY) || tabSecondary.scroll(deltaY))) {
+			return true;
+		}
 		if (active == Tab.GENERAL && sortOrder.scroll(deltaY)) {
 			return true;
 		}
