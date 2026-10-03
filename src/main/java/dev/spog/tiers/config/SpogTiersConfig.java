@@ -78,25 +78,36 @@ public class SpogTiersConfig {
 	/**
 	 * Stop sorting the tab list once a server has more players than this.
 	 *
-	 * <p>Sorting measures a tier for every player on the list, so the work
-	 * grows with the player count, and on a big server the ordering is mostly
-	 * noise anyway -- a few hundred names reshuffled by tier is harder to read
-	 * than the order the server chose. Over the limit the list is handed back
-	 * exactly as vanilla built it.
+	 * <p>Sorting measures a tier for every name on the list, so the work grows
+	 * with it, and on a long list the ordering is mostly noise anyway -- dozens
+	 * of names reshuffled by tier is harder to read than the order the server
+	 * chose. Over the limit the list is handed back exactly as vanilla built
+	 * it.
+	 *
+	 * <p>The count is the tab list, not the server population: vanilla shows
+	 * at most 80 entries whatever the player count.
 	 */
 	public boolean tabSortLimited = false;
 
 	/**
 	 * The player count {@link #tabSortLimited} compares against.
 	 *
-	 * <p>Inclusive: a limit of 100 sorts a list of exactly 100 and leaves 101
+	 * <p>Inclusive: a limit of 40 sorts a list of exactly 40 and leaves 41
 	 * alone.
 	 */
-	public int tabSortLimit = 100;
+	public int tabSortLimit = 40;
 
-	/** The range {@link #tabSortLimit} is held to. */
-	public static final int TAB_SORT_LIMIT_MIN = 10;
-	public static final int TAB_SORT_LIMIT_MAX = 1000;
+	/**
+	 * The range {@link #tabSortLimit} is held to.
+	 *
+	 * <p>The ceiling comes from vanilla: the tab list is built with
+	 * {@code .limit(80)}, so it never holds more than 80 entries. A limit of 80
+	 * would need 81 to be exceeded and so could never fire either, which is why
+	 * the ceiling is 79 rather than 80 -- a setting that cannot do anything is
+	 * worse than one that is absent.
+	 */
+	public static final int TAB_SORT_LIMIT_MIN = 5;
+	public static final int TAB_SORT_LIMIT_MAX = 79;
 
 	/**
 	 * The limits the config screen offers.
@@ -106,7 +117,7 @@ public class SpogTiersConfig {
 	 * matters far less than roughly where it sits.
 	 */
 	public static final List<Integer> TAB_SORT_LIMITS =
-			List.of(10, 20, 50, 100, 200, 500, 1000);
+			List.of(5, 10, 15, 20, 30, 40, 50, 60, 70);
 
 	/**
 	 * Show retirement, rather than presenting a retired rank as an active one.

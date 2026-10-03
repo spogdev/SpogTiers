@@ -102,9 +102,11 @@ public final class TabSorter {
 		if (config == null || players == null || players.size() < 2) {
 			return players;
 		}
-		// Over the limit the list is handed back as vanilla built it. Checked
-		// before anything is measured, so a big server costs nothing at all
-		// rather than being sorted and then discarded.
+		// Over the limit the list is handed back as vanilla built it. Counted
+		// on the tab list itself, which vanilla caps at 80 entries however
+		// many players are connected -- so the limit is a tab-list size, not a
+		// server population. Checked before anything is measured, so a list
+		// over the limit costs nothing rather than being sorted and discarded.
 		if (config.tabSortLimited && players.size() > config.tabSortLimit) {
 			return players;
 		}
