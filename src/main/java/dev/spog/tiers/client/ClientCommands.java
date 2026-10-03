@@ -257,7 +257,19 @@ public final class ClientCommands {
 	 * model falls back to the default Steve/Alex skin. The session server is
 	 * what carries that property.
 	 */
-	private static GameProfile withTextures(UUID id, String name, String undashedId) {
+	/**
+	 * The textured profile for a player we already know the id of.
+	 *
+	 * <p>Blocking, like {@link #resolveProfile}: callers run it off the render
+	 * thread. The tierlist needs this because a profile built from an id and a
+	 * name alone carries no textures property, and the skin manager reads skins
+	 * from exactly that -- so such a profile always resolves to a default skin.
+	 */
+	public static GameProfile texturedProfile(UUID id, String name) {
+		return withTextures(id, name, id.toString().replace("-", ""));
+	}
+
+	public static GameProfile withTextures(UUID id, String name, String undashedId) {
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(MOJANG_SESSION + undashedId))
 					.header("Accept", "application/json")
