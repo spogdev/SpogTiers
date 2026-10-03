@@ -6,6 +6,7 @@ import dev.spog.tiers.data.DoorTierlist;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.PlayerSkin;
@@ -46,6 +47,8 @@ public class TierlistScreen extends Screen {
 	private static final int FRAME_PADDING = 8;
 	private static final int BUTTON_STRIP = 24;
 	private static final int BUTTON_WIDTH = 60;
+	/** The toggle says "Retired"/"Main", so it needs a little more room. */
+	private static final int TOGGLE_WIDTH = 68;
 	private static final int BUTTON_HEIGHT = 16;
 
 	/**
@@ -84,13 +87,32 @@ public class TierlistScreen extends Screen {
 	/** Players whose textured profile is in flight, so it is asked for once. */
 	private final Map<UUID, Boolean> fetching = new HashMap<>();
 
+	/**
+	 * The textured profiles themselves, kept so a click can pass one straight
+	 * to the profile screen rather than making it fetch the same thing again.
+	 */
+	private final Map<UUID, GameProfile> profiles = new HashMap<>();
+
 	private DoorTierlist.Snapshot snapshot;
 	private int scroll;
+
+	/** Which list is on show. The main one, until the toggle is pressed. */
+	private boolean showRetired;
+
+	/**
+	 * The face under the pointer, set while drawing and read by a click.
+	 *
+	 * <p>Recorded rather than hit-tested again on click: the rows are laid out
+	 * during the draw, and working out where a face landed a second time would
+	 * be the same arithmetic in two places.
+	 */
+	private DoorTierlist.Player hovered;
 
 	/** Set while drawing the grid, read after it so the box is not clipped. */
 	private String hoveredName;
 
 	private PanelButton closeButton;
+	private PanelButton toggleButton;
 
 	public TierlistScreen(Screen parent) {
 		this(parent, null);
@@ -112,6 +134,14 @@ public class TierlistScreen extends Screen {
 		// arrived yet.
 		closeButton = addRenderableWidget(new PanelButton(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,
 				Component.literal("Close"), button -> onClose()));
+		toggleButton = addRenderableWidget(new PanelButton(0, 0, TOGGLE_WIDTH, BUTTON_HEIGHT,
+				Component.literal("Retired"), button -> {
+					showRetired = !showRetired;
+					// Reset, or switching to a shorter list leaves the view
+					// scrolled past the end of it.
+					scroll = 0;
+					button.setMessage(Component.literal(showRetired ? "Main" : "Retired"));
+				}));
 	}
 
 	@Override
@@ -121,9 +151,11 @@ public class TierlistScreen extends Screen {
 		// this is what turns "Loading" into the grid without a tick hook.
 		snapshot = DoorTierlist.snapshot();
 		hoveredName = null;
+		hovered = null;
 
 		Font font = this.font;
-		List<DoorTierlist.Row> rows = snapshot == null ? List.of() : snapshot.rows();
+		List<DoorTierlist.Row> rows =
+				snapshot == null ? List.of() : snapshot.rows(showRetired);
 
 		int gridWidth = LABEL_WIDTH + PER_ROW * (FACE + GAP) + GAP;
 		int gridHeight = 0;
@@ -133,7 +165,11 @@ public class TierlistScreen extends Screen {
 
 		String message = snapshot == null
 				? (DoorTierlist.failed() ? "Could not reach the tierlist" : "Loading...")
-				: (rows.isEmpty() ? "Nobody is on the tierlist yet" : null);
+				// Asked of the players rather than the rows: every tier has a
+				// row now, so an empty list is one where no row has anybody.
+				: (snapshot.any(showRetired) ? null
+						: (showRetired ? "Nobody has retired yet"
+								: "Nobody is on the tierlist yet"));
 		if (message != null) {
 			// Enough window to hold the line, so the frame does not collapse to
 			// nothing while the roster is on its way.
@@ -157,7 +193,9 @@ public class TierlistScreen extends Screen {
 
 		int x = frameX + FRAME_PADDING;
 		int y = frameY + FRAME_PADDING;
-		graphics.text(font, Component.literal("Door SMP Tierlist"), x, y, 0xFFFFFFFF);
+		graphics.text(font, Component.literal(showRetired
+				? "Door SMP Tierlist -- Retired" : "Door SMP Tierlist"),
+				x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 6;
 
 		if (message != null) {
@@ -180,17 +218,25 @@ public class TierlistScreen extends Screen {
 			graphics.disableScissor();
 
 			if (gridHeight > shownHeight) {
+				// On the title line, not the bottom: the button strip is down
+				// there now and the two would sit on top of each other.
 				String hint = "Scroll for more";
 				graphics.text(font, Component.literal(hint),
 						x + gridWidth - font.width(hint),
-						frameY + frameHeight - FRAME_PADDING - font.lineHeight, MUTED);
+						frameY + FRAME_PADDING, MUTED);
 			}
 		}
 
-		// The button strip along the bottom of the frame.
+		// The button strip along the bottom of the frame: the toggle on the
+		// left, Close on the right.
+		int buttonY = frameY + frameHeight - FRAME_PADDING - BUTTON_HEIGHT;
+		if (toggleButton != null) {
+			toggleButton.setX(x);
+			toggleButton.setY(buttonY);
+		}
 		if (closeButton != null) {
-			closeButton.setX(x);
-			closeButton.setY(frameY + frameHeight - FRAME_PADDING - BUTTON_HEIGHT);
+			closeButton.setX(frameX + frameWidth - FRAME_PADDING - BUTTON_WIDTH);
+			closeButton.setY(buttonY);
 		}
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
@@ -248,6 +294,7 @@ public class TierlistScreen extends Screen {
 					&& mouseY >= faceY && mouseY < faceY + FACE
 					&& mouseY >= clipTop && mouseY < clipBottom) {
 				hoveredName = player.name();
+				hovered = player;
 				outline(graphics, faceX - 1, faceY - 1, faceX + FACE + 1, faceY + FACE + 1,
 						0x80FFFFFF);
 			}
@@ -307,6 +354,7 @@ public class TierlistScreen extends Screen {
 					// secureOnly false: the session server hands back unsigned
 					// texture properties, and with true every looked-up player
 					// renders as the default skin.
+					profiles.put(player.uuid(), resolved);
 					skins.put(player.uuid(),
 							minecraft.getSkinManager().createLookup(resolved, false));
 				}, minecraft);
@@ -354,6 +402,35 @@ public class TierlistScreen extends Screen {
 		int b = colour & 0xFF;
 		double luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
 		return luminance > 0.55 ? LABEL_TEXT : LABEL_TEXT_LIGHT;
+	}
+
+	/**
+	 * Clicking a face opens that player's profile, the same screen
+	 * {@code /tiers <player>} opens.
+	 *
+	 * <p>Uses the textured profile already fetched for the face when there is
+	 * one, so the model is dressed immediately; otherwise the bare profile is
+	 * handed over and the screen's own lookup dresses it a moment later.
+	 */
+	@Override
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		// The buttons are offered the click first. They sit outside the grid,
+		// so the two cannot overlap today -- but `hovered` is left over from
+		// the last frame drawn, and a widget should never lose a click to a
+		// face the pointer is no longer on.
+		if (super.mouseClicked(event, doubleClick)) {
+			return true;
+		}
+		if (hovered != null) {
+			GameProfile profile = profiles.get(hovered.uuid());
+			GameProfile target = profile != null
+					? profile
+					: new GameProfile(hovered.uuid(), hovered.name());
+			minecraft.setScreen(new ProfileScreen(target));
+			return true;
+		}
+		// super has already had its turn above, so this is not another call.
+		return false;
 	}
 
 	@Override
