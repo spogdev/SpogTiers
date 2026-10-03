@@ -1,6 +1,9 @@
 package dev.spog.tiers.client.gui;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
 import dev.spog.tiers.client.ClientCommands;
 import dev.spog.tiers.data.DoorTierlist;
 import net.minecraft.client.gui.Font;
@@ -8,14 +11,19 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.PlayerSkin;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 /**
@@ -64,6 +72,29 @@ public class TierlistScreen extends Screen {
 	private static final int MUTED = 0xFF8A94A6;
 	private static final int TOOLTIP_PADDING = 4;
 
+	/**
+	 * How many texture fetches may be in flight at once.
+	 *
+	 * <p>The session server rate-limits per address, and a full roster is
+	 * dozens of players. Fetching them all at once is what made faces fail in
+	 * batches; a few at a time fills the grid a little slower and reliably.
+	 */
+	private static final int MAX_IN_FLIGHT = 4;
+
+	/**
+	 * The threads texture fetches run on.
+	 *
+	 * <p>Shared across screens and daemon, so closing the tierlist does not
+	 * leave work orphaned and the client can still exit. Small on purpose: see
+	 * {@link #MAX_IN_FLIGHT}.
+	 */
+	private static final Executor SKIN_FETCHER = Executors.newFixedThreadPool(
+			MAX_IN_FLIGHT, runnable -> {
+				Thread thread = new Thread(runnable, "spogtiers-tierlist-skins");
+				thread.setDaemon(true);
+				return thread;
+			});
+
 	private final Screen parent;
 
 	/**
@@ -86,6 +117,41 @@ public class TierlistScreen extends Screen {
 
 	/** Players whose textured profile is in flight, so it is asked for once. */
 	private final Map<UUID, Boolean> fetching = new HashMap<>();
+
+	/**
+	 * When a failed fetch may be tried again, by player.
+	 *
+	 * <p>A failure is retried rather than cached. The alternative is leaving a
+	 * player as a default head for the life of the screen, and a default head
+	 * must only ever mean that is genuinely their skin.
+	 */
+	private final Map<UUID, Long> retryAt = new HashMap<>();
+
+	/** How many attempts a player gets before the cell is left blank. */
+	private static final int MAX_ATTEMPTS = 4;
+
+	/** Attempts so far, by player. */
+	private final Map<UUID, Integer> attempts = new HashMap<>();
+
+	/**
+	 * Players whose textures property names no skin, so the default is theirs.
+	 *
+	 * <p>Read off the profile rather than guessed from the resolved skin, which
+	 * cannot tell "still loading" from "wears the default".
+	 */
+	private final Map<UUID, Boolean> wearsDefault = new HashMap<>();
+
+	/**
+	 * How long to wait before retrying a failed fetch, per attempt.
+	 *
+	 * <p>Backed off rather than retried immediately: the usual reason a batch
+	 * fails is Mojang rate-limiting a burst of requests, and hammering it again
+	 * at once is what caused the burst.
+	 */
+	private static final long[] RETRY_BACKOFF_MILLIS = {400L, 1_200L, 3_000L};
+
+	/** How many fetches are running right now. */
+	private int inFlight;
 
 	/**
 	 * The textured profiles themselves, kept so a click can pass one straight
@@ -322,10 +388,39 @@ public class TierlistScreen extends Screen {
 		if (skin == null) {
 			return;
 		}
+		// A lookup serves the default skin until the real one arrives, and
+		// keeps serving it if the texture never loads. Drawing it would put a
+		// Steve head on someone who does not have one, so the cell is left
+		// blank until the skin is actually theirs.
+		//
+		// A player who genuinely has the default skin matches this too, and
+		// that is the intended answer: it is their skin, so it is drawn.
+		if (isUnresolvedDefault(player.uuid(), skin)) {
+			return;
+		}
 		graphics.blit(RenderPipelines.GUI_TEXTURED, skin.body().texturePath(),
 				x, y, 8.0f, 8.0f, FACE, FACE, 8, 8, 64, 64);
 		graphics.blit(RenderPipelines.GUI_TEXTURED, skin.body().texturePath(),
 				x, y, 40.0f, 8.0f, FACE, FACE, 8, 8, 64, 64);
+	}
+
+	/**
+	 * Whether this skin is the stand-in default rather than the player's own.
+	 *
+	 * <p>Asked only of a player we have no skin URL for. The skin itself cannot
+	 * answer this: a lookup serves the default while the real texture loads and
+	 * keeps serving it if the load fails, and the default a player would be
+	 * given is identical to the default they may genuinely wear. The profile is
+	 * what distinguishes them -- a player with a custom skin has a URL in their
+	 * textures property, and one with the default has none.
+	 */
+	private boolean isUnresolvedDefault(UUID uuid, PlayerSkin skin) {
+		if (Boolean.TRUE.equals(wearsDefault.get(uuid))) {
+			// Their skin really is the default, so this is it.
+			return false;
+		}
+		PlayerSkin fallback = DefaultPlayerSkin.get(uuid);
+		return skin.body().texturePath().equals(fallback.body().texturePath());
 	}
 
 	/**
@@ -339,25 +434,75 @@ public class TierlistScreen extends Screen {
 	 * the lookup is registered back on it.
 	 */
 	private void requestSkin(DoorTierlist.Player player) {
-		if (fetching.putIfAbsent(player.uuid(), Boolean.TRUE) != null) {
+		UUID id = player.uuid();
+		if (fetching.containsKey(id) || inFlight >= MAX_IN_FLIGHT) {
 			return;
 		}
+		Long waitUntil = retryAt.get(id);
+		if (waitUntil != null && System.currentTimeMillis() < waitUntil) {
+			return;
+		}
+		int attempt = attempts.getOrDefault(id, 0);
+		if (attempt >= MAX_ATTEMPTS) {
+			return;
+		}
+
+		fetching.put(id, Boolean.TRUE);
+		attempts.put(id, attempt + 1);
+		inFlight++;
+
+		// A thread of its own rather than the common pool: these calls block on
+		// a socket, and the common pool is sized for work that does not.
 		CompletableFuture
-				.supplyAsync(() -> ClientCommands.texturedProfile(
-						player.uuid(), player.name()))
+				.supplyAsync(() -> ClientCommands.texturedProfile(id, player.name()),
+						SKIN_FETCHER)
 				.thenAcceptAsync(profile -> {
-					// A failed texture fetch still gets a lookup, so the cell
-					// shows a default head rather than staying empty.
-					GameProfile resolved = profile != null
-							? profile
-							: new GameProfile(player.uuid(), player.name());
+					inFlight--;
+					fetching.remove(id);
+					if (profile == null) {
+						// No lookup is registered, so the cell stays blank and
+						// is tried again. Registering one here would draw a
+						// default head, which must only ever mean the player
+						// really has the default skin.
+						int next = Math.min(attempt, RETRY_BACKOFF_MILLIS.length - 1);
+						retryAt.put(id,
+								System.currentTimeMillis() + RETRY_BACKOFF_MILLIS[next]);
+						return;
+					}
 					// secureOnly false: the session server hands back unsigned
 					// texture properties, and with true every looked-up player
 					// renders as the default skin.
-					profiles.put(player.uuid(), resolved);
-					skins.put(player.uuid(),
-							minecraft.getSkinManager().createLookup(resolved, false));
+					profiles.put(id, profile);
+					wearsDefault.put(id, !hasSkinUrl(profile));
+					skins.put(id, minecraft.getSkinManager().createLookup(profile, false));
 				}, minecraft);
+	}
+
+	/**
+	 * Whether this profile's textures actually name a skin.
+	 *
+	 * <p>The property is base64 JSON of the form
+	 * {@code {"textures":{"SKIN":{"url":...}}}}. A player on the default skin
+	 * has the property but no SKIN entry in it, which is how the two are told
+	 * apart without resolving anything.
+	 */
+	private static boolean hasSkinUrl(GameProfile profile) {
+		for (Property property : profile.properties().get("textures")) {
+			try {
+				String json = new String(Base64.getDecoder().decode(property.value()),
+						StandardCharsets.UTF_8);
+				JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+				JsonObject textures = root.getAsJsonObject("textures");
+				if (textures != null && textures.has("SKIN")) {
+					return true;
+				}
+			} catch (RuntimeException e) {
+				// An unreadable property is treated as naming no skin, so the
+				// player is drawn with the default rather than left blank.
+				return false;
+			}
+		}
+		return false;
 	}
 
 	/** The hovered player's name, beside the pointer. */

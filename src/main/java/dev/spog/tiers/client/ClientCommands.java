@@ -258,15 +258,26 @@ public final class ClientCommands {
 	 * what carries that property.
 	 */
 	/**
-	 * The textured profile for a player we already know the id of.
+	 * The textured profile for a player we already know the id of, or null.
 	 *
 	 * <p>Blocking, like {@link #resolveProfile}: callers run it off the render
 	 * thread. The tierlist needs this because a profile built from an id and a
 	 * name alone carries no textures property, and the skin manager reads skins
 	 * from exactly that -- so such a profile always resolves to a default skin.
+	 *
+	 * <p>Strict, unlike {@link #withTextures}: null when the textures could not
+	 * be read, rather than a bare profile. A caller drawing faces must be able
+	 * to tell a failed fetch from a successful one, or it caches the failure
+	 * and shows a default head that is not the player's skin.
 	 */
 	public static GameProfile texturedProfile(UUID id, String name) {
-		return withTextures(id, name, id.toString().replace("-", ""));
+		GameProfile profile = withTextures(id, name, id.toString().replace("-", ""));
+		// withTextures falls back to a bare profile on failure, which is right
+		// for /tiers -- a dressed model is nice but the screen is still worth
+		// opening. Here it is indistinguishable from success, so it is refused.
+		return profile != null && profile.properties().containsKey("textures")
+				? profile
+				: null;
 	}
 
 	public static GameProfile withTextures(UUID id, String name, String undashedId) {
