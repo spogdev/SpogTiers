@@ -265,9 +265,20 @@ public final class ClientCommands {
 	 * name alone carries no textures property, and the skin provider reads
 	 * skins from exactly that -- so such a profile always resolves to a default
 	 * skin.
+	 *
+	 * <p>Strict, unlike {@link #withTextures}: null when the textures could not
+	 * be read, rather than a bare profile. A caller drawing faces must be able
+	 * to tell a failed fetch from a successful one, or it caches the failure
+	 * and shows a default head that is not the player's skin.
 	 */
 	public static GameProfile texturedProfile(UUID id, String name) {
-		return withTextures(id, name, id.toString().replace("-", ""));
+		GameProfile profile = withTextures(id, name, id.toString().replace("-", ""));
+		// withTextures falls back to a bare profile on failure, which is right
+		// for /tiers -- a dressed model is nice but the screen is still worth
+		// opening. Here it is indistinguishable from success, so it is refused.
+		return profile != null && profile.properties().containsKey("textures")
+				? profile
+				: null;
 	}
 
 	public static GameProfile withTextures(UUID id, String name, String undashedId) {
