@@ -1,6 +1,7 @@
 package dev.spog.tiers.client.gui;
 
 import com.mojang.authlib.GameProfile;
+import dev.spog.tiers.client.ClientCommands;
 import dev.spog.tiers.data.DoorTierlist;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -13,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 /**
@@ -24,6 +26,9 @@ import java.util.function.Supplier;
  * sharp at any GUI scale and the server pays nothing per view. The layout
  * constants are the backend's, so the two read alike.
  *
+ * <p>A window sized to the list and centred on screen, inside a translucent
+ * frame with room for buttons along the bottom.
+ *
  * <p>Retired players are left out, as they are on Discord: the picture is about
  * who is currently ranked.
  */
@@ -34,21 +39,27 @@ public class TierlistScreen extends Screen {
 	private static final int GAP = 2;
 	/** Width of the coloured tier label down the left. */
 	private static final int LABEL_WIDTH = 42;
-	private static final int PADDING = 6;
 	/** Faces per line before wrapping within the same tier. */
 	private static final int PER_ROW = 12;
 
-	private static final int ROW_FILL = 0xFF1E2126;
+	/** The frame's padding around the grid, and the strip the buttons sit in. */
+	private static final int FRAME_PADDING = 8;
+	private static final int BUTTON_STRIP = 24;
+	private static final int BUTTON_WIDTH = 60;
+	private static final int BUTTON_HEIGHT = 16;
+
+	/**
+	 * The row fill, let through a little so the window reads as a panel over
+	 * the world rather than a solid block of its own.
+	 */
+	private static final int ROW_FILL = 0xC01E2126;
 	private static final int GRID = 0xFF2C3138;
+	/** The frame around the grid: darker than the rows, and also translucent. */
+	private static final int FRAME_FILL = 0xB00B0E13;
 	private static final int LABEL_TEXT = 0xFF111111;
 	private static final int LABEL_TEXT_LIGHT = 0xFFFFFFFF;
 	private static final int MUTED = 0xFF8A94A6;
-
-	/**
-	 * The backdrop: dark grey, and let through just enough to keep the world
-	 * visible behind it. The same wash the profile screen uses.
-	 */
-	private static final int BACKDROP = 0xC00B0E13;
+	private static final int TOOLTIP_PADDING = 4;
 
 	private final Screen parent;
 
@@ -63,14 +74,23 @@ public class TierlistScreen extends Screen {
 	/**
 	 * Skin lookups, one per player, kept for the life of the screen.
 	 *
-	 * <p>A lookup serves a default skin until Mojang answers, so a face is
-	 * never missing -- it only starts as Steve and becomes itself.
+	 * <p>Filled only once a textured profile has arrived. A profile built from
+	 * an id and a name alone carries no textures property, and the skin manager
+	 * reads skins from exactly that -- so a lookup made from a bare profile
+	 * renders every player as the default skin.
 	 */
 	private final Map<UUID, Supplier<SkinTextures>> skins = new HashMap<>();
 
+	/** Players whose textured profile is in flight, so it is asked for once. */
+	private final Map<UUID, Boolean> fetching = new HashMap<>();
+
 	private DoorTierlist.Snapshot snapshot;
 	private int scroll;
-	private int contentHeight;
+
+	/** Set while drawing the grid, read after it so the box is not clipped. */
+	private String hoveredName;
+
+	private PanelButton closeButton;
 
 	public TierlistScreen(Screen parent) {
 		this(parent, null);
@@ -86,66 +106,98 @@ public class TierlistScreen extends Screen {
 	protected void init() {
 		snapshot = DoorTierlist.snapshot();
 		DoorTierlist.request();
+
+		// Positioned in the draw rather than here: where it goes depends on the
+		// frame, and the frame's size depends on a roster that may not have
+		// arrived yet.
+		closeButton = addDrawableChild(new PanelButton(0, 0, BUTTON_WIDTH, BUTTON_HEIGHT,
+				Text.literal("Close"), button -> close()));
 	}
 
 	@Override
 	public void render(DrawContext graphics, int mouseX, int mouseY,
 			float partialTick) {
-		graphics.fill(0, 0, width, height, BACKDROP);
-
 		// Re-read every frame: the fetch finishes on a background thread, and
 		// this is what turns "Loading" into the grid without a tick hook.
 		snapshot = DoorTierlist.snapshot();
+		hoveredName = null;
 
 		TextRenderer font = this.textRenderer;
-		graphics.drawTextWithShadow(font, Text.literal("Door SMP Tierlist"),
-				PADDING + 2, PADDING + 2, 0xFFFFFFFF);
-
-		int top = PADDING + font.fontHeight + 8;
-		if (snapshot == null) {
-			graphics.drawTextWithShadow(font, Text.literal(DoorTierlist.failed()
-							? "Could not reach the tierlist"
-							: "Loading..."),
-					PADDING + 2, top, MUTED);
-			return;
-		}
-
-		List<DoorTierlist.Row> rows = snapshot.rows();
-		if (rows.isEmpty()) {
-			graphics.drawTextWithShadow(font, Text.literal("Nobody is on the tierlist yet"),
-					PADDING + 2, top, MUTED);
-			return;
-		}
-
-		// Measured before drawing so the scroll can be clamped to it, and so a
-		// list taller than the window does not simply run off the bottom.
-		contentHeight = 0;
-		for (DoorTierlist.Row row : rows) {
-			contentHeight += rowHeight(row);
-		}
-		int visible = height - top - PADDING;
-		scroll = Math.max(0, Math.min(scroll, Math.max(0, contentHeight - visible)));
+		List<DoorTierlist.Row> rows = snapshot == null ? List.of() : snapshot.rows();
 
 		int gridWidth = LABEL_WIDTH + PER_ROW * (FACE + GAP) + GAP;
-		int x = Math.max(PADDING, (width - gridWidth) / 2);
-
-		graphics.enableScissor(0, top, width, height - PADDING);
-		int y = top - scroll;
+		int gridHeight = 0;
 		for (DoorTierlist.Row row : rows) {
-			int rowHeight = rowHeight(row);
-			// Skipped rather than drawn and clipped: a row well off screen
-			// still costs a face blit per player otherwise.
-			if (y + rowHeight >= top && y <= height) {
-				drawRow(graphics, font, row, x, y, gridWidth, rowHeight);
-			}
-			y += rowHeight;
+			gridHeight += rowHeight(row);
 		}
-		graphics.disableScissor();
 
-		if (contentHeight > visible) {
-			graphics.drawTextWithShadow(font, Text.literal("Scroll for more"),
-					width - PADDING - font.getWidth("Scroll for more"),
-					height - PADDING - font.fontHeight, MUTED);
+		String message = snapshot == null
+				? (DoorTierlist.failed() ? "Could not reach the tierlist" : "Loading...")
+				: (rows.isEmpty() ? "Nobody is on the tierlist yet" : null);
+		if (message != null) {
+			// Enough window to hold the line, so the frame does not collapse to
+			// nothing while the roster is on its way.
+			gridWidth = Math.max(font.getWidth(message) + 16, 160);
+			gridHeight = font.fontHeight + 8;
+		}
+
+		// The window never grows past the screen: a long list scrolls inside a
+		// frame that still fits rather than running off the top and bottom.
+		int chromeHeight = font.fontHeight + 6 + FRAME_PADDING * 2 + BUTTON_STRIP;
+		int shownHeight = Math.max(FACE, Math.min(gridHeight, height - chromeHeight - 8));
+
+		int frameWidth = gridWidth + FRAME_PADDING * 2;
+		int frameHeight = shownHeight + chromeHeight;
+		int frameX = (width - frameWidth) / 2;
+		int frameY = (height - frameHeight) / 2;
+
+		// The frame itself: translucent, so the world stays visible behind it.
+		graphics.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, FRAME_FILL);
+		outline(graphics, frameX, frameY, frameX + frameWidth, frameY + frameHeight, GRID);
+
+		int x = frameX + FRAME_PADDING;
+		int y = frameY + FRAME_PADDING;
+		graphics.drawTextWithShadow(font, Text.literal("Door SMP Tierlist"), x, y, 0xFFFFFFFF);
+		y += font.fontHeight + 6;
+
+		if (message != null) {
+			graphics.drawTextWithShadow(font, Text.literal(message), x, y, MUTED);
+		} else {
+			scroll = Math.max(0, Math.min(scroll, gridHeight - shownHeight));
+
+			graphics.enableScissor(x, y, x + gridWidth, y + shownHeight);
+			int rowY = y - scroll;
+			for (DoorTierlist.Row row : rows) {
+				int rowHeight = rowHeight(row);
+				// Skipped rather than drawn and clipped: a row off screen still
+				// costs a face blit per player otherwise.
+				if (rowY + rowHeight >= y && rowY <= y + shownHeight) {
+					drawRow(graphics, font, row, x, rowY, gridWidth, rowHeight,
+							mouseX, mouseY, y, y + shownHeight);
+				}
+				rowY += rowHeight;
+			}
+			graphics.disableScissor();
+
+			if (gridHeight > shownHeight) {
+				String hint = "Scroll for more";
+				graphics.drawTextWithShadow(font, Text.literal(hint),
+						x + gridWidth - font.getWidth(hint),
+						frameY + frameHeight - FRAME_PADDING - font.fontHeight, MUTED);
+			}
+		}
+
+		// The button strip along the bottom of the frame.
+		if (closeButton != null) {
+			closeButton.setX(x);
+			closeButton.setY(frameY + frameHeight - FRAME_PADDING - BUTTON_HEIGHT);
+		}
+		super.render(graphics, mouseX, mouseY, partialTick);
+
+		// Last, and outside the scissor, so the box is never clipped by the
+		// grid the face belongs to.
+		if (hoveredName != null) {
+			drawNameTooltip(graphics, hoveredName, mouseX, mouseY);
 		}
 	}
 
@@ -156,23 +208,24 @@ public class TierlistScreen extends Screen {
 	}
 
 	private void drawRow(DrawContext graphics, TextRenderer font, DoorTierlist.Row row,
-			int x, int y, int width, int height) {
-		// The label block, in the tier's own colour.
+			int x, int y, int width, int height, int mouseX, int mouseY,
+			int clipTop, int clipBottom) {
+		// The label keeps its colour at full strength: it is the one part of a
+		// row that says which tier it is, and dimming it made the palette hard
+		// to tell apart.
 		graphics.fill(x, y, x + LABEL_WIDTH, y + height, 0xFF000000 | row.colour());
 		graphics.fill(x + LABEL_WIDTH, y, x + width, y + height, ROW_FILL);
 
-		// The frame and the divider between label and faces.
-		graphics.fill(x, y, x + width, y + 1, GRID);
-		graphics.fill(x, y + height - 1, x + width, y + height, GRID);
-		graphics.fill(x, y, x + 1, y + height, GRID);
-		graphics.fill(x + width - 1, y, x + width, y + height, GRID);
+		outline(graphics, x, y, x + width, y + height, GRID);
 		graphics.fill(x + LABEL_WIDTH, y, x + LABEL_WIDTH + 1, y + height, GRID);
 
 		String label = row.label();
-		graphics.drawTextWithShadow(font, Text.literal(label),
+		// Drawn without a shadow: the label sits on its own bright colour,
+		// where a shadow reads as a smudge rather than as depth.
+		graphics.drawText(font, Text.literal(label),
 				x + (LABEL_WIDTH - font.getWidth(label)) / 2,
 				y + (height - font.fontHeight) / 2,
-				labelInk(row.colour()));
+				labelInk(row.colour()), false);
 
 		int faceX = x + LABEL_WIDTH + GAP;
 		int faceY = y + GAP;
@@ -185,7 +238,18 @@ public class TierlistScreen extends Screen {
 			}
 			drawFace(graphics, player, faceX, faceY);
 			if (highlight != null && player.name().equalsIgnoreCase(highlight)) {
-				ring(graphics, faceX - 1, faceY - 1, faceX + FACE + 1, faceY + FACE + 1);
+				outline(graphics, faceX - 1, faceY - 1, faceX + FACE + 1, faceY + FACE + 1,
+						0xFFFFFFFF);
+			}
+			// Bounded by the clip as well as the cell: a face scrolled out of
+			// view keeps the coordinates it was drawn at, and must not answer
+			// the pointer.
+			if (mouseX >= faceX && mouseX < faceX + FACE
+					&& mouseY >= faceY && mouseY < faceY + FACE
+					&& mouseY >= clipTop && mouseY < clipBottom) {
+				hoveredName = player.name();
+				outline(graphics, faceX - 1, faceY - 1, faceX + FACE + 1, faceY + FACE + 1,
+						0x80FFFFFF);
 			}
 			faceX += FACE + GAP;
 			column++;
@@ -195,20 +259,18 @@ public class TierlistScreen extends Screen {
 	/**
 	 * One player's face, base layer then hat.
 	 *
-	 * <p>A cell is filled behind it either way, so a face still loading or
-	 * failing to load leaves a gap in the row rather than shifting everyone
-	 * after it along.
+	 * <p>A cell is filled behind it either way, so a face still loading leaves
+	 * a gap in the row rather than shifting everyone after it along.
 	 */
 	private void drawFace(DrawContext graphics, DoorTierlist.Player player,
 			int x, int y) {
 		graphics.fill(x, y, x + FACE, y + FACE, GRID);
 
-		Supplier<SkinTextures> lookup = skins.computeIfAbsent(player.uuid(), id ->
-				// secureOnly false: the session server hands back unsigned
-				// texture properties, and with true every looked-up player
-				// renders as the default skin.
-				client.getSkinProvider().supplySkinTextures(
-						new GameProfile(id, player.name()), false));
+		Supplier<SkinTextures> lookup = skins.get(player.uuid());
+		if (lookup == null) {
+			requestSkin(player);
+			return;
+		}
 		SkinTextures skin = lookup.get();
 		if (skin == null) {
 			return;
@@ -220,17 +282,63 @@ public class TierlistScreen extends Screen {
 	}
 
 	/**
-	 * A one-pixel outline just outside a face, marking the named player.
+	 * Fetches the player's textured profile, then starts a skin lookup on it.
 	 *
-	 * <p>Four edges rather than a filled box, so the face underneath stays
-	 * visible.
+	 * <p>Two steps rather than one because the roster gives only an id and a
+	 * name. The session server is what carries the textures property, and the
+	 * skin manager reads skins from that property alone -- so a lookup made
+	 * from a bare profile renders as the default skin, which is what every face
+	 * here used to be. The fetch blocks, so it runs off the render thread and
+	 * the lookup is registered back on it.
 	 */
-	private static void ring(DrawContext graphics, int left, int top,
-			int right, int bottom) {
-		graphics.fill(left, top, right, top + 1, 0xFFFFFFFF);
-		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
-		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
-		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
+	private void requestSkin(DoorTierlist.Player player) {
+		if (fetching.putIfAbsent(player.uuid(), Boolean.TRUE) != null) {
+			return;
+		}
+		CompletableFuture
+				.supplyAsync(() -> ClientCommands.texturedProfile(
+						player.uuid(), player.name()))
+				.thenAcceptAsync(profile -> {
+					// A failed texture fetch still gets a lookup, so the cell
+					// shows a default head rather than staying empty.
+					GameProfile resolved = profile != null
+							? profile
+							: new GameProfile(player.uuid(), player.name());
+					// secureOnly false: the session server hands back unsigned
+					// texture properties, and with true every looked-up player
+					// renders as the default skin.
+					skins.put(player.uuid(),
+							client.getSkinProvider().supplySkinTextures(resolved, false));
+				}, client);
+	}
+
+	/** The hovered player's name, beside the pointer. */
+	private void drawNameTooltip(DrawContext graphics, String name,
+			int mouseX, int mouseY) {
+		TextRenderer font = this.textRenderer;
+		int boxWidth = font.getWidth(name) + TOOLTIP_PADDING * 2;
+		int boxHeight = font.fontHeight + TOOLTIP_PADDING * 2;
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
+		int boxY = Math.clamp(mouseY - 8, 4, Math.max(4, height - boxHeight - 4));
+
+		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
+		outline(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, GRID);
+		graphics.drawTextWithShadow(font, Text.literal(name),
+				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
+	}
+
+	/**
+	 * A one-pixel border, drawn inside the given bounds.
+	 *
+	 * <p>Four edges rather than a filled box, so whatever it marks stays
+	 * visible underneath it.
+	 */
+	private static void outline(DrawContext graphics, int left, int top,
+			int right, int bottom, int colour) {
+		graphics.fill(left, top, right, top + 1, colour);
+		graphics.fill(left, bottom - 1, right, bottom, colour);
+		graphics.fill(left, top, left + 1, bottom, colour);
+		graphics.fill(right - 1, top, right, bottom, colour);
 	}
 
 	/**
