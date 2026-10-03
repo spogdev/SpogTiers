@@ -102,6 +102,12 @@ public final class TabSorter {
 		if (config == null || players == null || players.size() < 2) {
 			return players;
 		}
+		// Over the limit the list is handed back as vanilla built it. Checked
+		// before anything is measured, so a big server costs nothing at all
+		// rather than being sorted and then discarded.
+		if (config.tabSortLimited && players.size() > config.tabSortLimit) {
+			return players;
+		}
 		SpogTiersConfig.TabSort primary = config.tabPrimarySort;
 		SpogTiersConfig.TabSort secondary = config.tabSecondarySort;
 		// Server for both means vanilla's own order, which the list is already
