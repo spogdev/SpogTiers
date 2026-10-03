@@ -1,9 +1,0 @@
-{
-	"spogtiers.config.title": "SpogTiers",
-	"spogtiers.config.enabled": "Enable Tier Tags",
-	"spogtiers.config.showNametags": "Show On Nametags",
-	"spogtiers.config.showTabList": "Show In Tab List",
-	"spogtiers.config.displayMode": "Gamemode",
-	"spogtiers.config.showBestTier": "Show Best Tier",
-	"spogtiers.config.cacheTtlSeconds": "Cache Lifetime (seconds)"
-}

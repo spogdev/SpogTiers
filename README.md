@@ -1,80 +1,30 @@
-# SpogTiers
+# SpogTiers — backend branch
 
-A client-side Fabric mod that shows PvP tier tags (e.g. `[HT2]`) next to player
-names, in the tab list and above player heads.
+This branch carries the two server-side services, which are separate programs that happen to share a
+repository:
 
-Targets **Minecraft 1.21.11** on Java 21. Other versions live on their own
-branches — see [PORTING.md](PORTING.md).
+- **`backend/`** — the Door SMP tierlist: the Discord grading bot and the grade API. See
+  [backend/README.md](backend/README.md).
+- **`resolver/`** — the Discord name resolver, which turns a Minecraft UUID into the Discord account
+  a player linked on MCTiers or SubTiers.
 
-## Building
+They share no code, no token and no process. Either can be deployed or restarted without touching
+the other, and the tierlist bot going down does not take player names with it.
 
-```bash
-./gradlew build
-```
+The mod itself lives on the version branches — `mc/1.21.11`, `mc/26.1.2`, `mc/26.2` — which is why
+there is no `src/` here and no Fabric Loom in the build.
 
-The jar lands in **`dist/`**, named per Minecraft version
-(`spogtiers-1.0.0+mc1.21.11.jar`), so builds from different version branches sit
-side by side instead of overwriting each other. `build/libs/` still holds the
-raw Gradle output including the `-sources` jar.
+## Why it is a separate branch
 
-`dist/` is deliberately outside `build/`, so `./gradlew clean` does not wipe it.
-To clear just this version's jars:
+The backend has no Minecraft dependency, so it would be byte-identical on all three version
+branches. Those branches diverge heavily from each other (different mappings, renamed mixins), so
+committing the backend to them would mean maintaining it three times and dragging it through
+cherry-picks it has nothing to do with.
 
-```bash
-./gradlew cleanDist
-```
-
-## Running a dev client
-
-```bash
-./gradlew runClient
-```
-
-## Configuration
-
-Written to `config/spogtiers.json` on first launch:
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `enabled` | `true` | Master switch |
-| `showNametags` | `true` | Tag above player heads |
-| `showTabList` | `true` | Tag in the tab list |
-| `displayMode` | `VANILLA` | Which gamemode's tier to show |
-| `showBestTier` | `false` | Show best tier across all gamemodes instead |
-| `apiBaseUrl` | *placeholder* | Base URL of your tier API |
-| `cacheTtlSeconds` | `900` | How long a lookup stays fresh |
-| `requestsPerSecond` | `5` | Client-side rate limit |
-
-> **`apiBaseUrl` is a placeholder and must be set before the mod does anything
-> useful.** No public tier API is hardcoded.
-
-## Expected API shape
-
-`GET {apiBaseUrl}/tiers/{uuid-without-dashes}` returning:
-
-```json
-{
-  "name": "Notch",
-  "rankings": {
-    "vanilla": { "tier": 2, "pos": "HT", "retired": false },
-    "uhc":     { "tier": 4, "pos": "LT", "retired": true }
-  }
-}
-```
-
-Unknown gamemodes and malformed entries are skipped rather than failing the
-whole lookup. Adapt `TierService#parse` if your backend differs.
-
-## Architecture
+This branch is never merged into an `mc/*` branch, and they are never merged into it.
 
 ```
-SpogTiersClient      entrypoint; owns config, cache, service
-config/              JSON-backed settings
-data/                Tier, Gamemode, PlayerTiers, TierCache, TierService
-util/TagRenderer     builds the coloured badge Text
-mixin/               the only version-sensitive code
+./gradlew :backend:build        # -> dist/doorsmp-backend-all.jar
+./gradlew :backend:test
+./gradlew :resolver:build       # -> dist/spogtiers-resolver-all.jar
 ```
-
-Lookups run on a daemon thread pool at a bounded rate; the cache is a
-concurrent map so render-thread reads never block. Failed lookups back off for
-60s instead of retrying every tick.
