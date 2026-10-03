@@ -40,6 +40,11 @@ dependencies {
 	// runs fine without it, so it is not bundled or required at runtime.
 	modCompileOnly "maven.modrinth:modmenu:${project.modmenu_version}"
 
+	// Loaded in the dev client only, so runClient has a mod list to open the
+	// config screen from. localRuntime keeps it out of the published jar and
+	// off the compile classpath, so what ships is unchanged.
+	modLocalRuntime "maven.modrinth:modmenu:${project.modmenu_version}"
+
 }
 
 processResources {
