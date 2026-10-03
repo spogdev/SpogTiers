@@ -268,7 +268,7 @@ public class TierlistScreen extends Screen {
 		int x = frameX + FRAME_PADDING;
 		int y = frameY + FRAME_PADDING;
 		graphics.text(font, Component.literal(showRetired
-				? "Door SMP Tierlist -- Retired" : "Door SMP Tierlist"),
+				? "Door SMP Tierlist - Retired" : "Door SMP Tierlist"),
 				x, y, 0xFFFFFFFF);
 		y += font.lineHeight + 6;
 
