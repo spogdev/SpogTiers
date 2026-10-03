@@ -50,14 +50,20 @@ public class SpogTiersConfig {
 	/** How the rows inside each tier list card are ordered. */
 	public SortOrder sortOrder = SortOrder.RANKING;
 
-	/** How players are ordered in the tab list. */
-	public TabSort tabPrimarySort = TabSort.TIER_BEST;
+	/**
+	 * How players are ordered in the tab list.
+	 *
+	 * <p>Server by default, which is vanilla's own ordering: the tab list is
+	 * left exactly as it would be without this mod until someone asks for
+	 * something else.
+	 */
+	public TabSort tabPrimarySort = TabSort.SERVER;
 
 	/**
 	 * How players level on {@link #tabPrimarySort} are ordered against each
 	 * other.
 	 */
-	public TabSort tabSecondarySort = TabSort.ALPHABETICAL;
+	public TabSort tabSecondarySort = TabSort.SERVER;
 
 	/**
 	 * Sort spectators along with everyone else.
@@ -578,10 +584,10 @@ public class SpogTiersConfig {
 			sortOrder = SortOrder.RANKING;
 		}
 		if (tabPrimarySort == null) {
-			tabPrimarySort = TabSort.TIER_BEST;
+			tabPrimarySort = TabSort.SERVER;
 		}
 		if (tabSecondarySort == null) {
-			tabSecondarySort = TabSort.ALPHABETICAL;
+			tabSecondarySort = TabSort.SERVER;
 		}
 		if (iconStyle == null) {
 			iconStyle = IconStyle.DEFAULT;
