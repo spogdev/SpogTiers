@@ -1192,6 +1192,38 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
+	 * A tag's body: a filled pill with a one-pixel border.
+	 *
+	 * <p>Rounded the way pixel art rounds a corner -- by leaving the single
+	 * corner pixel out and stepping the border around it -- rather than by
+	 * antialiasing a curve. At this size a tag is only a few pixels taller than
+	 * its text, so a true radius would either do nothing visible or eat the
+	 * text; dropping one pixel per corner reads as a pill and keeps every edge
+	 * crisp at any GUI scale.
+	 *
+	 * <p>The fill meets the stepped rows exactly, so no background shows
+	 * through where a corner was removed and no gap opens between the fill and
+	 * the border.
+	 */
+	private static void pill(DrawContext graphics, int x, int y,
+			int width, int height, int background, int border) {
+		int right = x + width;
+		int bottom = y + height;
+
+		// The body, inset a pixel top and bottom: those rows are the border
+		// itself, so filling under them would only be overdrawn.
+		graphics.fill(x + 1, y + 1, right - 1, bottom - 1, background);
+
+		// Top and bottom borders, each a pixel short at both ends, which is
+		// what removes the corner.
+		graphics.fill(x + 1, y, right - 1, y + 1, border);
+		graphics.fill(x + 1, bottom - 1, right - 1, bottom, border);
+		// Sides, likewise short, so no corner pixel is ever drawn.
+		graphics.fill(x, y + 1, x + 1, bottom - 1, border);
+		graphics.fill(right - 1, y + 1, right, bottom - 1, border);
+	}
+
+	/**
 	 * A rank badge, drawn in the region tag's style.
 	 *
 	 * <p>Grey for the rest of the top 500, then bronze, silver and gold for
@@ -1212,11 +1244,7 @@ public class ProfileScreen extends Screen {
 		int background = rankBackground(rank);
 		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
 
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
-		graphics.fill(x, y, x + boxWidth, y + 1, border);
-		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
-		graphics.fill(x, y, x + 1, y + boxHeight, border);
-		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+		pill(graphics, x, y, boxWidth, boxHeight, background, border);
 
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4, y + 3, foreground);
 		return boxWidth;
@@ -1261,11 +1289,7 @@ public class ProfileScreen extends Screen {
 		int background = regionBackground(text);
 		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
 
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
-		graphics.fill(x, y, x + boxWidth, y + 1, border);
-		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
-		graphics.fill(x, y, x + 1, y + boxHeight, border);
-		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+		pill(graphics, x, y, boxWidth, boxHeight, background, border);
 
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text), x + 4, y + 3, foreground);
 		return boxWidth;
@@ -1301,11 +1325,7 @@ public class ProfileScreen extends Screen {
 		int background = grade.background();
 		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
 
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, background);
-		graphics.fill(x, y, x + boxWidth, y + 1, border);
-		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
-		graphics.fill(x, y, x + 1, y + boxHeight, border);
-		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
+		pill(graphics, x, y, boxWidth, boxHeight, background, border);
 
 		// White so the glyph keeps its own colours: tinting it with the tag's
 		// foreground would flood the artwork with a single hue.
