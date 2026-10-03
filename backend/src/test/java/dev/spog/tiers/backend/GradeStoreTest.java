@@ -168,4 +168,71 @@ class GradeStoreTest {
 		assertEquals(0, store.clear(Grade.F));
 		assertEquals(1, store.size());
 	}
+
+	@Test
+	void clearingATierKeepsItsRetiredPlayers(@TempDir Path dir) {
+		GradeStore store = GradeStore.load(dir.resolve("grades.json"));
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		store.set(JEB, "jeb_", Grade.S, "Spoginator", "123");
+		assertTrue(store.retire(JEB, true));
+
+		// Only the active player is counted and only they are removed.
+		assertEquals(1, store.clear(Grade.S));
+		assertNull(store.get(NOTCH));
+
+		GradeStore.Record kept = store.get(JEB);
+		assertNotNull(kept, "a retired player survives a clear of their tier");
+		assertTrue(kept.retired());
+		assertEquals(Grade.S, kept.grade(), "and keeps the tier they retired at");
+	}
+
+	@Test
+	void clearingEverythingKeepsRetiredPlayers(@TempDir Path dir) {
+		Path file = dir.resolve("grades.json");
+		GradeStore store = GradeStore.load(file);
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		store.set(JEB, "jeb_", Grade.A, "Spoginator", "123");
+		assertTrue(store.retire(JEB, true));
+
+		assertEquals(1, store.clear(null));
+		assertEquals(1, store.size());
+
+		// And the survivor is on disk, not just in memory.
+		assertNotNull(GradeStore.load(file).get(JEB));
+	}
+
+	@Test
+	void clearingATierOfOnlyRetiredPlayersRemovesNothing(@TempDir Path dir) {
+		Path file = dir.resolve("grades.json");
+		GradeStore store = GradeStore.load(file);
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		assertTrue(store.retire(NOTCH, true));
+
+		assertEquals(0, store.clear(Grade.S));
+		assertEquals(1, store.size());
+	}
+
+	@Test
+	void bringingARetiredPlayerBackMakesThemClearableAgain(@TempDir Path dir) {
+		GradeStore store = GradeStore.load(dir.resolve("grades.json"));
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		assertTrue(store.retire(NOTCH, true));
+		assertEquals(0, store.clear(Grade.S));
+
+		assertTrue(store.retire(NOTCH, false));
+		assertEquals(1, store.clear(Grade.S), "no longer retired, so no longer kept");
+		assertNull(store.get(NOTCH));
+	}
+
+	/** Removal is how a retired player is dropped, since /clear keeps them. */
+	@Test
+	void removeStillDropsARetiredPlayer(@TempDir Path dir) {
+		GradeStore store = GradeStore.load(dir.resolve("grades.json"));
+		store.set(NOTCH, "Notch", Grade.S, "Spoginator", "123");
+		assertTrue(store.retire(NOTCH, true));
+
+		assertNotNull(store.remove(NOTCH));
+		assertNull(store.get(NOTCH));
+		assertEquals(0, store.size());
+	}
 }

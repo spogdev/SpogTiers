@@ -336,6 +336,12 @@ public final class GradeStore {
 	 * lock and a single save: removing players one at a time would rewrite the
 	 * file once per player, and would let a reader see a half-cleared list.
 	 *
+	 * <p>Retired players are kept. A retirement is a record of someone who
+	 * held a tier, not a current placement, and it is the one thing here that
+	 * cannot be recreated by re-grading: clearing a tier to re-test it would
+	 * otherwise throw away its history along with its current members.
+	 * Removing a retired player is {@link #remove}, which /assign None uses.
+	 *
 	 * @param grade the tier to clear, or null for the whole list
 	 * @return how many players were removed
 	 */
@@ -343,17 +349,16 @@ public final class GradeStore {
 		int removed;
 		lock.writeLock().lock();
 		try {
-			if (grade == null) {
-				removed = grades.size();
-				grades.clear();
-			} else {
-				removed = 0;
-				var players = grades.entrySet().iterator();
-				while (players.hasNext()) {
-					if (players.next().getValue().grade() == grade) {
-						players.remove();
-						removed++;
-					}
+			removed = 0;
+			var players = grades.entrySet().iterator();
+			while (players.hasNext()) {
+				Record record = players.next().getValue();
+				if (record.retired()) {
+					continue;
+				}
+				if (grade == null || record.grade() == grade) {
+					players.remove();
+					removed++;
 				}
 			}
 		} finally {

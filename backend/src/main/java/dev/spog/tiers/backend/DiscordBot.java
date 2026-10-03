@@ -605,14 +605,30 @@ public final class DiscordBot extends ListenerAdapter {
 		// Counted now only to say how much is at stake. The count is taken
 		// again when the button is pressed, so a slow confirmation cannot
 		// remove more than the admin was shown.
+		//
+		// Retired players are left out to match what clear() actually
+		// does: counting them here would promise to remove players it
+		// keeps. They are counted separately so the prompt can say so.
 		long affected = grades.all().stream()
+				.filter(record -> !record.retired())
+				.filter(record -> grade == null || record.grade() == grade)
+				.count();
+		long retained = grades.all().stream()
+				.filter(GradeStore.Record::retired)
 				.filter(record -> grade == null || record.grade() == grade)
 				.count();
 		String scope = grade == null ? "the entire tierlist"
 				: "everyone at **" + grade.label() + "**";
 
 		if (affected == 0) {
-			event.reply("There is nobody to clear from " + scope + ".")
+			// Distinguished from an empty tier: "nobody to clear" about a
+			// tier the admin can see players in reads as a bug.
+			event.reply(retained == 0
+					? "There is nobody to clear from " + scope + "."
+					: "There is nobody to clear from " + scope + ": the only "
+							+ (retained == 1 ? "player" : "players") + " there "
+							+ (retained == 1 ? "is" : "are") + " retired, and /clear "
+							+ "keeps those. Use /assign with None to drop one.")
 					.setEphemeral(true).queue();
 			return;
 		}
@@ -621,7 +637,14 @@ public final class DiscordBot extends ListenerAdapter {
 				.setTitle("Clear " + (grade == null ? "the tierlist" : grade.label() + "?"))
 				.setDescription("This removes **" + affected + "** player"
 						+ (affected == 1 ? "" : "s") + " from " + scope
-						+ ".\n\nThis cannot be undone.")
+						+ "."
+						// Said on the prompt rather than only in the result, so an
+						// admin clearing a tier to re-test it knows the history is
+						// safe before pressing a red button.
+						+ (retained == 0 ? "" : "\n\n**" + retained
+								+ "** retired player" + (retained == 1 ? " is" : "s are")
+								+ " kept. Use /assign with None to drop one.")
+						+ "\n\nThis cannot be undone.")
 				.setColor(grade == null ? Color.RED : new Color(grade.color()));
 
 		// The caller's id rides in the button id so the handler can refuse a

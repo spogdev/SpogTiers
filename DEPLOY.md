@@ -390,7 +390,7 @@ Players you have not graded show no badge at all — that is the normal case and
 | `/tierlist [tier]` | The rendered tierlist image. |
 | `/retiredtierlist [tier]` | The same picture, of the retired players instead. |
 | `/whois <tier> <spaces>` | Who is at that place in a tier, counted from the left, from 1. |
-| `/clear [tier]` | Clears a tier, or the whole list. Asks first. |
+| `/clear [tier]` | Clears a tier, or the whole list. Keeps retired players. Asks first. |
 
 **Adding a grader:** edit `/opt/doorsmp/graders.json`, then `systemctl restart doorsmp-backend`. The
 restart is required — the list is read at startup on purpose, so granting the ability to grade takes
