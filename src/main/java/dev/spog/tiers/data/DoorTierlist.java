@@ -123,6 +123,48 @@ public final class DoorTierlist {
 		return out;
 	}
 
+	/**
+	 * The graded player recorded under a name, or null if nobody was.
+	 *
+	 * <p>Blocking, unlike {@link #snapshot}: the caller is a command that has
+	 * already failed to resolve the name through Mojang and is off the render
+	 * thread, so it can afford to wait for a roster rather than miss on a cold
+	 * cache. A held roster is used as it stands.
+	 *
+	 * <p>This is the one name we have that Mojang may no longer honour. The
+	 * roster records what each player was called when they were graded, so a
+	 * player who has renamed since is still listed under the old name.
+	 *
+	 * <p>Searches the retired list too: a retired player is the likeliest to
+	 * have renamed since, being the least recently graded.
+	 */
+	public static Player byName(String name) {
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+		Snapshot snapshot = cached;
+		if (snapshot == null) {
+			// Waited for rather than requested: request() returns at once and
+			// leaves nothing to search, which would report every name unknown
+			// whenever this is the first thing to ask for a roster.
+			fetchNow();
+			snapshot = cached;
+		}
+		if (snapshot == null) {
+			return null;
+		}
+		for (boolean retired : new boolean[] {false, true}) {
+			for (Row row : snapshot.rows(retired)) {
+				for (Player player : row.players()) {
+					if (player.name().equalsIgnoreCase(name)) {
+						return player;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
 	/** Whether the last attempt failed, so a screen can say so. */
 	public static boolean failed() {
 		return failed && cached == null;
@@ -140,10 +182,48 @@ public final class DoorTierlist {
 		if (!stale || !FETCHING.compareAndSet(false, true)) {
 			return;
 		}
-		CompletableFuture.runAsync(DoorTierlist::fetch);
+		CompletableFuture.runAsync(() -> {
+			try {
+				fetchInto();
+			} finally {
+				// Always cleared, or one failure would wedge the roster as
+				// un-fetchable for the rest of the session.
+				FETCHING.set(false);
+			}
+		});
 	}
 
-	private static void fetch() {
+	/**
+	 * Fetches now and waits, for a caller that needs a roster in hand.
+	 *
+	 * <p>Takes the same in-flight flag as {@link #request}, so this and a
+	 * background fetch cannot both be in the request at once. When one is
+	 * already running this waits for it rather than starting a second: the
+	 * answer it would produce is the one already on its way.
+	 */
+	private static void fetchNow() {
+		if (FETCHING.compareAndSet(false, true)) {
+			try {
+				fetchInto();
+			} finally {
+				FETCHING.set(false);
+			}
+			return;
+		}
+		// Someone else is fetching. Give them a moment to land, then use
+		// whatever they left -- a miss here only means no fallback, which is
+		// the same as the option being off.
+		for (int i = 0; i < 20 && cached == null && FETCHING.get(); i++) {
+			try {
+				Thread.sleep(50L);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
+			}
+		}
+	}
+
+	private static void fetchInto() {
 		try {
 			HttpRequest request = HttpRequest.newBuilder(URI.create(ENDPOINT))
 					.header("Accept", "application/json")
@@ -166,11 +246,10 @@ public final class DoorTierlist {
 		} catch (Exception e) {
 			SpogTiers.LOGGER.debug("Tierlist lookup failed", e);
 			failed = true;
-		} finally {
-			// Always cleared, or one failure would wedge the roster as
-			// un-fetchable for the rest of the session.
-			FETCHING.set(false);
 		}
+		// The in-flight flag belongs to whoever took it, and both callers
+		// clear it in their own finally: clearing it here as well would
+		// release it before the caller was done and let a second fetch in.
 	}
 
 	/**
