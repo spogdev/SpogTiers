@@ -34,6 +34,37 @@ public final class TierAura {
 	 */
 	private static final float STREAK = 6.0f;
 
+	/**
+	 * How much of the box's height the embers fade out over, at the top.
+	 *
+	 * <p>In the world an ember just keeps going: it rises past the head,
+	 * thins as it cools and leaves the view with nothing to stop it. A panel
+	 * has an edge, and above the model sits the player's name and tags, so
+	 * the aura has to end somewhere -- clipped, it ended on a hard line just
+	 * above the head, which reads as the effect being cut off rather than
+	 * burning out.
+	 *
+	 * <p>A fifth of the box, which is a little more than the {@code 0.18} of
+	 * it that {@code up()} spends above the head: the ramp therefore starts
+	 * before a mote reaches the top of the model and is complete by the time
+	 * it would have left the box, so nothing is ever clipped mid-streak.
+	 */
+	private static final float FADE_TOP = 0.2f;
+
+	/**
+	 * How far above the box a clip has to reach to not cut a visible ember.
+	 *
+	 * <p>A streak is drawn centred on its position, so its lower half hangs
+	 * below the point the fade is measured at: a mote can still be faintly
+	 * lit while the bottom of its sprite is past the top of the box. Half the
+	 * longest streak is as far as that can reach.
+	 *
+	 * <p>Callers that clip the aura add this to the top of their scissor, so
+	 * the fade is what ends the ember and the clip only ever removes pixels
+	 * that are already transparent.
+	 */
+	public static final int TOP_BLEED = (int) Math.ceil(MAX_SIZE * STREAK / 2.0);
+
 	private final WorldAura aura = new WorldAura();
 
 	private float elapsed;
@@ -71,12 +102,39 @@ public final class TierAura {
 				continue;
 			}
 
+			float fade = topFade(aura.up(i, elapsed));
+			if (fade <= 0.0f) {
+				continue;
+			}
+
 			float life = aura.life(i, elapsed);
 			int s = MIN_SIZE + Math.round(aura.size(i, elapsed) * (MAX_SIZE - MIN_SIZE));
 
 			streak(graphics, i, elapsed, left, top, width, height, s,
-					TrialSparks.colour(rgb, life, aura.alpha(i, elapsed)));
+					TrialSparks.colour(rgb, life, aura.alpha(i, elapsed) * fade));
 		}
+	}
+
+	/**
+	 * How much of an ember survives, by how near the top of the box it is.
+	 *
+	 * <p>1 over most of the rise, easing to 0 across the top {@link #FADE_TOP}
+	 * of the box. Squared, so the ember holds its brightness for most of the
+	 * band and then goes quickly: a straight ramp reads as a dimmer being
+	 * turned down, where this reads as burning out.
+	 *
+	 * @param up the mote's height, 0 at the bottom of the box and 1 at the top
+	 */
+	private static float topFade(float up) {
+		float from = 1.0f - FADE_TOP;
+		if (up <= from) {
+			return 1.0f;
+		}
+		if (up >= 1.0f) {
+			return 0.0f;
+		}
+		float left = (1.0f - up) / FADE_TOP;
+		return left * left;
 	}
 
 	/**

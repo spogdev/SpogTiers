@@ -81,8 +81,15 @@ public class ProfileScreen extends Screen {
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
 
-	/** The gap under the name row, before the model starts. */
-	private static final int HEADER_GAP = 12;
+	/**
+	 * The gap under the name row, before the model starts.
+	 *
+	 * <p>Also the room the aura's fade-out is given above the model: the
+	 * embers are clipped {@link TierAura#TOP_BLEED} above it so they burn out
+	 * rather than meeting an edge, and that band lands in this gap. Shrinking
+	 * this below the bleed would put the last faint embers over the name.
+	 */
+	private static final int HEADER_GAP = Math.max(12, TierAura.TOP_BLEED);
 
 	/**
 	 * How far below the face row the Discord line sits.
@@ -570,7 +577,13 @@ public class ProfileScreen extends Screen {
 			// player. The row asked for embers behind it, and an unclipped
 			// front layer would scatter them across the faces as well --
 			// which reads as dirt on the tiles rather than an aura under them.
-			graphics.enableScissor(MARGIN, skinWidget.getY(),
+			//
+			// The top reaches a streak's length above the model: the aura
+			// fades out over the top of its box, and the clip has to sit
+			// clear of that so what ends an ember is the fade and not an
+			// edge. Without the bleed the last faintly lit streaks were cut
+			// in half on a line just above the head.
+			graphics.enableScissor(MARGIN, skinWidget.getY() - TierAura.TOP_BLEED,
 					MARGIN + profileWidth(),
 					skinWidget.getY() + skinWidget.getHeight());
 			aura.draw(graphics, SpogTiersClient.service().grade(target),
@@ -813,7 +826,9 @@ public class ProfileScreen extends Screen {
 			// Clipped to the model's own band, because the box now reaches
 			// past it: the band below belongs to drawTileAura, and without
 			// this both would paint the same motes there at double strength.
-			graphics.enableScissor(MARGIN, skinWidget.getY(),
+			// The top carries the same bleed as the front layer, so both end
+			// on the fade rather than on an edge.
+			graphics.enableScissor(MARGIN, skinWidget.getY() - TierAura.TOP_BLEED,
 					MARGIN + profileWidth(),
 					skinWidget.getY() + skinWidget.getHeight());
 			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
