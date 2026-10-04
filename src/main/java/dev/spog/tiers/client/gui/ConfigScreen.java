@@ -168,10 +168,11 @@ public class ConfigScreen extends Screen {
 			config.tabSortLimit = value;
 			config.save();
 		});
+		// No click() here: mouseClicked plays one for every consumed dropdown
+		// click, so sounding it on pick as well played it twice.
 		sortOrder = new Dropdown<>(value -> {
 			config.sortOrder = value;
 			config.save();
-			click();
 		});
 		regionSlot = new Dropdown<>(value -> {
 			config.regionSlot = value;
@@ -886,6 +887,7 @@ public class ConfigScreen extends Screen {
 						|| tabSecondary.click(textRenderer, event.x(), event.y())
 						|| (config().tabSortLimited
 								&& tabLimit.click(textRenderer, event.x(), event.y())))) {
+			click();
 			return true;
 		}
 		if (active == Tab.GENERAL && sortOrder.click(textRenderer, event.x(), event.y())) {
@@ -893,8 +895,12 @@ public class ConfigScreen extends Screen {
 			return true;
 		}
 		if (active == Tab.NAMETAG) {
+			// Open lists get first refusal, so a click inside one is not taken
+			// by whatever it happens to overlap. This is the branch a pick
+			// goes through, so it sounds like the rest of them.
 			for (Dropdown<?> dropdown : dropdowns()) {
 				if (dropdown.isOpen() && dropdown.click(textRenderer, event.x(), event.y())) {
+					click();
 					return true;
 				}
 			}
