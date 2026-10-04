@@ -294,9 +294,16 @@ public class TagLayout {
 	/**
 	 * Moves an element to the row above or below, at the end of it.
 	 *
+	 * <p>Refuses to move the name off the middle row, which is where the rest
+	 * of the layout measures it from: see {@link #name()} and the centring in
+	 * the editor's preview.
+	 *
 	 * @return true if it moved
 	 */
 	public boolean reRow(Element element, boolean down) {
+		if (element.kind == Kind.NAME) {
+			return false;
+		}
 		Row[] rows = Row.values();
 		int at = element.row.ordinal() + (down ? 1 : -1);
 		if (at < 0 || at >= rows.length) {
@@ -350,6 +357,14 @@ public class TagLayout {
 				elements.remove(i);
 			}
 			seen = true;
+		}
+		// On the middle row, wherever it says it is. The editor will not put
+		// it elsewhere, but a layout code from another build or a hand-edited
+		// file can, and the rest of the layout measures the name from that
+		// row -- centring on it reads the middle row alone.
+		Element named = name();
+		if (named != null) {
+			named.row = Row.MIDDLE;
 		}
 	}
 }
