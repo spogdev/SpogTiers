@@ -318,14 +318,13 @@ public final class TagEditor {
 	public TagEditor(Font font, Runnable onChange) {
 		this.font = font;
 		this.onChange = onChange;
-		// Picking a kind clicks like every other control: the dropdown itself
-		// is silent, and the screen only sounds the ones it routes.
+		// The dropdowns themselves are silent: ConfigScreen sounds every
+		// dropdown click it routes, so sounding a pick here as well played
+		// the click twice.
 		this.creator = new Dropdown<>(value -> {
 			creating = value;
-			click();
 		});
 		this.tierList = new Dropdown<>(value -> {
-			click();
 			if (selected != null) {
 				selected.doorSmp = value.door();
 				selected.list(value.list());
@@ -345,19 +344,11 @@ public final class TagEditor {
 			config.save();
 		});
 		this.tierMode = new Dropdown<>(value -> {
-			click();
 			if (selected != null) {
 				selected.gamemode = value;
 				changed();
 			}
 		});
-	}
-
-	/** Vanilla's UI click, so the editor sounds like the rest of the game. */
-	private static void click() {
-		Minecraft.getInstance().getSoundManager().play(
-				net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(
-						net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0f));
 	}
 
 	/** Takes a fresh working copy. Call when the tab is opened. */
