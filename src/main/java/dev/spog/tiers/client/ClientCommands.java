@@ -14,6 +14,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import dev.spog.tiers.SpogTiers;
+import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.gui.ProfileScreen;
 import dev.spog.tiers.client.gui.TierlistScreen;
 import dev.spog.tiers.data.DoorTierlist;
@@ -193,7 +194,10 @@ public final class ClientCommands {
 
 		feedback(Component.literal("Looking up " + name + "...").withStyle(ChatFormatting.GRAY));
 		CompletableFuture
-				.supplyAsync(() -> resolveProfile(name))
+				.supplyAsync(() -> {
+					GameProfile resolved = resolveProfile(name);
+					return resolved != null ? resolved : formerHolder(name);
+				})
 				.thenAcceptAsync(profile -> {
 					if (profile == null) {
 						feedback(Component.literal("No such player: " + name)
@@ -202,6 +206,85 @@ public final class ClientCommands {
 					}
 					client.gui.setScreen(new ProfileScreen(profile));
 				}, client);
+	}
+
+	/**
+	 * The graded player who used to hold an unclaimed name, or null.
+	 *
+	 * <p>Only reached once Mojang has said no account answers to the name, so
+	 * there is nobody for it to be confused with. The roster records the name
+	 * each player was graded under, which is the one name we hold that Mojang
+	 * may have let go.
+	 *
+	 * <p>Blocking, and called from the lookup worker rather than the render
+	 * thread. Off unless asked for: see {@code oldNameSearching}.
+	 */
+	private static GameProfile formerHolder(String name) {
+		if (!SpogTiersClient.config().oldNameSearching) {
+			return null;
+		}
+		DoorTierlist.Player player = DoorTierlist.byName(name);
+		if (player == null) {
+			return null;
+		}
+
+		// The name the account answers to now. Asked for explicitly because
+		// texturedProfile labels the profile with whatever name it is handed,
+		// so passing the old one through would head the screen with a name
+		// that no longer exists -- and make the notice below say that the
+		// player is now themselves.
+		String current = currentName(player.uuid());
+		String label = current == null ? player.name() : current;
+
+		// Textured, so the model is the player's own rather than a default
+		// skin: a profile built from an id and a name alone carries none.
+		GameProfile textured = texturedProfile(player.uuid(), label);
+		GameProfile profile = textured != null
+				? textured
+				: new GameProfile(player.uuid(), label);
+
+		// Says whose profile this is before it opens: it is headed by the new
+		// name, so without this the answer to "/tiers oldname" is a
+		// stranger's name with no reason given.
+		if (current == null || current.equalsIgnoreCase(name)) {
+			feedback(Component.literal("Showing " + label)
+					.withStyle(ChatFormatting.GRAY));
+		} else {
+			feedback(Component.literal(name + " is now ")
+					.withStyle(ChatFormatting.GRAY)
+					.append(Component.literal(current).withStyle(ChatFormatting.WHITE)));
+		}
+		return profile;
+	}
+
+	/**
+	 * The name an account answers to now, or null if it could not be read.
+	 *
+	 * <p>The session server is the only direction still open: Mojang removed
+	 * the name-history endpoint, but id to current name still works, and that
+	 * is what turns a recorded old name into the player it belonged to.
+	 */
+	private static String currentName(UUID id) {
+		try {
+			HttpRequest request = HttpRequest.newBuilder(URI.create(
+							MOJANG_SESSION + id.toString().replace("-", "")))
+					.header("Accept", "application/json")
+					.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+					.timeout(Duration.ofSeconds(10))
+					.GET()
+					.build();
+			HttpResponse<String> response =
+					HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() != 200 || response.body().isBlank()) {
+				return null;
+			}
+			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+			String found = optString(root, "name");
+			return found.isEmpty() ? null : found;
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Current-name lookup failed for {}", id, e);
+			return null;
+		}
 	}
 
 	/** Matches a name against the tab list, case-insensitively. */

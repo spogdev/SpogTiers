@@ -567,6 +567,14 @@ public class ConfigScreen extends Screen {
 				"Offer the copy-as-image button on a profile; Close takes its "
 						+ "place when it is off");
 
+		y = drawSwitch(graphics, "Old Name Searching", config.oldNameSearching, x, y,
+				() -> {
+					config.oldNameSearching = !config.oldNameSearching;
+					config.save();
+				},
+				"When a looked-up name belongs to nobody, open the tierlist "
+						+ "player who was graded under it");
+
 		return y + CARD_PADDING - top;
 	}
 
