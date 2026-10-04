@@ -237,6 +237,23 @@ public class SpogTiersConfig {
 	public boolean showPlacements = true;
 
 	/**
+	 * Fall back to the tierlist roster when a looked-up name is unclaimed.
+	 *
+	 * <p>{@code /tiers <name>} resolves through Mojang, so a player who has
+	 * since renamed is unreachable by the name everyone knows them by: the
+	 * account still exists, but nothing answers to the old name. The roster
+	 * records the name each player was graded under, so it can say who that
+	 * was -- which is the one place we hold a name that Mojang has let go.
+	 *
+	 * <p>Off by default. It is a guess, however well founded: the name is
+	 * free, so somebody else may hold it by the time it is typed, and silently
+	 * opening a profile for a different account than the one asked for is
+	 * worse than saying the name is unknown. Someone who looks up graded
+	 * players by their old names can ask for it.
+	 */
+	public boolean oldNameSearching = false;
+
+	/**
 	 * Our own Door SMP tierlist: the badge beside the region tag and the embers
 	 * around the model.
 	 *
