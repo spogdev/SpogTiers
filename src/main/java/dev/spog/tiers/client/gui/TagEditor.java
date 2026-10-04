@@ -1010,7 +1010,11 @@ public final class TagEditor {
 
 		boolean over = dragging != null && dragMoved
 				&& mouseY >= y && mouseY < y + PREVIEW_ROW
-				&& mouseX >= left && mouseX < right;
+				&& mouseX >= left && mouseX < right
+				// No caret on a row the element cannot land on, so the name
+				// shows no drop target over the outer rows. A caret there
+				// would promise a move that release refuses.
+				&& canHold(row, dragging);
 
 		if (elements.isEmpty()) {
 			return;
@@ -1526,6 +1530,19 @@ public final class TagEditor {
 			return true;
 		}
 
+		// The name stays on the middle row, and a drop that would take it off
+		// is refused the same way a drop outside the plate is: the element
+		// goes back where it was rather than moving somewhere it cannot be.
+		//
+		// Its row is an invariant, not a preference. Centre on name measures
+		// what sits either side of the name along the middle row, so a name
+		// on an outer row leaves it centring on nothing, and the outer rows
+		// are drawn offset from the middle one -- a name among them would be
+		// shifted by a measurement taken of itself.
+		if (!canHold(target, moved)) {
+			return true;
+		}
+
 		// Placed by where it was dropped along the row rather than appended,
 		// counted the same way the caret is positioned so the element lands
 		// where the mark said it would.
@@ -1545,6 +1562,16 @@ public final class TagEditor {
 		insertAt(moved, target, at);
 		changed();
 		return true;
+	}
+
+	/**
+	 * Whether a row may hold an element.
+	 *
+	 * <p>Asked by both the caret and the drop, so what the preview offers and
+	 * what a release accepts cannot drift apart.
+	 */
+	private static boolean canHold(TagLayout.Row row, TagLayout.Element element) {
+		return element.kind != TagLayout.Kind.NAME || row == TagLayout.Row.MIDDLE;
 	}
 
 	/** Puts an element at a place along its row, in the backing list. */
