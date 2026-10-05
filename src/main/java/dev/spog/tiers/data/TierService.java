@@ -10,11 +10,18 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.AbstractClientPlayer;
 
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
+import java.nio.channels.UnresolvedAddressException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+
+import javax.net.ssl.SSLException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -119,6 +126,15 @@ public class TierService {
 	private final HttpClient http;
 	/** How long each list took to answer its last lookup, in milliseconds. */
 	private final Map<TierList, Integer> responseMillis = new ConcurrentHashMap<>();
+
+	/**
+	 * Lists we have already complained about being unreachable.
+	 *
+	 * <p>So a dead endpoint is said once at WARN rather than once per player.
+	 * A tab-list sweep would otherwise print a page of identical lines, which
+	 * is how a genuinely useful message gets turned off.
+	 */
+	private final Set<TierList> reportedDown = ConcurrentHashMap.newKeySet();
 
 	/** UUID to name, for the lists that can only be searched by name. */
 	private final Map<UUID, String> names = new ConcurrentHashMap<>();
@@ -624,13 +640,30 @@ public class TierService {
 				// Timed around the whole fetch, so it reflects what the user
 				// actually waited for rather than the socket alone.
 				responseMillis.put(list, (int) ((System.nanoTime() - startedAt) / 1_000_000L));
+				// Answered, so a later outage is worth reporting again.
+				reportedDown.remove(list);
 				if (result != null) {
 					cache.put(uuid, list, result);
 					any = true;
 				}
 			} catch (Exception e) {
 				responseMillis.remove(list);
-				SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
+				// A host that does not resolve or refuses the connection is the
+				// list being down, not this player being absent from it. Said
+				// at WARN, because the alternative is what actually happened
+				// with mctiers.com: the domain was suspended, every lookup
+				// threw, the throw was logged at DEBUG, and in game the list
+				// simply showed nothing with no way to tell why.
+				if (unreachable(e)) {
+					if (reportedDown.add(list)) {
+						SpogTiers.LOGGER.warn(
+								"{} is unreachable ({}); its tiers will be missing"
+										+ " until it comes back",
+								list.key(), rootCause(e).toString());
+					}
+				} else {
+					SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
+				}
 			}
 		}
 		if (any) {
@@ -638,6 +671,45 @@ public class TierService {
 		} else {
 			cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
 		}
+	}
+
+	/**
+	 * Whether a failure means the service could not be reached at all.
+	 *
+	 * <p>As opposed to it answering something we could not use, which is a
+	 * per-player problem and belongs at DEBUG. Judged on the exception type
+	 * rather than on a message, so it does not depend on wording.
+	 *
+	 * <p>{@link UnresolvedAddressException} is listed because a name that
+	 * does not resolve does not necessarily arrive as
+	 * {@link UnknownHostException}: the HTTP client wraps it as a
+	 * {@code ConnectException} caused by an unresolved address, which is what
+	 * a suspended domain actually threw when this was measured. Both are
+	 * named so the check does not rest on which one a given JDK picks.
+	 */
+	private static boolean unreachable(Throwable error) {
+		for (Throwable at = error; at != null; at = at.getCause()) {
+			if (at instanceof UnknownHostException || at instanceof ConnectException
+					|| at instanceof NoRouteToHostException
+					|| at instanceof UnresolvedAddressException
+					|| at instanceof HttpTimeoutException
+					|| at instanceof SSLException) {
+				return true;
+			}
+			if (at.getCause() == at) {
+				break;
+			}
+		}
+		return false;
+	}
+
+	/** The innermost cause, which is the one that says what went wrong. */
+	private static Throwable rootCause(Throwable error) {
+		Throwable at = error;
+		while (at.getCause() != null && at.getCause() != at) {
+			at = at.getCause();
+		}
+		return at;
 	}
 
 	private PlayerTiers fetchOne(TierList list, UUID uuid) throws Exception {
