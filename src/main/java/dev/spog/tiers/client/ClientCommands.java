@@ -18,6 +18,7 @@ import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.gui.ProfileScreen;
 import dev.spog.tiers.client.gui.TierlistScreen;
 import dev.spog.tiers.data.DoorTierlist;
+import dev.spog.tiers.data.NameIndex;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
@@ -222,9 +223,21 @@ public final class ClientCommands {
 		if (!SpogTiersClient.config().oldNameSearching) {
 			return null;
 		}
-		DoorTierlist.Player player = DoorTierlist.byName(name);
-		if (player == null) {
-			return null;
+
+		// Any player the mod has come across, not just a graded one: the
+		// index records everyone seen in a tab list or opened as a profile,
+		// along with every past name their history named.
+		UUID id = NameIndex.find(name);
+		if (id == null) {
+			// Falls back to the tierlist roster, which carries the name each
+			// player was graded under. That is a name recorded by our own
+			// backend, so it can be one the index never saw -- a player
+			// graded before this installation ever met them.
+			DoorTierlist.Player player = DoorTierlist.byName(name);
+			if (player == null) {
+				return null;
+			}
+			id = player.uuid();
 		}
 
 		// The name the account answers to now. Asked for explicitly because
@@ -232,15 +245,15 @@ public final class ClientCommands {
 		// so passing the old one through would head the screen with a name
 		// that no longer exists -- and make the notice below say that the
 		// player is now themselves.
-		String current = currentName(player.uuid());
-		String label = current == null ? player.name() : current;
+		String current = currentName(id);
+		String label = current == null ? name : current;
 
 		// Textured, so the model is the player's own rather than a default
 		// skin: a profile built from an id and a name alone carries none.
-		GameProfile textured = texturedProfile(player.uuid(), label);
+		GameProfile textured = texturedProfile(id, label);
 		GameProfile profile = textured != null
 				? textured
-				: new GameProfile(player.uuid(), label);
+				: new GameProfile(id, label);
 
 		// Says whose profile this is before it opens: it is headed by the new
 		// name, so without this the answer to "/tiers oldname" is a
