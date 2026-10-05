@@ -551,15 +551,7 @@ public class TierService {
 
 		for (PlayerListEntry entry : client.getNetworkHandler().getPlayerList()) {
 			UUID uuid = entry.getProfile().id();
-			if (uuid == null) {
-				continue;
-			}
-			// Recorded for everyone listed, not just those needing a lookup:
-			// this is how the name index learns the players on a server, and
-			// a player whose tiers are already cached is exactly the one most
-			// likely to be looked up by an old name later.
-			NameIndex.record(entry.getProfile().name(), uuid);
-			if (cache.needsLookup(uuid) && !queue.contains(uuid)) {
+			if (uuid != null && cache.needsLookup(uuid) && !queue.contains(uuid)) {
 				queue.add(uuid);
 			}
 		}
@@ -745,7 +737,6 @@ public class TierService {
 		String online = onlineName(uuid);
 		if (online != null) {
 			names.put(uuid, online);
-			NameIndex.record(online, uuid);
 			return online;
 		}
 
@@ -766,7 +757,6 @@ public class TierService {
 			String name = string(root, "name");
 			if (!name.isEmpty()) {
 				names.put(uuid, name);
-				NameIndex.record(name, uuid);
 			}
 			return name;
 		} catch (Exception e) {
@@ -1203,12 +1193,7 @@ public class TierService {
 		}
 		workers.submit(() -> {
 			try {
-				NameHistory fetched = fetchNameHistory(uuid);
-				nameHistory.put(uuid, fetched);
-				// Every name they ever held, which is what makes an old name
-				// findable at all -- the rest of the index only ever learns
-				// the name a player answers to now.
-				NameIndex.record(fetched, uuid);
+				nameHistory.put(uuid, fetchNameHistory(uuid));
 			} catch (Exception e) {
 				SpogTiers.LOGGER.debug("Name history failed for {}", uuid, e);
 				// Cache the failure too, so the screen settles on "no history"
