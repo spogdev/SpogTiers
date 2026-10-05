@@ -106,6 +106,7 @@ truncated file behind.
 | `/assign <player> <tier>` | graders | Assigns a tier, or removes it with the **None** choice |
 | `/retire <player>` | graders | Toggles retirement; a retired player keeps their tier as R&lt;tier&gt; but leaves the rendered list |
 | `/bump <player> <places>` | graders | Moves a player within their tier; `1` is up one, `-1` down one |
+| `/swap <first> <second>` | graders | Exchanges two players' places: tier, position in it, and retirement. Works across tiers and across retirement, which a pair of `/assign` calls cannot express |
 | `/tier <player>` | anyone | Embed with the tier, striped in its colour |
 | `/tierlist [tier]` | anyone | The tierlist drawn as an image, one row per tier |
 

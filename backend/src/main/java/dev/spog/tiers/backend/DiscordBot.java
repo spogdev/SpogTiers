@@ -162,6 +162,14 @@ public final class DiscordBot extends ListenerAdapter {
 		OptionData places = new OptionData(OptionType.INTEGER, "places",
 				"Places to move: 1 is up one, -1 is down one", true);
 
+		// Two players for /swap. Separate objects because JDA's builders are
+		// not reusable, and distinct names because an option name must be
+		// unique within a command.
+		OptionData firstPlayer = new OptionData(OptionType.STRING, "first",
+				"The first player's Minecraft username", true);
+		OptionData secondPlayer = new OptionData(OptionType.STRING, "second",
+				"The second player's Minecraft username", true);
+
 		OptionData filter = new OptionData(OptionType.STRING, "grade",
 				"Only show this tier", false);
 		for (Grade value : Grade.values()) {
@@ -217,6 +225,8 @@ public final class DiscordBot extends ListenerAdapter {
 						.addOptions(player, places),
 				Commands.slash("retire", "Toggle retirement of a player")
 						.addOptions(player),
+				Commands.slash("swap", "Swap two players' places, across tiers or retirement")
+						.addOptions(firstPlayer, secondPlayer),
 				Commands.slash("clear", "Remove every player from the tierlist, or from one tier")
 						.addOptions(clearFilter));
 
@@ -237,6 +247,7 @@ public final class DiscordBot extends ListenerAdapter {
 			case "whois" -> whois(event);
 			case "bump" -> bump(event);
 			case "retire" -> retire(event);
+			case "swap" -> swap(event);
 			case "clear" -> clear(event);
 			default -> event.reply("Unknown command.").setEphemeral(true).queue();
 		}
@@ -591,6 +602,80 @@ public final class DiscordBot extends ListenerAdapter {
 	 * {@link #onButtonInteraction}, once the caller has confirmed, so that a
 	 * mistyped command is never destructive on its own.
 	 */
+	/**
+	 * Exchanges two players' places on the tierlist.
+	 *
+	 * <p>Both names are resolved before anything is written, so a typo in the
+	 * second one cannot leave the first already moved.
+	 */
+	private void swap(SlashCommandInteractionEvent event) {
+		if (!authorised(event)) {
+			return;
+		}
+		String firstName = event.getOption("first", "", OptionMapping::getAsString);
+		String secondName = event.getOption("second", "", OptionMapping::getAsString);
+
+		event.deferReply().queue();
+		UUID first = resolve(event, firstName);
+		if (first == null) {
+			return;
+		}
+		UUID second = resolve(event, secondName);
+		if (second == null) {
+			return;
+		}
+
+		// Read before the swap, because afterwards each player holds the
+		// other's place and there is no way to say what changed.
+		GradeStore.Record before = grades.get(first);
+		GradeStore.Record other = grades.get(second);
+
+		GradeStore.SwapRefusal refused = grades.swap(first, second);
+		if (refused != null) {
+			if (refused.same()) {
+				event.getHook().sendMessage("Name two different players to swap")
+						.setEphemeral(true).queue();
+				return;
+			}
+			// Named by the username that was typed, not the stored one: the
+			// missing player has no record to read a name from.
+			String missing = refused.missing().equals(first) ? firstName : secondName;
+			event.getHook().sendMessage("**" + missing + "** is not on the tierlist")
+					.setEphemeral(true).queue();
+			return;
+		}
+
+		String firstShown = before.name().isEmpty() ? firstName : before.name();
+		String secondShown = other.name().isEmpty() ? secondName : other.name();
+
+		LOG.info("{} swapped {} ({}{}) with {} ({}{})", event.getUser().getName(),
+				firstShown, before.grade().label(), before.retired() ? " retired" : "",
+				secondShown, other.grade().label(), other.retired() ? " retired" : "");
+
+		// Each player's new place spelled out rather than "swapped them":
+		// across tiers or retirement the interesting part is where each one
+		// ended up, and a swap within one tier still reads correctly.
+		event.getHook().sendMessageEmbeds(new EmbedBuilder()
+				.setDescription("Swapped **" + firstShown + "** and **" + secondShown
+						+ "**\n**" + firstShown + "** is now " + place(other)
+						+ "\n**" + secondShown + "** is now " + place(before))
+				.setColor(new Color(other.grade().color()))
+				.build()).queue();
+	}
+
+	/**
+	 * How a place reads in a sentence, naming retirement when it applies.
+	 *
+	 * <p>Retirement is part of where a player sits, so a swap that moves
+	 * someone onto or off the drawn list has to say so -- otherwise the reply
+	 * claims two players exchanged tiers and leaves out the larger half of
+	 * what happened.
+	 */
+	private static String place(GradeStore.Record record) {
+		return (record.retired() ? "**Retired " : "**")
+				+ record.grade().label() + "**";
+	}
+
 	private void clear(SlashCommandInteractionEvent event) {
 		if (!authorised(event)) {
 			return;

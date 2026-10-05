@@ -303,6 +303,74 @@ public final class GradeStore {
 	}
 
 	/**
+	 * What {@link #swap} answers when it cannot exchange two players.
+	 *
+	 * <p>A record rather than a boolean, so the caller can say which of the
+	 * two was the problem instead of a flat "that did not work".
+	 *
+	 * @param missing the player who holds no grade, or null if both do
+	 * @param same    true when the same player was named twice
+	 */
+	public record SwapRefusal(UUID missing, boolean same) {
+	}
+
+	/**
+	 * Exchange two players' places on the tierlist.
+	 *
+	 * <p>Everything that decides where a player is drawn moves: the tier, the
+	 * position within it, and whether they are retired. So a swap works across
+	 * tiers -- the S player lands in B and the B player in S -- and across
+	 * retirement, which is the case a pair of /assign calls cannot express: it
+	 * takes the retired player back onto the drawn list and sends the active
+	 * one off it, in one step, each into the other's exact spot.
+	 *
+	 * <p>What does not move is who they are and what has been recorded about
+	 * them. The name, the grader and the timestamp stay with each player,
+	 * because those are facts about that person's grading and not about the
+	 * place they occupy. A swap is two players changing seats, not two
+	 * histories changing owners.
+	 *
+	 * <p>Positions are taken verbatim rather than renumbered. The two orders
+	 * are exchanged exactly as they stand, so neither tier's other members
+	 * shift: every player keeps the neighbours they had except for the two who
+	 * asked to trade.
+	 *
+	 * @return null on success, or a {@link SwapRefusal} saying why not
+	 */
+	public SwapRefusal swap(UUID first, UUID second) {
+		if (first == null || second == null) {
+			return new SwapRefusal(first == null ? second : first, false);
+		}
+		if (first.equals(second)) {
+			return new SwapRefusal(null, true);
+		}
+		lock.writeLock().lock();
+		try {
+			Record a = grades.get(first);
+			if (a == null) {
+				return new SwapRefusal(first, false);
+			}
+			Record b = grades.get(second);
+			if (b == null) {
+				return new SwapRefusal(second, false);
+			}
+
+			// Each player rebuilt with the other's place and their own
+			// identity. Written through put() on the existing keys, so the
+			// map's iteration order is untouched and the file does not
+			// reshuffle on every swap.
+			grades.put(first, new Record(a.uuid(), a.name(), b.grade(), a.gradedBy(),
+					a.gradedByDiscordId(), a.gradedAt(), b.order(), b.retired()));
+			grades.put(second, new Record(b.uuid(), b.name(), a.grade(), b.gradedBy(),
+					b.gradedByDiscordId(), b.gradedAt(), a.order(), a.retired()));
+		} finally {
+			lock.writeLock().unlock();
+		}
+		save();
+		return null;
+	}
+
+	/**
 	 * Mark a player retired, or bring them back.
 	 *
 	 * <p>A retired player keeps their tier and can still be looked up, but drops
