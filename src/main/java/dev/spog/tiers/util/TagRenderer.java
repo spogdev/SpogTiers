@@ -179,7 +179,12 @@ public final class TagRenderer {
 		// One set across both sides, so a tier shown on the left is not
 		// repeated on the right: resolve() adds to it as it goes, which is
 		// what carries the suppression from one side to the other.
-		Set<String> shown = new LinkedHashSet<>();
+		//
+		// Null when the setting is off, as on the nametag: an accumulating
+		// set dedupes whatever the setting says, and chat should not quietly
+		// differ from the tag above the player's head.
+		Set<String> shown = SpogTiersClient.config().preventDuplicateTiers
+				? new LinkedHashSet<>() : null;
 		Component head = sideOf(uuid, before, shown, true);
 		Component tail = sideOf(uuid, after, shown, false);
 		if (head == null && tail == null) {
@@ -255,12 +260,13 @@ public final class TagRenderer {
 		if (config == null || !config.enabled) {
 			return null;
 		}
-		Set<String> shown = new LinkedHashSet<>();
+		// No exclusion: this returns the first element that resolves, so
+		// there is never an earlier tier for it to be a duplicate of.
 		for (TagLayout.Element element : config.tagLayout.elements) {
 			if (element.kind != TagLayout.Kind.TIER) {
 				continue;
 			}
-			Resolved tier = resolveTier(uuid, element, shown);
+			Resolved tier = resolveTier(uuid, element, null);
 			if (tier != null) {
 				return tier.text();
 			}
@@ -348,8 +354,12 @@ public final class TagRenderer {
 	private static List<Component> rowPieces(UUID uuid, TagLayout.Row row, Component name) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		TagLayout layout = config.tagLayout;
+		// Null, not empty, when the setting is off. An empty set still
+		// accumulates as the row is built, and every element now consults it,
+		// so an empty one would dedupe anyway -- which is the setting doing
+		// the opposite of what it says.
 		Set<String> shown = config.preventDuplicateTiers
-				? labelsBefore(uuid, row) : new LinkedHashSet<>();
+				? labelsBefore(uuid, row) : null;
 		List<TagLayout.Element> wanted = new ArrayList<>();
 		for (TagLayout.Element element : layout.elements) {
 			if (element.row == row) {
@@ -378,7 +388,9 @@ public final class TagRenderer {
 					if (tier == null) {
 						yield null;
 					}
-					shown.add(tier.label());
+					if (shown != null) {
+						shown.add(tier.label());
+					}
 					yield tier.text();
 				}
 			};
@@ -446,6 +458,12 @@ public final class TagRenderer {
 	 * nothing, so a graded player shows their grade even when no other list
 	 * ranks them.
 	 */
+	/**
+	 * One tier element, or null when it resolves to nothing.
+	 *
+	 * @param exclude labels already drawn, or null when Prevent Duplicates is
+	 *     off and a repeat is allowed to stand
+	 */
 	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
 			Set<String> exclude) {
 		// Our own list is asked for by name now, rather than standing in for a
@@ -463,13 +481,21 @@ public final class TagRenderer {
 
 		SpogTiersConfig.TagSlot slot =
 				new SpogTiersConfig.TagSlot(true, element.list(), element.gamemode);
-		// Only an element with a Best somewhere in it can honour an exclusion:
-		// it has other lists or other modes to fall back on. One pinned to a
-		// list and a mode has exactly one answer, and suppressing it would
-		// leave a hole rather than a different tier.
-		Set<String> applies = element.list() == null || element.gamemode == null
-				? exclude : Set.of();
-		return resolve(uuid, slot, applies);
+		// Every element honours the exclusion, pinned or not.
+		//
+		// A Best element answers it by looking further -- it has other lists
+		// or other modes to fall back on -- while a pinned one has a single
+		// answer and so drops out instead. That used to be the argument for
+		// exempting pinned elements altogether: suppressing one leaves a gap
+		// rather than a different tier.
+		//
+		// But a gap is the point. The exclusion only holds labels already
+		// drawn, so the element being dropped is the second copy of something
+		// on screen, not the only sighting of it: two elements pinned to the
+		// same gamemode on lists that agree -- Diamond SMP on PVPHQ and on
+		// SubTiers, both HT2 -- drew HT2 twice with Prevent Duplicates on,
+		// which is the whole thing it is meant to stop.
+		return resolve(uuid, slot, exclude == null ? Set.of() : exclude);
 	}
 
 
