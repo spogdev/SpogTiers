@@ -141,6 +141,15 @@ public class SpogTiersConfig {
 	public boolean showParticles = true;
 
 	/**
+	 * Which palette the HT/MT/LT tier colours are drawn from.
+	 *
+	 * <p>Only the colours. The tier a player holds comes from whichever list
+	 * supplied it, so switching this restyles what is already on screen rather
+	 * than changing what is shown.
+	 */
+	public TierPalette tierPalette = TierPalette.MCTIERS;
+
+	/**
 	 * Show a player's peak tier beside their current one in their profile.
 	 *
 	 * <p>Drawn struck through, as the tier they used to hold. Off leaves only
@@ -442,6 +451,33 @@ public class SpogTiersConfig {
 		}
 	}
 
+	/**
+	 * A source of HT/MT/LT colours.
+	 *
+	 * <p>Each entry names a tierlist whose palette people already recognise,
+	 * and is applied to every list the mod shows rather than only to that one:
+	 * the point is that a tier code reads the same everywhere, which is also
+	 * why the colours do not come from the list that served the tier.
+	 */
+	public enum TierPalette {
+		/** The mod's own shades, taken from mctiers.com's foreground variables. */
+		MCTIERS("MCTiers"),
+		/** pvptiers.com's badge colours. */
+		PVPTIERS("PvPTiers"),
+		/** The colours PVPHQ hands back with each ranking. */
+		PVPHQ("PVPHQ");
+
+		private final String title;
+
+		TierPalette(String title) {
+			this.title = title;
+		}
+
+		public String title() {
+			return title;
+		}
+	}
+
 	public enum SortOrder {
 		/** Whatever order the provider sent, which is its own default. */
 		DEFAULT("Received"),
@@ -627,6 +663,9 @@ public class SpogTiersConfig {
 		}
 		if (sortOrder == null) {
 			sortOrder = SortOrder.RANKING;
+		}
+		if (tierPalette == null) {
+			tierPalette = TierPalette.MCTIERS;
 		}
 		if (tabPrimarySort == null) {
 			tabPrimarySort = TabSort.SERVER;
