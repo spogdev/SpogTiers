@@ -44,10 +44,13 @@ public class ConfigScreen extends Screen {
 	private static final int SLIDER_OFF = 0xFFC1443C;
 
 	private enum Tab {
-		GENERAL("General"),
+		// The constants keep their old names: they are referred to all over
+		// this class and in the layout code, and renaming them would be a
+		// large diff that says nothing. Only the titles are what anyone sees.
+		GENERAL("Profiles"),
 		TAB("Tab"),
-		TIER_LISTS("Tierlists"),
-		NAMETAG("Nametag"),
+		TIER_LISTS("Tiers"),
+		NAMETAG("Tier Tagger"),
 		INTEGRATIONS("Integrations");
 
 		private final String title;
@@ -65,6 +68,21 @@ public class ConfigScreen extends Screen {
 
 	/** The width Done takes, which its replacements match. */
 	private static final int DONE_WIDTH = 90;
+
+	/**
+	 * The gap between the action buttons and the panel's bottom and right
+	 * edges.
+	 *
+	 * <p>One constant for both, so the button sits the same distance from the
+	 * corner either way. The two used to be derived separately -- the bottom
+	 * from a hand-written offset and the right from CARD_PADDING -- which left
+	 * it six pixels further from the right edge than the bottom and reading as
+	 * slightly misplaced.
+	 */
+	private static final int DONE_INSET = 6;
+
+	/** The action buttons' height, which their placement is measured from. */
+	private static final int DONE_HEIGHT = 20;
 
 	/** Click targets rebuilt every frame, so painting and hit-testing agree. */
 	private final List<Zone> zones = new ArrayList<>();
@@ -87,6 +105,9 @@ public class ConfigScreen extends Screen {
 	private int hoverMouseY;
 
 	private Dropdown<SpogTiersConfig.SortOrder> sortOrder;
+
+	/** Tiers tab: which palette the HT/MT/LT colours come from. */
+	private Dropdown<SpogTiersConfig.TierPalette> tierPalette;
 
 	/** Tab tab: how players are ordered, and how ties are broken. */
 	private Dropdown<SpogTiersConfig.TabSort> tabPrimary;
@@ -134,14 +155,18 @@ public class ConfigScreen extends Screen {
 			config.sortOrder = value;
 			config.save();
 		});
+		tierPalette = new Dropdown<>(value -> {
+			config.tierPalette = value;
+			config.save();
+		});
 
 		// The nametag tab ends a session rather than just closing a screen, so
 		// it puts its own Save & Close, Cancel and Reset here instead. Done is
 		// only added for the tabs that have nothing to commit.
 		doneButton = new PanelButton(
-				width - MARGIN - CARD_PADDING - DONE_WIDTH,
-				height - MARGIN - CARD_PADDING - 14,
-				DONE_WIDTH, 20,
+				width - MARGIN - DONE_INSET - DONE_WIDTH,
+				height - MARGIN - DONE_INSET - DONE_HEIGHT,
+				DONE_WIDTH, DONE_HEIGHT,
 				Component.literal("Done"),
 				button -> onClose());
 		addRenderableWidget(doneButton);
@@ -186,7 +211,7 @@ public class ConfigScreen extends Screen {
 		graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
 		switch (active) {
 			case GENERAL -> contentHeight =
-					drawGeneral(graphics, left, originY, mouseX, mouseY);
+					drawGeneral(graphics, left, originY, right, mouseX, mouseY);
 			case TAB -> contentHeight =
 					drawTab(graphics, left, originY, mouseX, mouseY);
 			case TIER_LISTS -> contentHeight =
@@ -203,9 +228,11 @@ public class ConfigScreen extends Screen {
 					bodyTop + viewHeight, mouseX, mouseY);
 			// Lined up with the right panel's edge rather than the screen's
 			// margin, so the row of buttons ends where the panels above it do.
+			// The same height off the bottom as Done, which this stands in
+			// for: measured from DONE_INSET so the two cannot drift apart.
 			tagEditor.drawActions(graphics,
 					right - DONE_WIDTH,
-					height - MARGIN - CARD_PADDING - 14,
+					height - MARGIN - DONE_INSET - DONE_HEIGHT,
 					DONE_WIDTH, mouseX, mouseY);
 		}
 		// Clamping here as well as on input keeps a resize or a tab switch from
@@ -245,6 +272,8 @@ public class ConfigScreen extends Screen {
 			}
 		} else if (active == Tab.GENERAL) {
 			sortOrder.drawOverlay(graphics, font, config().sortOrder, mouseX, mouseY);
+		} else if (active == Tab.TIER_LISTS) {
+			tierPalette.drawOverlay(graphics, font, config().tierPalette, mouseX, mouseY);
 		}
 		if (active == Tab.TAB) {
 			tabPrimary.drawOverlay(graphics, font, config().tabPrimarySort, mouseX, mouseY);
@@ -337,6 +366,9 @@ public class ConfigScreen extends Screen {
 					? List.of(tabPrimary, tabSecondary, tabLimit)
 					: List.of(tabPrimary, tabSecondary);
 		}
+		if (active == Tab.TIER_LISTS) {
+			return List.of(tierPalette);
+		}
 		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
 	}
 
@@ -427,14 +459,17 @@ public class ConfigScreen extends Screen {
 		tabPrimary.setBounds(x + 118, y - 4, 152);
 		tabPrimary.draw(graphics, font, config.tabPrimarySort, mouseX, mouseY);
 		hoverFor(x, y, "Primary Sort", "What decides a player's place in the tab list");
-		y += ROW_HEIGHT + 8;
+		// No extra gap before the secondary: the two are one setting in two
+		// parts, and spacing them apart read as two unrelated rows.
+		y += ROW_HEIGHT;
 
 		graphics.text(font, Component.literal("Secondary Sort"), x, y, LABEL_COLOR);
 		tabSecondary.setEntries(sorts);
 		tabSecondary.setBounds(x + 118, y - 4, 152);
 		tabSecondary.draw(graphics, font, config.tabSecondarySort, mouseX, mouseY);
 		hoverFor(x, y, "Secondary Sort",
-				"How players the primary sort leaves level are ordered");
+				"The tie-breaker: what orders players the primary sort ranks "
+						+ "equally, such as two players on the same tier");
 		y += ROW_HEIGHT + 8;
 
 		y = drawSwitch(graphics, "Sort Spectators", config.tabSortSpectators, x, y,
@@ -504,14 +539,24 @@ public class ConfigScreen extends Screen {
 		return y + CARD_PADDING - top;
 	}
 
+	/**
+	 * The Profiles tab: how a profile is ordered, then what it shows.
+	 *
+	 * <p>Two sections. General holds the one setting that is about ordering
+	 * rather than content; everything that turns a part of the profile on or
+	 * off is a Toggle Elements row, which is a long list and reads better
+	 * under its own heading than appended to a section about sorting.
+	 *
+	 * <p>Show Particles is not here: it is about the tier aura, so it lives
+	 * with the tier settings on the Tiers tab.
+	 */
 	private int drawGeneral(GuiGraphicsExtractor graphics, int left, int top,
-			int mouseX, int mouseY) {
+			int right, int mouseX, int mouseY) {
 		SpogTiersConfig config = config();
 		int x = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
 
-		graphics.text(font, Component.literal("General"), x, y, 0xFFFFFFFF);
-		y += font.lineHeight + 10;
+		y = drawSection(graphics, "General", x, y, right, true);
 
 		graphics.text(font, Component.literal("Sorting"), x, y, LABEL_COLOR);
 
@@ -522,8 +567,14 @@ public class ConfigScreen extends Screen {
 		sortOrder.setEntries(orders);
 		sortOrder.setBounds(x + 118, y - 4, 152);
 		sortOrder.draw(graphics, font, config.sortOrder, mouseX, mouseY);
+		hoverFor(x, y, "Sorting", "How the rows inside each tierlist card are ordered");
 
-		y += ROW_HEIGHT + 8;
+		// Plain ROW_HEIGHT, not the usual ROW_HEIGHT + 8: the extra eight
+		// holds a dropdown apart from the row under it, and what follows here
+		// is a divider that brings its own space.
+		y += ROW_HEIGHT;
+
+		y = drawSection(graphics, "Toggle Elements", x, y, right, false);
 
 		y = drawSwitch(graphics, "Show HQ Placements", config.showPlacements, x, y,
 				() -> {
@@ -553,12 +604,6 @@ public class ConfigScreen extends Screen {
 				},
 				"Show a player's linked Discord account on their profile");
 
-		y = drawSwitch(graphics, "Show Particles", config.showParticles, x, y,
-				() -> {
-					config.showParticles = !config.showParticles;
-					config.save();
-				});
-
 		y = drawSwitch(graphics, "Show Copy Button", config.showCopyButton, x, y,
 				() -> {
 					config.showCopyButton = !config.showCopyButton;
@@ -570,15 +615,72 @@ public class ConfigScreen extends Screen {
 		return y + CARD_PADDING - top;
 	}
 
-	/** Per-list visibility. */
+	/** How far apart the Tiertagger and Profile columns of switches sit. */
+	private static final int TIER_COLUMN_GAP = 86;
+
+	/**
+	 * How far in from the panel's right edge the Profile column sits.
+	 *
+	 * <p>The pair used to end at CARD_PADDING, flush with the rule above them,
+	 * which pushed both columns hard against the edge. Pulling them in leaves
+	 * the switches clear of it without changing the gap between the two.
+	 */
+	private static final int TIER_COLUMN_INSET = 24;
+
+	/**
+	 * The Tiers tab: the aura, then which lists are used and where.
+	 *
+	 * <p>The per-list rows are a grid rather than a list of rows with buttons
+	 * on the end: two switches per list, under a heading each, so a column can
+	 * be read down to see what every list does in one place. The lettered
+	 * boxes they replace said SHOWN/HIDDEN on every row, which is the same
+	 * word twelve times over where a switch's position says it already.
+	 */
 	private int drawTierLists(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int mouseX, int mouseY) {
 		SpogTiersConfig config = config();
 		int x = left + CARD_PADDING;
 		int y = top + CARD_PADDING;
 
-		graphics.text(font, Component.literal("Tierlists"), x, y, 0xFFFFFFFF);
-		y += font.lineHeight + 10;
+		y = drawSection(graphics, "Tiers", x, y, right, true);
+
+		graphics.text(font, Component.literal("Tier Colors"), x, y, LABEL_COLOR);
+
+		List<Dropdown.Entry<SpogTiersConfig.TierPalette>> palettes = new ArrayList<>();
+		for (SpogTiersConfig.TierPalette value : SpogTiersConfig.TierPalette.values()) {
+			palettes.add(new Dropdown.Entry<>(value, value.title(), null));
+		}
+		tierPalette.setEntries(palettes);
+		tierPalette.setBounds(x + 118, y - 4, 152);
+		tierPalette.draw(graphics, font, config.tierPalette, mouseX, mouseY);
+		drawPaletteSample(graphics, config.tierPalette, x + 118 + 152 + 12, y);
+		hoverFor(x, y, "Tier Colors",
+				"Which palette the tier colors are drawn from, everywhere in the mod");
+
+		y += ROW_HEIGHT + 8;
+
+		y = drawSwitch(graphics, "Show Particles", config.showParticles, x, y,
+				() -> {
+					config.showParticles = !config.showParticles;
+					config.save();
+				},
+				"Draw the tier aura around a player, in the world and on their "
+						+ "profile");
+
+		y = drawSection(graphics, "Tierlists", x, y, right, false);
+
+		// The two columns, placed from the right edge so they stay put as the
+		// window changes width. Measured once here rather than per row, so the
+		// headings and every switch below them cannot drift apart.
+		int profileX = right - TIER_COLUMN_INSET - SLIDER_WIDTH;
+		int taggerX = profileX - TIER_COLUMN_GAP;
+
+		// A heading over each column. Centred on its switches, because a label
+		// left-aligned to a 22-pixel control reads as belonging to whatever is
+		// to its left instead.
+		drawColumnLabel(graphics, "Tiertagger", taggerX, y);
+		drawColumnLabel(graphics, "Profile", profileX, y);
+		y += font.lineHeight + 6;
 
 		for (TierList list : TierList.values()) {
 			boolean shown = config.isEnabled(list);
@@ -595,34 +697,25 @@ public class ConfigScreen extends Screen {
 			graphics.text(font, Component.literal(list.displayName()),
 					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);
 
-			// Two toggles: whether the list is looked up at all, and whether it
-			// may be quoted on a nametag. Hiding a list disables the tag
-			// toggle with it, since a list nobody queries has nothing to tag.
+			// Whether the list may be quoted on a nametag, and whether it is
+			// looked up at all. Hiding a list disables the tag switch with it,
+			// since a list nobody queries has nothing to tag.
 			boolean tagged = config.isTagged(list);
 
-			int toggleWidth = 92;
-			// The height drawToggle actually draws. Measured rather than
-			// written out again: a zone a pixel short of its box left the
-			// bottom row of each switch dead to both hover and click.
-			int toggleHeight = font.lineHeight + 8;
-			int resultsX = right - CARD_PADDING - toggleWidth;
-			int tagsX = resultsX - toggleWidth - 6;
-
-			drawToggle(graphics, tagsX, y - 4, toggleWidth,
-					tagged ? "SHOWN TAGS" : "HIDDEN TAGS", tagged, shown);
+			// Drawn off for a hidden list whatever the stored flag says: the
+			// switch is dead while the list is hidden, and showing it on would
+			// promise a tag that cannot appear.
+			drawSlider(graphics, taggerX, y - 2, tagged && shown, shown);
 			if (shown) {
-				zones.add(new Zone(tagsX, y - 4, tagsX + toggleWidth,
-						y - 4 + toggleHeight, () -> {
+				zones.add(new Zone(taggerX, y - 4, taggerX + SLIDER_WIDTH, y + 12, () -> {
 					config.setTagged(list, !tagged);
 					config.save();
 					click();
 				}));
 			}
 
-			drawToggle(graphics, resultsX, y - 4, toggleWidth,
-					shown ? "SHOWN RESULTS" : "HIDDEN RESULTS", shown, true);
-			zones.add(new Zone(resultsX, y - 4, resultsX + toggleWidth,
-					y - 4 + toggleHeight, () -> {
+			drawSlider(graphics, profileX, y - 2, shown);
+			zones.add(new Zone(profileX, y - 4, profileX + SLIDER_WIDTH, y + 12, () -> {
 				config.setEnabled(list, !shown);
 				config.save();
 				click();
@@ -631,6 +724,36 @@ public class ConfigScreen extends Screen {
 			y += ROW_HEIGHT;
 		}
 		return y + CARD_PADDING - top;
+	}
+
+	/**
+	 * The palette's tiers spelled out beside the dropdown, best last.
+	 *
+	 * <p>Drawn as the labels themselves in their own colours rather than as
+	 * plain swatches: the point of the setting is how a tier code will look
+	 * where it is read, and a row of squares does not show that. T1 sits at the
+	 * right-hand end so the row runs the way the lists print a ladder, worst
+	 * first.
+	 *
+	 * <p>MT shades are used, which are the midpoints of each tier's HT and LT,
+	 * so one example stands for the three colours that tier can appear in.
+	 */
+	private void drawPaletteSample(GuiGraphicsExtractor graphics,
+			SpogTiersConfig.TierPalette choice, int x, int y) {
+		int cursor = x;
+		for (int tier = 5; tier >= 1; tier--) {
+			String label = "T" + tier;
+			int color = Tier.paletteRow(choice, tier)[Tier.Position.MID.ordinal()];
+			graphics.text(font, Component.literal(label), cursor, y, color);
+			cursor += font.width(label) + 8;
+		}
+	}
+
+	/** A column heading, centred over a switch at {@code x}. */
+	private void drawColumnLabel(GuiGraphicsExtractor graphics, String title,
+			int x, int y) {
+		graphics.text(font, Component.literal(title),
+				x + SLIDER_WIDTH / 2 - font.width(title) / 2, y, LABEL_COLOR);
 	}
 
 
@@ -651,6 +774,30 @@ public class ConfigScreen extends Screen {
 
 
 
+
+	/**
+	 * A section heading, and the y to carry on drawing at.
+	 *
+	 * <p>The first one in a tab is its title; the ones after it divide the
+	 * body up. Drawn the same either way, with a rule above every heading but
+	 * the first so the divisions read as sections rather than as stray bold
+	 * text -- a tab with one section looks exactly as it did before.
+	 */
+	private int drawSection(GuiGraphicsExtractor graphics, String title,
+			int x, int y, int right, boolean first) {
+		if (!first) {
+			// No gap added above the rule. The row before it already ends with
+			// one: a switch row advances by ROW_HEIGHT but its text is only
+			// lineHeight tall, so eleven pixels of blank are there already,
+			// against the nine below the rule. Adding more on top put the
+			// divider visibly nearer the section it introduces than the one
+			// it closes.
+			graphics.fill(x, y, right - CARD_PADDING, y + 1, 0xFF2A3341);
+			y += 9;
+		}
+		graphics.text(font, Component.literal(title), x, y, 0xFFFFFFFF);
+		return y + font.lineHeight + 10;
+	}
 
 	private int drawSwitch(GuiGraphicsExtractor graphics, String title, boolean on,
 			int x, int y, Runnable onClick) {
@@ -708,10 +855,28 @@ public class ConfigScreen extends Screen {
 	 * be clicked the way the tabs and buttons already do.
 	 */
 	private void drawSlider(GuiGraphicsExtractor graphics, int x, int y, boolean on) {
+		drawSlider(graphics, x, y, on, true);
+	}
+
+	/**
+	 * As above, but greyed and inert when {@code enabled} is false.
+	 *
+	 * <p>For a switch whose setting cannot apply yet -- a list's nametag
+	 * switch while the list itself is hidden. Drawn rather than hidden, so the
+	 * grid keeps its shape and the row does not appear to be missing a
+	 * control; it just plainly cannot be used.
+	 */
+	private void drawSlider(GuiGraphicsExtractor graphics, int x, int y, boolean on,
+			boolean enabled) {
 		int height = 12;
-		graphics.fill(x, y, x + SLIDER_WIDTH, y + height, on ? SLIDER_ON : SLIDER_OFF);
+		int fill = !enabled ? 0xFF2A3341 : on ? SLIDER_ON : SLIDER_OFF;
+		graphics.fill(x, y, x + SLIDER_WIDTH, y + height, fill);
 		int knob = on ? x + SLIDER_WIDTH - 10 : x + 2;
-		graphics.fill(knob, y + 2, knob + 8, y + height - 2, 0xFFFFFFFF);
+		graphics.fill(knob, y + 2, knob + 8, y + height - 2,
+				enabled ? 0xFFFFFFFF : 0xFF59636F);
+		if (!enabled) {
+			return;
+		}
 		// Measured against the zone that takes the click, not the painted
 		// switch: the zone is the taller of the two, so ringing the fill would
 		// light up only after the pointer was already well inside it.
@@ -733,44 +898,6 @@ public class ConfigScreen extends Screen {
 		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
 		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
 		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
-	}
-
-	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,
-			String text, boolean on) {
-		drawToggle(graphics, x, y, boxWidth, text, on, true);
-	}
-
-	/**
-	 * A boxed on/off label.
-	 *
-	 * <p>{@code enabled} is separate from {@code on}: a toggle that cannot be
-	 * changed right now is drawn faded rather than hidden, so the row keeps its
-	 * shape and the reason stays visible.
-	 */
-	private void drawToggle(GuiGraphicsExtractor graphics, int x, int y, int boxWidth,
-			String text, boolean on, boolean enabled) {
-		int boxHeight = font.lineHeight + 8;
-		int fill;
-		int border;
-		int textColor;
-		if (!enabled) {
-			fill = 0x30161B22;
-			border = 0x50323B47;
-			textColor = 0xFF5A636E;
-		} else {
-			fill = on ? 0x5023351F : 0x50241A1D;
-			border = on ? 0xA05F9A56 : 0xA0955A5A;
-			textColor = on ? 0xFFA8E39B : 0xFFE0A0A0;
-		}
-
-		graphics.fill(x, y, x + boxWidth, y + boxHeight, fill);
-		graphics.fill(x, y, x + boxWidth, y + 1, border);
-		graphics.fill(x, y + boxHeight - 1, x + boxWidth, y + boxHeight, border);
-		graphics.fill(x, y, x + 1, y + boxHeight, border);
-		graphics.fill(x + boxWidth - 1, y, x + boxWidth, y + boxHeight, border);
-
-		graphics.text(font, Component.literal(text),
-				x + (boxWidth - font.width(text)) / 2, y + 4, textColor);
 	}
 
 	static Identifier logoOf(TierList list) {
@@ -815,6 +942,7 @@ public class ConfigScreen extends Screen {
 
 	private void closeDropdowns() {
 		sortOrder.close();
+		tierPalette.close();
 		tabPrimary.close();
 		tabSecondary.close();
 		tabLimit.close();
@@ -832,6 +960,10 @@ public class ConfigScreen extends Screen {
 			return true;
 		}
 		if (active == Tab.GENERAL && sortOrder.click(font, event.x(), event.y())) {
+			click();
+			return true;
+		}
+		if (active == Tab.TIER_LISTS && tierPalette.click(font, event.x(), event.y())) {
 			click();
 			return true;
 		}
@@ -907,6 +1039,9 @@ public class ConfigScreen extends Screen {
 			return true;
 		}
 		if (active == Tab.GENERAL && sortOrder.scroll(deltaY)) {
+			return true;
+		}
+		if (active == Tab.TIER_LISTS && tierPalette.scroll(deltaY)) {
 			return true;
 		}
 		if (active == Tab.NAMETAG) {
