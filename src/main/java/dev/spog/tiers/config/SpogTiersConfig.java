@@ -2,6 +2,12 @@ package dev.spog.tiers.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.data.Gamemode;
 import dev.spog.tiers.data.TierList;
@@ -10,16 +16,61 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** User-editable settings, persisted to {@code config/spogtiers.json}. */
 public class SpogTiersConfig {
-	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static final Gson GSON = new GsonBuilder()
+			.setPrettyPrinting()
+			.registerTypeAdapter(TextShadow.class, new TextShadowAdapter())
+			.create();
+
+	/**
+	 * Reads Text Shadow from either shape it has been written in.
+	 *
+	 * <p>This setting was a plain on/off flag before it grew an Auto option,
+	 * and the key kept its name -- so a config saved by an older build has
+	 * {@code "textShadow": true} where this now expects a name. Gson treats
+	 * that as a malformed document and the whole file is thrown away for it,
+	 * which would quietly reset every other setting with it. Accepting both
+	 * forms keeps an existing choice: true was Shown and false was Hidden.
+	 */
+	private static final class TextShadowAdapter
+			implements JsonDeserializer<TextShadow>, JsonSerializer<TextShadow> {
+		@Override
+		public TextShadow deserialize(JsonElement json, Type type,
+				JsonDeserializationContext context) {
+			if (json == null || json.isJsonNull()) {
+				return TextShadow.SHOWN;
+			}
+			JsonPrimitive primitive = json.isJsonPrimitive() ? json.getAsJsonPrimitive() : null;
+			if (primitive == null) {
+				return TextShadow.SHOWN;
+			}
+			if (primitive.isBoolean()) {
+				return primitive.getAsBoolean() ? TextShadow.SHOWN : TextShadow.HIDDEN;
+			}
+			try {
+				return TextShadow.valueOf(primitive.getAsString().trim().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				// An unknown name is a hand-edited file, not a crash.
+				return TextShadow.SHOWN;
+			}
+		}
+
+		@Override
+		public JsonElement serialize(TextShadow value, Type type,
+				JsonSerializationContext context) {
+			return new JsonPrimitive(value.name());
+		}
+	}
 
 	/** Master switch for all tag rendering. */
 	public boolean enabled = true;
@@ -183,14 +234,10 @@ public class SpogTiersConfig {
 	/**
 	 * Whether the extra rows are drawn with a text shadow.
 	 *
-	 * <p>On, matching vanilla's own nameplate, so the rows sit on the tag the
-	 * same way the name does. Off suits a plate dark enough that the shadow
-	 * only muddies the text.
-	 *
 	 * <p>Applies to the rows this mod draws in the world. The tab list and chat
 	 * are drawn by the game, which decides shadowing there for itself.
 	 */
-	public boolean textShadow = true;
+	public TextShadow textShadow = TextShadow.SHOWN;
 
 	/** Where a tier icon's artwork comes from. */
 	public enum IconStyle {
@@ -451,6 +498,38 @@ public class SpogTiersConfig {
 		}
 	}
 
+	/** Whether the rows this mod draws in the world carry a text shadow. */
+	public enum TextShadow {
+		SHOWN("Shown", "Always draw the rows with a shadow"),
+		HIDDEN("Hidden", "Never draw the rows with a shadow"),
+		/**
+		 * Follow whatever the tag the rows hang off is doing.
+		 *
+		 * <p>A text display carries its own shadow flag, so the rows take it
+		 * from there. A vanilla nameplate has none -- the game draws it with
+		 * drop shadow off -- so the rows go without one too, unless a mod
+		 * that restyles nameplates says otherwise.
+		 */
+		AUTO("Auto", "Match the nametag: shadowed only where the tag itself is, "
+				+ "including custom text display nametags");
+
+		private final String title;
+		private final String description;
+
+		TextShadow(String title, String description) {
+			this.title = title;
+			this.description = description;
+		}
+
+		public String title() {
+			return title;
+		}
+
+		public String description() {
+			return description;
+		}
+	}
+
 	/**
 	 * A source of HT/MT/LT colours.
 	 *
@@ -666,6 +745,9 @@ public class SpogTiersConfig {
 		}
 		if (tierPalette == null) {
 			tierPalette = TierPalette.MCTIERS;
+		}
+		if (textShadow == null) {
+			textShadow = TextShadow.SHOWN;
 		}
 		if (tabPrimarySort == null) {
 			tabPrimarySort = TabSort.SERVER;
