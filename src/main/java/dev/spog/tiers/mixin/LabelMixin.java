@@ -201,9 +201,11 @@ public class LabelMixin {
 		float x = -width / 2.0f + shift;
 
 		FormattedCharSequence ordered = text.getVisualOrderText();
-		// A shadow when the plate has one, so the rows are not the only text
-		// on the tag without it.
-		boolean shadow = NametagTweaks.textShadow();
+		// False for the tag's own state: vanilla draws a player nameplate with
+		// drop shadow off -- NameTagFeatureRenderer passes a constant false to
+		// drawInBatch -- so under Auto these rows go without one and match it.
+		// Shown and Hidden ignore this, and Nametag Tweaks overrides it.
+		boolean shadow = NametagTweaks.textShadow(false);
 		var queue = collector.order(0);
 		// The font's own backdrop, not a quad of ours.
 		//

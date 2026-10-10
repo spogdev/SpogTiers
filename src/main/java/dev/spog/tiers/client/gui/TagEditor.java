@@ -229,6 +229,7 @@ public final class TagEditor {
 	private final Dropdown<Choice> tierList;
 	private final Dropdown<Gamemode> tierMode;
 	private final Dropdown<SpogTiersConfig.IconStyle> iconStyle;
+	private final Dropdown<SpogTiersConfig.TextShadow> textShadow;
 
 	/** What to create next, and how far the right panel is scrolled. */
 	private TagLayout.Kind creating = TagLayout.Kind.TIER;
@@ -343,6 +344,11 @@ public final class TagEditor {
 			config.iconStyle = value;
 			config.save();
 		});
+		this.textShadow = new Dropdown<>(value -> {
+			SpogTiersConfig config = SpogTiersClient.config();
+			config.textShadow = value;
+			config.save();
+		});
 		this.tierMode = new Dropdown<>(value -> {
 			if (selected != null) {
 				selected.gamemode = value;
@@ -432,15 +438,17 @@ public final class TagEditor {
 		// the panel that follows the selection, so it has to take clicks and
 		// draw its list whatever is selected.
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
-			return List.of(creator, tierList, tierMode, iconStyle);
+			return List.of(creator, tierList, tierMode, iconStyle, textShadow);
 		}
-		return List.of(creator, iconStyle);
+		return List.of(creator, iconStyle, textShadow);
 	}
 
 	public void closeDropdowns() {
 		creator.close();
 		tierList.close();
 		tierMode.close();
+		iconStyle.close();
+		textShadow.close();
 	}
 
 	/** Draws all three panels. */
@@ -707,7 +715,12 @@ public final class TagEditor {
 		// only moment the difference between them matters. Drawn here rather
 		// than left to hoverText(): the screen reads that before the overlays,
 		// so a row's text would always be a frame behind the pointer.
+		textShadow.drawOverlay(graphics, font,
+				SpogTiersClient.config().textShadow, mouseX, mouseY);
 		String option = iconStyle.hoveredTooltip();
+		if (option == null) {
+			option = textShadow.hoveredTooltip();
+		}
 		if (option != null) {
 			optionHover = option;
 		}
@@ -774,13 +787,6 @@ public final class TagEditor {
 					+ "list, where there is only one line to use";
 		}
 
-		int shadowTop = y;
-		y = toggle(graphics, "Text Shadow", config.textShadow, x, y,
-				right - PADDING, mouseX, mouseY, "toggle.textshadow");
-		if (overRow(mouseX, mouseY, x, right, shadowTop)) {
-			hover = "Draw the rows with a shadow, the way vanilla draws the name";
-		}
-
 		int retiredTop = y;
 		y = toggle(graphics, "Lunar Retired", config.lunarRetired, x, y,
 				right - PADDING, mouseX, mouseY, "toggle.lunarretired");
@@ -799,7 +805,22 @@ public final class TagEditor {
 					+ "or best gamemode option is selected";
 		}
 
-		y = rule(graphics, left, right, y);
+		int shadowTop = y;
+		graphics.text(font, Component.literal("Text Shadow"), x, y, LABEL_COLOR);
+		if (overRow(mouseX, mouseY, x, right, shadowTop)) {
+			hover = "Whether the rows this mod draws carry a text shadow";
+		}
+		y += font.lineHeight + 6;
+		List<Dropdown.Entry<SpogTiersConfig.TextShadow>> shadows = new ArrayList<>();
+		for (SpogTiersConfig.TextShadow value : SpogTiersConfig.TextShadow.values()) {
+			shadows.add(new Dropdown.Entry<>(value, value.title(), null,
+					value.description()));
+		}
+		textShadow.setEntries(shadows);
+		textShadow.setBounds(x, y - 4, right - PADDING - x);
+		textShadow.draw(graphics, font, config.textShadow, mouseX, mouseY);
+		y += BUTTON_HEIGHT + 4;
+
 		graphics.text(font, Component.literal("Icons"), x, y, LABEL_COLOR);
 		y += font.lineHeight + 6;
 		List<Dropdown.Entry<SpogTiersConfig.IconStyle>> styles = new ArrayList<>();
@@ -1207,8 +1228,8 @@ public final class TagEditor {
 		y += font.lineHeight + 8;
 
 		if (selected.kind == TagLayout.Kind.TIER) {
-			graphics.text(font, Component.literal("List"), x, y, MUTED_COLOR);
-			y += font.lineHeight + 4;
+			graphics.text(font, Component.literal("List"), x, y, LABEL_COLOR);
+			y += font.lineHeight + 6;
 			List<Dropdown.Entry<Choice>> lists = new ArrayList<>();
 			lists.add(new Dropdown.Entry<>(Choice.best(), "Best", null));
 			for (TierList list : TierList.values()) {
@@ -1229,8 +1250,8 @@ public final class TagEditor {
 			// left the panel clipped, with no bin and no Done. Dropping one
 			// dropdown is the only way a Door SMP element differs from any other.
 			if (!selected.doorSmp) {
-				graphics.text(font, Component.literal("Gamemode"), x, y, MUTED_COLOR);
-				y += font.lineHeight + 4;
+				graphics.text(font, Component.literal("Gamemode"), x, y, LABEL_COLOR);
+				y += font.lineHeight + 6;
 				// Only the modes the chosen list actually ranks. Offering all of
 				// them let someone pick a mode their list has never heard of,
 				// which then resolved to nothing and looked like a broken tag.
@@ -1253,8 +1274,8 @@ public final class TagEditor {
 		}
 
 		if (selected.kind == TagLayout.Kind.SEPARATOR) {
-			graphics.text(font, Component.literal("Character"), x, y, MUTED_COLOR);
-			y += font.lineHeight + 4;
+			graphics.text(font, Component.literal("Character"), x, y, LABEL_COLOR);
+			y += font.lineHeight + 6;
 			// A row of the characters worth having: typing one in would need a
 			// text field, and these are what a separator is ever set to.
 			String[] choices = {"|", "/", "-", "·", "•", ":"};
@@ -1743,10 +1764,6 @@ public final class TagEditor {
 				remember();
 				working.autoAdjustLines = !working.autoAdjustLines;
 				changed();
-			}
-			case "toggle.textshadow" -> {
-				config.textShadow = !config.textShadow;
-				config.save();
 			}
 			case "toggle.lunarretired" -> {
 				config.lunarRetired = !config.lunarRetired;
