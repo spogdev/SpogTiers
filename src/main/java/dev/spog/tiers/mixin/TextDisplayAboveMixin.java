@@ -105,11 +105,13 @@ public abstract class TextDisplayAboveMixin {
 		}
 
 		var ordered = collector.order(background != 0 ? 1 : 0);
-		// The display's own flag, but still subject to the Text Shadow setting:
-		// matching the server's tag is the default, and turning shadows off
-		// should turn them off everywhere this mod draws text.
-		boolean shadow = (flags & Display.TextDisplay.FLAG_SHADOW) != 0
-				&& NametagTweaks.textShadow();
+		// The display's own shadow flag, which is what Auto follows so the rows
+		// match the tag they hang off. Shown and Hidden override it outright:
+		// the setting is a direct answer about our own text, and anding the
+		// two together left Shown unable to draw a shadow on a display that
+		// had the flag off -- the dropdown said Shown and nothing changed.
+		boolean displayShadow = (flags & Display.TextDisplay.FLAG_SHADOW) != 0;
+		boolean shadow = NametagTweaks.textShadow(displayShadow);
 		int line = 0;
 		for (Display.TextDisplay.CachedLine cached : info.lines()) {
 			float x = switch (align) {
