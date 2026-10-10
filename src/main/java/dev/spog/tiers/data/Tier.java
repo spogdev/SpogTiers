@@ -9,9 +9,12 @@ import java.util.Locale;
  * A single ranked tier.
  *
  * <p>{@code tier} is 1 (best) through 5. {@code position} is the prefix: most
- * lists only use HIGH/LOW, but PVPHQ also has MID. {@code colorOverride} is
- * non-zero when the provider supplied its own hex colour (PVPHQ does), in which
- * case it wins over the built-in palette so our display matches the site.
+ * lists only use HIGH/LOW, but PVPHQ also has MID.
+ *
+ * <p>{@code colorOverride} is non-zero when the provider supplied its own hex
+ * colour, which only PVPHQ does. It is used for a named rank, where there is no
+ * HT/LT row to draw from -- not for a numbered tier, whose colour comes from the
+ * chosen palette so a tier code reads the same whichever list served it.
  */
 public record Tier(int tier, Position position, boolean retired, int colorOverride,
 		String namedRank) {
@@ -221,49 +224,98 @@ public record Tier(int tier, Position position, boolean retired, int colorOverri
 	}
 
 	/**
-	 * ARGB colour for this tier, using MCTiers' palette for every list so the
-	 * codes read consistently. These are the {@code --ht<n>-foreground} /
-	 * {@code --lt<n>-foreground} CSS variables from mctiers.com; MT (PVPHQ
-	 * only) sits between its neighbouring HT and LT shades.
+	 * ARGB colour for this tier, from the palette the user picked.
+	 *
+	 * <p>The same palette is used for every list, so a tier code reads the same
+	 * wherever it appears. Each row is HT, MT, LT for one tier number.
+	 *
+	 * <p>MCTiers are the {@code --ht<n>-foreground} / {@code --lt<n>-foreground}
+	 * CSS variables from mctiers.com. PVPHQ's are the colours it sends with each
+	 * ranking, read from its own palette table. PvPTiers publishes one colour per
+	 * tier number -- every rule in its stylesheet pairs {@code _ht<n>} with
+	 * {@code _lt<n>} -- so its HT and LT are that one hue taken lighter and
+	 * darker rather than two colours it does not define.
+	 *
+	 * <p>Every MT is the midpoint of the HT and LT beside it.
+	 *
+	 * <p>The rows are stored already lightened where the source colours were
+	 * picked against a light page and are close to unreadable on ours: PVPHQ's
+	 * LT5 sits at 1.6:1 against the panel and PvPTiers' tier 4 at 2.8:1. Running
+	 * each colour through {@link #legible} on its own would fix the contrast but
+	 * flatten the row, because three shades of one hue all stop at the same
+	 * contrast floor and come out as a single colour -- and the HT/LT difference
+	 * is the thing being drawn. So each row was raised by one lightness step
+	 * chosen by its darkest member, which clears 4.5:1 for all three and keeps
+	 * them visibly apart. They are constants so the game is not doing colour
+	 * maths every frame.
 	 */
+	private static final int[][][] PALETTES = {
+			// MCTiers: shades of the site's own foregrounds. Tier 1 is a lifted
+			// #f2ac44, whose own foreground reads beige against our darker panel.
+			{
+					{0xFFFFC14C, 0xFFF2AC44, 0xFFD5973C},
+					{0xFFC4D3E7, 0xFFB2BDCC, 0xFFA0A7B2},
+					{0xFFF89F5A, 0xFFDF8D4E, 0xFFC67B42},
+					{0xFF81749A, 0xFF736789, 0xFF655B79},
+					{0xFF8F82A8, 0xFF7A6E90, 0xFF655B79},
+			},
+			// PvPTiers: #ffd04d, #c2d4e1, #a1503d, #b02937, #bcbbc1 spread by
+			// +/-7% lightness. Tiers 3 and 4 are dark enough on the site that the
+			// whole triad is lifted; 1, 2 and 5 are used as published.
+			{
+					{0xFFFFD971, 0xFFFFD04D, 0xFFFFC729},
+					{0xFFDAE5ED, 0xFFC2D4E1, 0xFFAAC3D5},
+					{0xFFD29788, 0xFFC87F6E, 0xFFBE6854},
+					{0xFFE48D96, 0xFFDD6F7B, 0xFFD75260},
+					{0xFFCECED2, 0xFFBCBBC1, 0xFFAAA8B0},
+			},
+			// PVPHQ: its HT1 #FFC53F ... LT5 #4C3822, lifted where needed. Tier 1
+			// is used as published; tier 5's LT is near black on the site and
+			// needs the most lift of any row here to be visible at all.
+			{
+					{0xFFFFC53F, 0xFFDFAC37, 0xFFBF942F},
+					{0xFFA5B4D5, 0xFF8B9AB7, 0xFF72809A},
+					{0xFFE39568, 0xFFCF8052, 0xFFBC6B3C},
+					{0xFFBCC1C4, 0xFF9CA1A4, 0xFF7C8184},
+					{0xFFCAAB89, 0xFFB69169, 0xFFA37849},
+			},
+	};
+
+	/** The palette the user picked, defaulting to MCTiers before config loads. */
+	private static SpogTiersConfig.TierPalette palette() {
+		SpogTiersConfig config = SpogTiersClient.config();
+		return config == null || config.tierPalette == null
+				? SpogTiersConfig.TierPalette.MCTIERS
+				: config.tierPalette;
+	}
+
+	/**
+	 * The HT, MT and LT colours for a tier number, in that order.
+	 *
+	 * <p>Public so the config screen can show a row of examples beside the
+	 * palette dropdown without reconstructing a Tier per swatch.
+	 */
+	public static int[] paletteRow(SpogTiersConfig.TierPalette choice, int tier) {
+		int[][] rows = PALETTES[choice.ordinal()];
+		// Anything outside 1-5 reads as tier 5, matching color()'s own default
+		// branch: the lists occasionally send a 6 and it should not throw.
+		int index = tier >= 1 && tier <= rows.length ? tier - 1 : rows.length - 1;
+		return rows[index];
+	}
+
 	public int color() {
-		// A provider-supplied colour always wins, so CatPVP's ranks keep their
-		// own hues rather than borrowing the HT/LT palette.
+		// CatPVP's named ranks keep their own hues: they have no HT/LT row to
+		// borrow, so the colour the provider sent is all there is to draw.
+		// Numbered tiers below take the palette instead, whatever a provider
+		// sent with them -- a tier code reading the same everywhere is the
+		// whole point, and PVPHQ is the only list that sends colours at all.
 		if (isNamed()) {
 			return colorOverride != 0 ? legible(colorOverride) : 0xFFD5DCE5;
 		}
 		if (!isRanked()) {
 			return 0xFF9CA3AF;
 		}
-		int base = switch (tier) {
-			// Shades of #f2ac44: MCTiers' own tier-1 foreground reads beige
-			// in-game against our darker panel.
-			case 1 -> switch (position) {
-				case HIGH -> 0xFFFFC14C;
-				case MID -> 0xFFF2AC44;
-				case LOW -> 0xFFD5973C;
-			};
-			case 2 -> switch (position) {
-				case HIGH -> 0xFFC4D3E7;
-				case MID -> 0xFFB2BDCC;
-				case LOW -> 0xFFA0A7B2;
-			};
-			case 3 -> switch (position) {
-				case HIGH -> 0xFFF89F5A;
-				case MID -> 0xFFDF8D4E;
-				case LOW -> 0xFFC67B42;
-			};
-			case 4 -> switch (position) {
-				case HIGH -> 0xFF81749A;
-				case MID -> 0xFF736789;
-				case LOW -> 0xFF655B79;
-			};
-			default -> switch (position) {
-				case HIGH -> 0xFF8F82A8;
-				case MID -> 0xFF7A6E90;
-				case LOW -> 0xFF655B79;
-			};
-		};
+		int base = paletteRow(palette(), tier)[position.ordinal()];
 		return showsRetirement() ? desaturate(base) : base;
 	}
 
