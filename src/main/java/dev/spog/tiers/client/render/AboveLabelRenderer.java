@@ -190,9 +190,12 @@ public final class AboveLabelRenderer {
 		float x = -width / 2.0f + shift;
 
 		OrderedText ordered = text.asOrderedText();
-		// A shadow when the plate has one, so the rows are not the only text
-		// on the tag without it.
-		boolean shadow = NametagTweaks.textShadow();
+		// False for the tag's own state: vanilla draws a player nameplate with
+		// drop shadow off -- LabelCommandRenderer passes a constant false to
+		// TextRenderer.draw -- so under Auto these rows go without one and
+		// match it. Shown and Hidden ignore this, and Nametag Tweaks
+		// overrides it.
+		boolean shadow = NametagTweaks.textShadow(false);
 		var batch = queue.getBatchingQueue(0);
 		// The font's own backdrop, on the first pass only -- see above for
 		// why it is not our own geometry, and why only one pass carries it.

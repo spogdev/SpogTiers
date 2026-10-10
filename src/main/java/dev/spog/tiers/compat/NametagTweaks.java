@@ -153,19 +153,31 @@ public final class NametagTweaks {
 
 
 	/**
-	 * Whether nameplate text should carry a shadow.
+	 * Whether the rows this mod draws should carry a shadow.
 	 *
-	 * <p>Ours unless the user asked to match Nametag Tweaks, in which case that
-	 * mod's setting wins -- the point of that option is that our rows agree
-	 * with the plate it draws, and a shadow the plate does not have is exactly
-	 * the sort of disagreement it exists to avoid.
+	 * <p>Nametag Tweaks wins when the user asked to match it -- the point of
+	 * that option is that our rows agree with the plate it draws, and a shadow
+	 * the plate does not have is exactly the sort of disagreement it exists to
+	 * avoid. Otherwise the Text Shadow setting decides.
+	 *
+	 * @param tagHasShadow whether the tag these rows hang off is itself drawn
+	 *     with one, which is what Auto follows. Vanilla player nameplates are
+	 *     drawn with drop shadow off, so that caller passes false; a text
+	 *     display passes its own shadow flag.
 	 */
-	public static boolean textShadow() {
-		if (!following()) {
-			var config = SpogTiersClient.config();
-			return config == null || config.textShadow;
+	public static boolean textShadow(boolean tagHasShadow) {
+		if (following()) {
+			return Boolean.TRUE.equals(read(shadowField));
 		}
-		return Boolean.TRUE.equals(read(shadowField));
+		var config = SpogTiersClient.config();
+		if (config == null || config.textShadow == null) {
+			return true;
+		}
+		return switch (config.textShadow) {
+			case SHOWN -> true;
+			case HIDDEN -> false;
+			case AUTO -> tagHasShadow;
+		};
 	}
 
 	/**
