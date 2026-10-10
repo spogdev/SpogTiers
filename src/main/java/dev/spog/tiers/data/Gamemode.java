@@ -38,8 +38,7 @@ public enum Gamemode {
 	// equivalent on the other lists.
 	EARLY_GAME("early_game", "Early Game", 0xFF9BE39B),
 	LATE_GAME("late_game", "Late Game", 0xFFE0A05A),
-	END_GAME("end_game", "End Game", 0xFFB98AE8),
-	SHIELD("shield", "Shield", 0xFFC9A227);
+	END_GAME("end_game", "End Game", 0xFFB98AE8);
 
 	private final String key;
 	private final String displayName;
@@ -98,7 +97,12 @@ public enum Gamemode {
 			// alone saying crystal; PVPHQ declares crystal too but has never
 			// returned it, so its vanilla is the one that exists.
 			case "crystal", "crystalpvp" -> VANILLA;
-			// MCPvP's name for axe.
+			// MCPvP's name for axe. There used to be a SHIELD constant as
+			// well, which made this unreachable: the loop above matches a
+			// constant's own key first, so "shield" resolved to a mode that
+			// no list ranks and that ships no artwork -- the kit drew no icon.
+			// MCPvP's shield is the axe kit, and mcpvp/shield.png is already
+			// filed as axe's artwork for that list.
 			case "shield" -> AXE;
 			// CatPVP's name for sword. Its artwork stays its own: the icon
 			// follows whichever list the tier came from, so a CatPVP row still
