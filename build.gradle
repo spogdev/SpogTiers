@@ -23,6 +23,16 @@ repositories {
 			includeGroup "maven.modrinth"
 		}
 	}
+
+	// SporeUI, the shared config UI. One artifact per Minecraft version, so
+	// each branch of this mod depends on the matching one.
+	maven {
+		name = "Spog"
+		url = "https://repo.spog.dev/releases"
+		content {
+			includeGroup "dev.spog"
+		}
+	}
 }
 
 dependencies {
@@ -44,6 +54,17 @@ dependencies {
 	// config screen from. localRuntime keeps it out of the published jar and
 	// off the compile classpath, so what ships is unchanged.
 	modLocalRuntime "maven.modrinth:modmenu:${project.modmenu_version}"
+
+	// The shared config UI: the tabbed settings screen and the widgets that
+	// fill it, which this mod's settings screen is built from. Bundled with
+	//  so a player installs this mod alone -- it is a library nobody
+	// would think to install separately, and it is small.
+	//
+	// transitive = false for the same reason ModMenu is declared on its own
+	// above: SporeUI exposes ModMenuApi to its dependents, and without this
+	// the two declarations fight over which ModMenu version wins.
+	modImplementation("dev.spog:sporeui:${project.sporeui_version}") { transitive = false }
+	include("dev.spog:sporeui:${project.sporeui_version}")
 
 }
 
@@ -158,4 +179,27 @@ tasks.register('checkMixinConfig') {
 
 tasks.named('check') {
 	dependsOn 'checkMixinConfig'
+}
+
+// A client gametest that opens the settings screen and paints every tab in a
+// real client. The screen is drawn inside extractRenderState, which the
+// compiler checks and never runs, so this is what actually proves the port
+// works rather than merely compiles.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "spogtiers-gametest"
+		enableClientGameTests = true
+		// A client mod: there is no server behaviour to test.
+		enableGameTests = false
+	}
+}
+
+dependencies {
+	// Fabric API on the gametest source set's own classpath: the test is
+	// driven by fabric-client-gametest-api-v1. modGametestImplementation, not
+	// the plain configuration -- this branch remaps, and leaving Fabric API
+	// unremapped puts its class tweakers in a different namespace from the
+	// loader's, which fails at startup rather than at compile time.
+	modGametestImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
