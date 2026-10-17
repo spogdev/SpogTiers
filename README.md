@@ -71,7 +71,7 @@ error.
 | PVPHQ Ranked | `pvphq.com/api/v1/players/{uuid}` | **dashed** |
 | PvPTiers | `pvptiers.com/api/profile/{uuid}` | undashed |
 | SubTiers | `subtiers.net/api/profile/{uuid}` | undashed |
-| MCTiers | `mctiers.com/api/profile/{uuid}` | undashed |
+| MCTiers | `mctiers.gg/api/profile/{uuid}` | undashed |
 
 None of these services publish API docs, so the endpoints above were determined
 by inspection and may change without warning.
