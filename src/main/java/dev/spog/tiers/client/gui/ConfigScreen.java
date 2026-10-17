@@ -1,49 +1,41 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.screen.SporeConfigScreen;
+import dev.spog.spore.ui.screen.SporeTab;
+import dev.spog.spore.ui.theme.SporeTheme;
+import dev.spog.spore.ui.widget.SporeDropdown;
 import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.compat.NametagTweaks;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.data.Gamemode;
-import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
 import dev.spog.tiers.data.TierList;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.cursor.StandardCursors;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
- * Full-screen settings, styled to match the tier viewer: a dimmed backdrop, a
- * row of tabs and one bordered, scrollable panel per tab.
+ * Full-screen settings, built on the shared SporeUI config screen.
+ *
+ * <p>Four of the five tabs are plain lists of settings, which the library
+ * draws: this class only says what rows they hold. The fifth is the nametag
+ * editor, which is an editor rather than a list -- it fills the body with
+ * panels of its own, scrolls inside one of them, and takes keys and drags --
+ * so it is a bare tab and keeps all of its own code.
  */
-public class ConfigScreen extends Screen {
-	private static final int MARGIN = 10;
-	private static final int CARD_PADDING = 12;
-	private static final int ROW_HEIGHT = 22;
-	private static final int TAB_HEIGHT = 22;
+public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
+	/** The logo drawn beside a tierlist's name. */
 	private static final int LOGO_SIZE = 14;
-	private static final int LABEL_COLOR = 0xFFB9C4D0;
-	private static final int MUTED_COLOR = 0xFF6C7683;
-	private static final int CARD_FILL = 0x50161B22;
-	private static final int CARD_BORDER = 0x70323B47;
-	private static final int ACCENT = 0xFF6FC3E8;
 
-	/** The sliding switch shared with the nametag editor. */
-	private static final int SLIDER_WIDTH = 22;
-	private static final int SLIDER_ON = 0xFF4CAF50;
-	private static final int SLIDER_OFF = 0xFFC1443C;
-
-	private enum Tab {
+	public enum Tab implements SporeTab {
 		// The constants keep their old names: they are referred to all over
 		// this class and in the layout code, and renaming them would be a
 		// large diff that says nothing. Only the titles are what anyone sees.
@@ -58,63 +50,24 @@ public class ConfigScreen extends Screen {
 		Tab(String title) {
 			this.title = title;
 		}
+
+		@Override
+		public String title() {
+			return title;
+		}
 	}
 
-	private final Screen parent;
-	private Tab active = Tab.GENERAL;
-
-	/** Hidden on the nametag tab, which has its own session controls. */
-	private PanelButton doneButton;
-
-	/** The width Done takes, which its replacements match. */
-	private static final int DONE_WIDTH = 90;
-
-	/**
-	 * The gap between the action buttons and the panel's bottom and right
-	 * edges.
-	 *
-	 * <p>One constant for both, so the button sits the same distance from the
-	 * corner either way. The two used to be derived separately -- the bottom
-	 * from a hand-written offset and the right from CARD_PADDING -- which left
-	 * it six pixels further from the right edge than the bottom and reading as
-	 * slightly misplaced.
-	 */
-	private static final int DONE_INSET = 6;
-
-	/** The action buttons' height, which their placement is measured from. */
-	private static final int DONE_HEIGHT = 20;
-
-	/** Click targets rebuilt every frame, so painting and hit-testing agree. */
-	private final List<Zone> zones = new ArrayList<>();
-
-	private int scroll;
-	private int contentHeight;
-	/** Largest valid scroll offset, refreshed each frame for the input handler. */
-	private int maxScroll;
-	/** The label under the cursor this frame, if it has an explanation. */
-	private HoverLabel hoverLabel;
-
-	/**
-	 * Where the cursor is this frame.
-	 *
-	 * <p>Kept so a row can tell whether the cursor is over it while the panel
-	 * is being laid out, which is what lets two explained rows sitting next to
-	 * each other each keep their own line.
-	 */
-	private int hoverMouseX;
-	private int hoverMouseY;
-
-	private Dropdown<SpogTiersConfig.SortOrder> sortOrder;
+	private SporeDropdown<SpogTiersConfig.SortOrder> sortOrder;
 
 	/** Tiers tab: which palette the HT/MT/LT colours come from. */
-	private Dropdown<SpogTiersConfig.TierPalette> tierPalette;
+	private SporeDropdown<SpogTiersConfig.TierPalette> tierPalette;
 
 	/** Tab tab: how players are ordered, and how ties are broken. */
-	private Dropdown<SpogTiersConfig.TabSort> tabPrimary;
-	private Dropdown<SpogTiersConfig.TabSort> tabSecondary;
+	private SporeDropdown<SpogTiersConfig.TabSort> tabPrimary;
+	private SporeDropdown<SpogTiersConfig.TabSort> tabSecondary;
 
 	/** Tab tab: the player count above which sorting is left alone. */
-	private Dropdown<Integer> tabLimit;
+	private SporeDropdown<Integer> tabLimit;
 
 	/** The nametag tab, which is its own editor rather than a list of rows. */
 	private final TagEditor tagEditor = new TagEditor(
@@ -125,8 +78,7 @@ public class ConfigScreen extends Screen {
 	}
 
 	public ConfigScreen(Screen parent) {
-		super(Text.literal("SpogTiers"));
-		this.parent = parent;
+		super(parent, Text.literal("SpogTiers"), Tab.values(), Tab.GENERAL);
 	}
 
 	private SpogTiersConfig config() {
@@ -135,408 +87,99 @@ public class ConfigScreen extends Screen {
 
 	@Override
 	protected void init() {
+		super.init();
+
 		SpogTiersConfig config = config();
 
-		tabPrimary = new Dropdown<>(value -> {
+		tabPrimary = new SporeDropdown<>(value -> {
 			config.tabPrimarySort = value;
 			config.save();
 		});
-		tabSecondary = new Dropdown<>(value -> {
+		tabSecondary = new SporeDropdown<>(value -> {
 			config.tabSecondarySort = value;
 			config.save();
 		});
-		tabLimit = new Dropdown<>(value -> {
+		tabLimit = new SporeDropdown<>(value -> {
 			config.tabSortLimit = value;
 			config.save();
 		});
-		// No click() here: mouseClicked plays one for every consumed dropdown
-		// click, so sounding it on pick as well played it twice.
-		sortOrder = new Dropdown<>(value -> {
+		sortOrder = new SporeDropdown<>(value -> {
 			config.sortOrder = value;
 			config.save();
 		});
-		tierPalette = new Dropdown<>(value -> {
+		tierPalette = new SporeDropdown<>(value -> {
 			config.tierPalette = value;
 			config.save();
 		});
-
-		// The nametag tab ends a session rather than just closing a screen, so
-		// it puts its own Save & Close, Cancel and Reset here instead. Done is
-		// only added for the tabs that have nothing to commit.
-		doneButton = new PanelButton(
-				width - MARGIN - DONE_INSET - DONE_WIDTH,
-				height - MARGIN - DONE_INSET - DONE_HEIGHT,
-				DONE_WIDTH, DONE_HEIGHT,
-				Text.literal("Done"),
-				button -> close());
-		addDrawableChild(doneButton);
-		doneButton.visible = active != Tab.NAMETAG;
 	}
 
-	/** Vanilla's UI click, so the panel feels like the rest of the game. */
-	private void click() {
-		MinecraftClient.getInstance().getSoundManager()
-				.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
+	/**
+	 * The nametag tab ends a session rather than just closing a screen, so it
+	 * supplies its own Save and Close, Cancel and Reset instead of Done.
+	 */
+	@Override
+	protected boolean showsDoneButton(Tab tab) {
+		return tab != Tab.NAMETAG;
+	}
+
+	/**
+	 * The editor fills the body with three panels of its own, so a frame
+	 * around them would only draw a line across their tops joining them
+	 * together, and the right-hand panel scrolls on its own.
+	 */
+	@Override
+	protected BodyStyle bodyStyle(Tab tab) {
+		return tab == Tab.NAMETAG ? BodyStyle.BARE : BodyStyle.FRAMED;
 	}
 
 	@Override
-	public void render(DrawContext graphics, int mouseX, int mouseY, float partialTick) {
-		// NB: the blurred background is drawn for us by the framework, which
-		// calls extractBackground immediately before this method.
-		graphics.fill(0, 0, width, height, 0xC00B0E13);
-		zones.clear();
-		hoverLabel = null;
-		hoverMouseX = mouseX;
-		hoverMouseY = mouseY;
-
-		int left = MARGIN;
-		int top = MARGIN;
-		int right = width - MARGIN;
-		int bottom = height - MARGIN;
-
-		drawFrame(graphics, left, top, right, top + TAB_HEIGHT + CARD_PADDING);
-		drawTabs(graphics, left, top, mouseX, mouseY);
-
-		int bodyTop = top + TAB_HEIGHT + CARD_PADDING + 6;
-		// The nametag tab draws its own three panels edge to edge, so the body
-		// frame would only add a line across their tops joining them together.
-		if (active != Tab.NAMETAG) {
-			drawFrame(graphics, left, bodyTop, right, bottom);
+	protected void onTabChanged(Tab tab) {
+		if (tab == Tab.NAMETAG) {
+			// A fresh working copy each time the tab is entered, so Cancel
+			// undoes this visit rather than every visit since the screen was
+			// opened.
+			tagEditor.open();
 		}
-
-		// Scroll the body, then clamp so a short page cannot drift off.
-		int viewHeight = bottom - bodyTop - 40;
-		int originY = bodyTop - scroll;
-
-		graphics.enableScissor(left + 1, bodyTop + 1, right - 1, bodyTop + viewHeight);
-		switch (active) {
-			case GENERAL -> contentHeight =
-					drawGeneral(graphics, left, originY, right, mouseX, mouseY);
-			case TAB -> contentHeight =
-					drawTab(graphics, left, originY, mouseX, mouseY);
-			case TIER_LISTS -> contentHeight =
-					drawTierLists(graphics, left, originY, right, mouseX, mouseY);
-			case INTEGRATIONS -> contentHeight =
-					drawIntegrations(graphics, left, originY, mouseX, mouseY);
-			// Not scrolled with the others: the editor is three fixed panels
-			// that fill the body, and its right panel scrolls on its own.
-			case NAMETAG -> contentHeight = 0;
-		}
-		graphics.disableScissor();
-		if (active == Tab.NAMETAG) {
-			tagEditor.draw(graphics, left, bodyTop, right,
-					bodyTop + viewHeight, mouseX, mouseY);
-			// Lined up with the right panel's edge rather than the screen's
-			// margin, so the row of buttons ends where the panels above it do.
-			// The same height off the bottom as Done, which this stands in
-			// for: measured from DONE_INSET so the two cannot drift apart.
-			tagEditor.drawActions(graphics,
-					right - DONE_WIDTH,
-					height - MARGIN - DONE_INSET - DONE_HEIGHT,
-					DONE_WIDTH, mouseX, mouseY);
-		}
-		// Clamping here as well as on input keeps a resize or a tab switch from
-		// leaving the view scrolled past the end.
-		maxScroll = Math.max(0, contentHeight - viewHeight);
-		scroll = Math.clamp(scroll, 0, maxScroll);
-
-		if (contentHeight > viewHeight) {
-			drawScrollbar(graphics, right - 5, bodyTop + 4, viewHeight, contentHeight);
-		}
-
-		// Outside the scissor, so it is never clipped to the body.
-		if (hoverLabel != null && hoverLabel.contains(mouseX, mouseY)) {
-			drawHoverText(graphics, hoverLabel.text(), mouseX, mouseY);
-		}
-		if (active == Tab.NAMETAG && tagEditor.hoverText() != null) {
-			drawHoverText(graphics, tagEditor.hoverText(), mouseX, mouseY);
-		}
-		if (active == Tab.NAMETAG) {
-			tagEditor.drawButtonTooltip(graphics, mouseX, mouseY, width, height);
-		}
-
-		super.render(graphics, mouseX, mouseY, partialTick);
-
-		// Our controls are drawn rather than being widgets, so vanilla's own
-		// hover cursor never applies to them. Requested after the widgets so a
-		// control under the pointer wins over the panel behind it.
-		requestPointerCursor(graphics, mouseX, mouseY);
-
-		// Open dropdowns paint last so they overlap the rows beneath them.
-		if (active == Tab.NAMETAG) {
-			tagEditor.drawOverlays(graphics, mouseX, mouseY);
-			// After the list, since that is what decides which row is under
-			// the pointer, and over it so the text is not painted beneath.
-			if (tagEditor.optionHoverText() != null) {
-				drawHoverText(graphics, tagEditor.optionHoverText(), mouseX, mouseY);
-			}
-		} else if (active == Tab.GENERAL) {
-			sortOrder.drawOverlay(graphics, textRenderer, config().sortOrder, mouseX, mouseY);
-		} else if (active == Tab.TIER_LISTS) {
-			tierPalette.drawOverlay(graphics, textRenderer, config().tierPalette, mouseX, mouseY);
-		}
-		if (active == Tab.TAB) {
-			tabPrimary.drawOverlay(graphics, textRenderer, config().tabPrimarySort, mouseX, mouseY);
-			tabSecondary.drawOverlay(graphics, textRenderer, config().tabSecondarySort,
-					mouseX, mouseY);
-			if (config().tabSortLimited) {
-				tabLimit.drawOverlay(graphics, textRenderer, config().tabSortLimit, mouseX, mouseY);
-			}
-		}
+		tagEditor.closeDropdowns();
 	}
 
 	/**
-	 * Shows the pointing hand over anything clickable.
+	 * Switches tabs from a client gametest.
 	 *
-	 * <p>Zones cover the tabs, switches and rows; the dropdowns are asked
-	 * separately since their open list is not a zone.
+	 * <p>The tab strip is drawn rather than being widgets, so a test has no
+	 * button to press: the zones that take the clicks only exist while a frame
+	 * is being painted. This is the same switch a click performs.
+	 *
+	 * @param tab the tab to show
 	 */
-	private void requestPointerCursor(DrawContext graphics, int mouseX, int mouseY) {
-		// A held element first: while one is on the pointer it does not
-		// matter what the pointer happens to be over, the hand stays shut
-		// until it is let go.
-		if (active == Tab.NAMETAG && tagEditor.isHoldingElement()) {
-			graphics.setCursor(hand(HandCursors.closed()));
-			return;
-		}
-		// A text box next: it sits inside the same panel the rows do, so
-		// asking for the hand first would win and the box would never show
-		// the caret that says it can be typed in.
-		if (active == Tab.NAMETAG && tagEditor.isOverText(mouseX, mouseY)) {
-			graphics.setCursor(StandardCursors.IBEAM);
-			return;
-		}
-		// An element that can be picked up, before the buttons: an element is
-		// dragged where a button is pressed, and the cursor is what says so
-		// before anyone tries it.
-		//
-		// The pointing hand rather than an open one. GLFW has no open-hand
-		// shape and Windows ships no such cursor to copy -- its only hand is
-		// this one -- so a drawn stand-in was never going to match the system
-		// it sat beside. The closed hand stays hand-drawn because there is no
-		// stock cursor for "holding something" at all.
-		if (active == Tab.NAMETAG && tagEditor.isOverElement(mouseX, mouseY)) {
-			graphics.setCursor(StandardCursors.POINTING_HAND);
-			return;
-		}
-		boolean over = false;
-		for (Dropdown<?> dropdown : dropdowns()) {
-			if (dropdown != null && dropdown.isHovered(textRenderer, mouseX, mouseY)) {
-				over = true;
-				break;
+	public void openTabForTest(Tab tab) {
+		setActiveTab(tab);
+	}
+
+	@Override
+	protected void drawTab(Body body, Tab tab) {
+		switch (tab) {
+			case GENERAL -> drawGeneral(body);
+			case TAB -> drawTabList(body);
+			case TIER_LISTS -> drawTierLists(body);
+			case INTEGRATIONS -> drawIntegrations(body);
+			// Drawn by drawBareTab instead: it is a bare tab.
+			case NAMETAG -> {
 			}
 		}
-		if (!over && active == Tab.NAMETAG && tagEditor.isOverControl(mouseX, mouseY)) {
-			over = true;
-		}
-		if (!over) {
-			for (Zone zone : zones) {
-				if (zone.contains(mouseX, mouseY)) {
-					over = true;
-					break;
-				}
-			}
-		}
-		if (over) {
-			graphics.setCursor(StandardCursors.POINTING_HAND);
-		}
 	}
 
-	/**
-	 * One of our own hands, or the pointing hand when it could not be built.
-	 *
-	 * <p>GLFW has no open or grabbing hand of its own, so ours are made from
-	 * images and can fail on a driver that refuses them. The pointing hand at
-	 * least still says the thing under it can be used.
-	 */
-	private static net.minecraft.client.gui.cursor.Cursor hand(
-			net.minecraft.client.gui.cursor.Cursor cursor) {
-		return cursor != null ? cursor : StandardCursors.POINTING_HAND;
-	}
-
-	/** Every dropdown on the active tab. */
-	private List<Dropdown<?>> dropdowns() {
-		if (active == Tab.NAMETAG) {
-			return tagEditor.dropdowns();
-		}
-		if (active == Tab.TAB) {
-			// The limit is only listed while it is in use, so a click where it
-			// would be does not land on a control that is not drawn.
-			return config().tabSortLimited
-					? List.of(tabPrimary, tabSecondary, tabLimit)
-					: List.of(tabPrimary, tabSecondary);
-		}
-		if (active == Tab.TIER_LISTS) {
-			return List.of(tierPalette);
-		}
-		return active == Tab.GENERAL ? List.of(sortOrder) : List.of();
-	}
-
-	private void drawScrollbar(DrawContext graphics, int x, int top, int viewHeight, int total) {
-		int thumbHeight = Math.max(16, viewHeight * viewHeight / total);
-		int thumbY = top + (viewHeight - thumbHeight) * scroll / Math.max(1, total - viewHeight);
-		graphics.fill(x, top, x + 3, top + viewHeight, 0x40202A38);
-		graphics.fill(x, thumbY, x + 3, thumbY + thumbHeight, 0x90727F8F);
-	}
-
-	private void drawFrame(DrawContext graphics, int left, int top, int right, int bottom) {
-		graphics.fill(left, top, right, bottom, CARD_FILL);
-		graphics.fill(left, top, right, top + 1, CARD_BORDER);
-		graphics.fill(left, bottom - 1, right, bottom, CARD_BORDER);
-		graphics.fill(left, top, left + 1, bottom, CARD_BORDER);
-		graphics.fill(right - 1, top, right, bottom, CARD_BORDER);
-	}
-
-	private void drawTabs(DrawContext graphics, int left, int top, int mouseX, int mouseY) {
-		int x = left + CARD_PADDING;
-		int y = top + CARD_PADDING / 2;
-
-		for (Tab tab : Tab.values()) {
-			int tabWidth = textRenderer.getWidth(tab.title) + 24;
-			boolean selected = tab == active;
-			boolean hovered = mouseX >= x && mouseX <= x + tabWidth
-					&& mouseY >= y && mouseY <= y + TAB_HEIGHT;
-
-			if (selected) {
-				graphics.fill(x, y, x + tabWidth, y + TAB_HEIGHT, 0x6022303F);
-				graphics.fill(x, y + TAB_HEIGHT - 2, x + tabWidth, y + TAB_HEIGHT, ACCENT);
-			} else if (hovered) {
-				graphics.fill(x, y, x + tabWidth, y + TAB_HEIGHT, 0x3016202B);
-			}
-
-			graphics.drawTextWithShadow(textRenderer, Text.literal(tab.title),
-					x + (tabWidth - textRenderer.getWidth(tab.title)) / 2,
-					y + (TAB_HEIGHT - textRenderer.fontHeight) / 2,
-					selected ? 0xFFFFFFFF : (hovered ? LABEL_COLOR : MUTED_COLOR));
-
-			zones.add(new Zone(x, y, x + tabWidth, y + TAB_HEIGHT, () -> {
-				// Clicking the tab already open changes nothing, so it should
-				// not sound as though it did.
-				if (active == tab) {
-					return;
-				}
-				active = tab;
-				scroll = 0;
-				closeDropdowns();
-				if (tab == Tab.NAMETAG) {
-					// A fresh working copy each time the tab is entered, so
-					// Cancel undoes this visit rather than every visit since
-					// the screen was opened.
-					tagEditor.open();
-				}
-				if (doneButton != null) {
-					doneButton.visible = tab != Tab.NAMETAG;
-				}
-				click();
-			}));
-			x += tabWidth + 4;
-		}
-	}
-
-	/**
-	 * How the tab list is ordered.
-	 *
-	 * <p>Two sorts rather than one: the first decides a player's place, the
-	 * second decides it between players the first leaves level -- a tier sort
-	 * puts every HT1 together, and the secondary says in what order.
-	 */
-	private int drawTab(DrawContext graphics, int left, int top,
-			int mouseX, int mouseY) {
-		SpogTiersConfig config = config();
-		int x = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
-
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Tab List Sorting"), x, y, 0xFFFFFFFF);
-		y += textRenderer.fontHeight + 10;
-
-		List<Dropdown.Entry<SpogTiersConfig.TabSort>> sorts = new ArrayList<>();
-		for (SpogTiersConfig.TabSort value : SpogTiersConfig.TabSort.values()) {
-			sorts.add(new Dropdown.Entry<>(value, value.title(), null));
-		}
-
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Primary Sort"), x, y, LABEL_COLOR);
-		tabPrimary.setEntries(sorts);
-		tabPrimary.setBounds(x + 118, y - 4, 152);
-		tabPrimary.draw(graphics, textRenderer, config.tabPrimarySort, mouseX, mouseY);
-		hoverFor(x, y, "Primary Sort", "What decides a player's place in the tab list");
-		// No extra gap before the secondary: the two are one setting in two
-		// parts, and spacing them apart read as two unrelated rows.
-		y += ROW_HEIGHT;
-
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Secondary Sort"), x, y, LABEL_COLOR);
-		tabSecondary.setEntries(sorts);
-		tabSecondary.setBounds(x + 118, y - 4, 152);
-		tabSecondary.draw(graphics, textRenderer, config.tabSecondarySort, mouseX, mouseY);
-		hoverFor(x, y, "Secondary Sort",
-				"The tie-breaker: what orders players the primary sort ranks "
-						+ "equally, such as two players on the same tier");
-		y += ROW_HEIGHT + 8;
-
-		y = drawSwitch(graphics, "Sort Spectators", config.tabSortSpectators, x, y,
-				() -> {
-					config.tabSortSpectators = !config.tabSortSpectators;
-					config.save();
-				},
-				"Sort spectators with everyone else, rather than leaving them "
-						+ "at the end as vanilla does");
-
-		y = drawSwitch(graphics, "Limit By Players", config.tabSortLimited, x, y,
-				() -> {
-					config.tabSortLimited = !config.tabSortLimited;
-					config.save();
-				},
-				"Stop sorting once the tab list holds more names than the "
-						+ "limit, where the order is mostly noise and the work is not");
-
-		// Only offered while the switch is on: a limit with nothing limiting
-		// by it reads as a setting that does nothing.
-		if (config.tabSortLimited) {
-			graphics.drawTextWithShadow(textRenderer, Text.literal("Player Limit"), x, y, LABEL_COLOR);
-			List<Dropdown.Entry<Integer>> limits = new ArrayList<>();
-			for (int value : SpogTiersConfig.TAB_SORT_LIMITS) {
-				limits.add(new Dropdown.Entry<>(value, Integer.toString(value), null));
-			}
-			tabLimit.setEntries(limits);
-			tabLimit.setBounds(x + 118, y - 4, 152);
-			tabLimit.draw(graphics, textRenderer, config.tabSortLimit, mouseX, mouseY);
-			hoverFor(x, y, "Player Limit",
-					"Sorting stops above this many names in the tab list, which "
-							+ "vanilla caps at 80 however many players are online");
-			y += ROW_HEIGHT + 8;
-		}
-
-		return y + CARD_PADDING - top;
-	}
-
-	/**
-	 * Settings that only matter alongside another mod.
-	 *
-	 * <p>A section per mod, and each says plainly when the mod it is about is
-	 * not installed rather than offering a switch that would do nothing.
-	 */
-	private int drawIntegrations(DrawContext graphics, int left, int top,
-			int mouseX, int mouseY) {
-		SpogTiersConfig config = config();
-		int x = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
-
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Nametag Tweaks"), x, y, LABEL_COLOR);
-		y += textRenderer.fontHeight + 8;
-
-		if (!NametagTweaks.present()) {
-			graphics.drawTextWithShadow(textRenderer, Text.literal("Not installed"), x, y, MUTED_COLOR);
-			return y + ROW_HEIGHT + CARD_PADDING - top;
-		}
-
-		y = drawSwitch(graphics, "Visual Adjustments", config.matchNametagTweaks,
-				x, y, () -> {
-					config.matchNametagTweaks = !config.matchNametagTweaks;
-					config.save();
-				},
-				"If the size, height and color adjustments to the nametag "
-						+ "should affect the other lines");
-
-		return y + CARD_PADDING - top;
+	@Override
+	protected void drawBareTab(DrawContext graphics, Tab tab, int left, int top,
+			int right, int bottom, int mouseX, int mouseY) {
+		tagEditor.draw(graphics, left, top, right, bottom, mouseX, mouseY);
+		// Lined up with the right panel's edge rather than the screen's
+		// margin, so the row of buttons ends where the panels above it do, at
+		// the same height Done sits at.
+		tagEditor.drawActions(graphics,
+				right - DONE_WIDTH,
+				height - SporeTheme.MARGIN - DONE_INSET - DONE_HEIGHT,
+				DONE_WIDTH, mouseX, mouseY);
 	}
 
 	/**
@@ -550,180 +193,203 @@ public class ConfigScreen extends Screen {
 	 * <p>Show Particles is not here: it is about the tier aura, so it lives
 	 * with the tier settings on the Tiers tab.
 	 */
-	private int drawGeneral(DrawContext graphics, int left, int top,
-			int right, int mouseX, int mouseY) {
+	private void drawGeneral(Body body) {
 		SpogTiersConfig config = config();
-		int x = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
 
-		y = drawSection(graphics, "General", x, y, right, true);
+		body.section("General");
 
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Sorting"), x, y, LABEL_COLOR);
+		sortOrder.setEnumEntries(SpogTiersConfig.SortOrder.values(),
+				SpogTiersConfig.SortOrder::title);
+		body.dropdown("Sorting", sortOrder, config.sortOrder,
+				"How the rows inside each tierlist card are ordered");
 
-		List<Dropdown.Entry<SpogTiersConfig.SortOrder>> orders = new ArrayList<>();
-		for (SpogTiersConfig.SortOrder value : SpogTiersConfig.SortOrder.values()) {
-			orders.add(new Dropdown.Entry<>(value, value.title(), null));
-		}
-		sortOrder.setEntries(orders);
-		sortOrder.setBounds(x + 118, y - 4, 152);
-		sortOrder.draw(graphics, textRenderer, config.sortOrder, mouseX, mouseY);
-		hoverFor(x, y, "Sorting", "How the rows inside each tierlist card are ordered");
+		body.section("Toggle Elements");
 
-		// Plain ROW_HEIGHT, not the usual ROW_HEIGHT + 8: the extra eight
-		// holds a dropdown apart from the row under it, and what follows here
-		// is a divider that brings its own space.
-		y += ROW_HEIGHT;
-
-		y = drawSection(graphics, "Toggle Elements", x, y, right, false);
-
-		y = drawSwitch(graphics, "Show HQ Placements", config.showPlacements, x, y,
-				() -> {
-					config.showPlacements = !config.showPlacements;
+		body.toggle("Show HQ Placements", config.showPlacements,
+				"If placement rounds should be shown in the tier viewer",
+				value -> {
+					config.showPlacements = value;
 					config.save();
-				},
-				"If placement rounds should be shown in the tier viewer");
+				});
 
-		y = drawSwitch(graphics, "Show Peak Tiers", config.showPeakTiers, x, y,
-				() -> {
-					config.showPeakTiers = !config.showPeakTiers;
+		body.toggle("Show Peak Tiers", config.showPeakTiers,
+				"Show the peak tier a player has held",
+				value -> {
+					config.showPeakTiers = value;
 					config.save();
-				},
-				"Show the peak tier a player has held");
+				});
 
-		y = drawSwitch(graphics, "Show Retired", config.showRetired, x, y,
-				() -> {
-					config.showRetired = !config.showRetired;
+		body.toggle("Show Retired", config.showRetired,
+				"Show retired ranks as retired, rather than as the plain tier",
+				value -> {
+					config.showRetired = value;
 					config.save();
-				},
-				"Show retired ranks as retired, rather than as the plain tier");
+				});
 
-		y = drawSwitch(graphics, "Show Discord", config.showDiscord, x, y,
-				() -> {
-					config.showDiscord = !config.showDiscord;
+		body.toggle("Show Discord", config.showDiscord,
+				"Show a player's linked Discord account on their profile",
+				value -> {
+					config.showDiscord = value;
 					config.save();
-				},
-				"Show a player's linked Discord account on their profile");
+				});
 
-		y = drawSwitch(graphics, "Show Copy Button", config.showCopyButton, x, y,
-				() -> {
-					config.showCopyButton = !config.showCopyButton;
-					config.save();
-				},
+		body.toggle("Show Copy Button", config.showCopyButton,
 				"Offer the copy-as-image button on a profile; Close takes its "
-						+ "place when it is off");
-
-		return y + CARD_PADDING - top;
+						+ "place when it is off",
+				value -> {
+					config.showCopyButton = value;
+					config.save();
+				});
 	}
 
-	/** How far apart the Tiertagger and Profile columns of switches sit. */
-	private static final int TIER_COLUMN_GAP = 86;
-
 	/**
-	 * How far in from the panel's right edge the Profile column sits.
+	 * How the tab list is ordered.
 	 *
-	 * <p>The pair used to end at CARD_PADDING, flush with the rule above them,
-	 * which pushed both columns hard against the edge. Pulling them in leaves
-	 * the switches clear of it without changing the gap between the two.
+	 * <p>Two sorts rather than one: the first decides a player's place, the
+	 * second decides it between players the first leaves level -- a tier sort
+	 * puts every HT1 together, and the secondary says in what order.
 	 */
-	private static final int TIER_COLUMN_INSET = 24;
+	private void drawTabList(Body body) {
+		SpogTiersConfig config = config();
+
+		body.section("Tab List Sorting");
+
+		tabPrimary.setEnumEntries(SpogTiersConfig.TabSort.values(),
+				SpogTiersConfig.TabSort::title);
+		body.dropdown("Primary Sort", tabPrimary, config.tabPrimarySort,
+				"What decides a player's place in the tab list");
+
+		tabSecondary.setEnumEntries(SpogTiersConfig.TabSort.values(),
+				SpogTiersConfig.TabSort::title);
+		body.dropdown("Secondary Sort", tabSecondary, config.tabSecondarySort,
+				"The tie-breaker: what orders players the primary sort ranks "
+						+ "equally, such as two players on the same tier");
+
+		body.toggle("Sort Spectators", config.tabSortSpectators,
+				"Sort spectators with everyone else, rather than leaving them "
+						+ "at the end as vanilla does",
+				value -> {
+					config.tabSortSpectators = value;
+					config.save();
+				});
+
+		body.toggle("Limit By Players", config.tabSortLimited,
+				"Stop sorting once the tab list holds more names than the "
+						+ "limit, where the order is mostly noise and the work is not",
+				value -> {
+					config.tabSortLimited = value;
+					config.save();
+				});
+
+		// Only offered while the switch is on: a limit with nothing limiting
+		// by it reads as a setting that does nothing.
+		if (config.tabSortLimited) {
+			List<SporeDropdown.Entry<Integer>> limits = new ArrayList<>();
+			for (int value : SpogTiersConfig.TAB_SORT_LIMITS) {
+				limits.add(new SporeDropdown.Entry<>(value, Integer.toString(value), null));
+			}
+			tabLimit.setEntries(limits);
+			body.dropdown("Player Limit", tabLimit, config.tabSortLimit,
+					"Sorting stops above this many names in the tab list, which "
+							+ "vanilla caps at 80 however many players are online");
+		}
+	}
 
 	/**
 	 * The Tiers tab: the aura, then which lists are used and where.
 	 *
 	 * <p>The per-list rows are a grid rather than a list of rows with buttons
 	 * on the end: two switches per list, under a heading each, so a column can
-	 * be read down to see what every list does in one place. The lettered
-	 * boxes they replace said SHOWN/HIDDEN on every row, which is the same
-	 * word twelve times over where a switch's position says it already.
+	 * be read down to see what every list does in one place.
 	 */
-	private int drawTierLists(DrawContext graphics, int left, int top, int right,
-			int mouseX, int mouseY) {
+	private void drawTierLists(Body body) {
 		SpogTiersConfig config = config();
-		int x = left + CARD_PADDING;
-		int y = top + CARD_PADDING;
 
-		y = drawSection(graphics, "Tiers", x, y, right, true);
+		body.section("Tiers");
 
-		graphics.drawTextWithShadow(textRenderer, Text.literal("Tier Colors"), x, y, LABEL_COLOR);
-
-		List<Dropdown.Entry<SpogTiersConfig.TierPalette>> palettes = new ArrayList<>();
-		for (SpogTiersConfig.TierPalette value : SpogTiersConfig.TierPalette.values()) {
-			palettes.add(new Dropdown.Entry<>(value, value.title(), null));
-		}
-		tierPalette.setEntries(palettes);
-		tierPalette.setBounds(x + 118, y - 4, 152);
-		tierPalette.draw(graphics, textRenderer, config.tierPalette, mouseX, mouseY);
-		drawPaletteSample(graphics, config.tierPalette, x + 118 + 152 + 12, y);
-		hoverFor(x, y, "Tier Colors",
+		tierPalette.setEnumEntries(SpogTiersConfig.TierPalette.values(),
+				SpogTiersConfig.TierPalette::title);
+		// The row's y is taken before the dropdown advances it, so the sample
+		// lands beside the control rather than under it.
+		int paletteY = body.y();
+		int sampleX = body.controlX() + SporeTheme.CONTROL_W + 12;
+		body.dropdown("Tier Colors", tierPalette, config.tierPalette,
 				"Which palette the tier colors are drawn from, everywhere in the mod");
+		drawPaletteSample(body, config.tierPalette, sampleX, paletteY);
 
-		y += ROW_HEIGHT + 8;
-
-		y = drawSwitch(graphics, "Show Particles", config.showParticles, x, y,
-				() -> {
-					config.showParticles = !config.showParticles;
-					config.save();
-				},
+		body.toggle("Show Particles", config.showParticles,
 				"Draw the tier aura around a player, in the world and on their "
-						+ "profile");
+						+ "profile",
+				value -> {
+					config.showParticles = value;
+					config.save();
+				});
 
-		y = drawSection(graphics, "Tierlists", x, y, right, false);
+		body.section("Tierlists");
 
-		// The two columns, placed from the right edge so they stay put as the
-		// window changes width. Measured once here rather than per row, so the
-		// headings and every switch below them cannot drift apart.
-		int profileX = right - TIER_COLUMN_INSET - SLIDER_WIDTH;
-		int taggerX = profileX - TIER_COLUMN_GAP;
-
-		// A heading over each column. Centred on its switches, because a label
-		// left-aligned to a 22-pixel control reads as belonging to whatever is
-		// to its left instead.
-		drawColumnLabel(graphics, "Tiertagger", taggerX, y);
-		drawColumnLabel(graphics, "Profile", profileX, y);
-		y += textRenderer.fontHeight + 6;
+		// A heading over each column. Index 0 is the leftmost, which is the
+		// order the two were in before: Tiertagger, then Profile.
+		body.columnHeading(Text.literal("Tiertagger"), 0, 2);
+		body.columnHeading(Text.literal("Profile"), 1, 2);
+		body.endHeadings();
 
 		for (TierList list : TierList.values()) {
 			boolean shown = config.isEnabled(list);
-
-			int rowTop = y - 4;
-			int rowBottom = y + ROW_HEIGHT - 8;
-			if (mouseY >= rowTop && mouseY <= rowBottom && mouseX >= x
-					&& mouseX <= right - CARD_PADDING) {
-				graphics.fill(x - 4, rowTop, right - CARD_PADDING, rowBottom, 0x8022303F);
-			}
-
-			graphics.drawTexture(RenderPipelines.GUI_TEXTURED, logoOf(list), x, y - 4, 0.0f, 0.0f,
-					LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
-			graphics.drawTextWithShadow(textRenderer, Text.literal(list.displayName()),
-					x + LOGO_SIZE + 6, y, shown ? 0xFFFFFFFF : MUTED_COLOR);
-
 			// Whether the list may be quoted on a nametag, and whether it is
 			// looked up at all. Hiding a list disables the tag switch with it,
 			// since a list nobody queries has nothing to tag.
 			boolean tagged = config.isTagged(list);
 
+			int rowY = body.y();
+			if (body.rowHovered()) {
+				body.highlightRow();
+			}
+			body.graphics().drawTexture(RenderPipelines.GUI_TEXTURED, logoOf(list),
+					body.x(), rowY - 4, 0.0f, 0.0f,
+					LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
+			body.graphics().drawTextWithShadow(body.font(), Text.literal(list.displayName()),
+					body.x() + LOGO_SIZE + 6, rowY,
+					shown ? SporeTheme.TITLE_COLOR : SporeTheme.MUTED_COLOR);
+
 			// Drawn off for a hidden list whatever the stored flag says: the
 			// switch is dead while the list is hidden, and showing it on would
 			// promise a tag that cannot appear.
-			drawSlider(graphics, taggerX, y - 2, tagged && shown, shown);
-			if (shown) {
-				zones.add(new Zone(taggerX, y - 4, taggerX + SLIDER_WIDTH, y + 12, () -> {
-					config.setTagged(list, !tagged);
-					config.save();
-					click();
-				}));
-			}
-
-			drawSlider(graphics, profileX, y - 2, shown);
-			zones.add(new Zone(profileX, y - 4, profileX + SLIDER_WIDTH, y + 12, () -> {
-				config.setEnabled(list, !shown);
+			body.columnSwitch(0, 2, tagged && shown, shown, value -> {
+				config.setTagged(list, value);
 				config.save();
-				click();
-			}));
+			});
+			body.columnSwitch(1, 2, shown, true, value -> {
+				config.setEnabled(list, value);
+				config.save();
+			});
 
-			y += ROW_HEIGHT;
+			body.advance(SporeTheme.ROW_HEIGHT);
 		}
-		return y + CARD_PADDING - top;
+	}
+
+	/**
+	 * Settings that only matter alongside another mod.
+	 *
+	 * <p>A section per mod, and each says plainly when the mod it is about is
+	 * not installed rather than offering a switch that would do nothing.
+	 */
+	private void drawIntegrations(Body body) {
+		SpogTiersConfig config = config();
+
+		body.section("Nametag Tweaks");
+
+		if (!NametagTweaks.present()) {
+			body.label("Not installed");
+			return;
+		}
+
+		body.toggle("Visual Adjustments", config.matchNametagTweaks,
+				"If the size, height and color adjustments to the nametag "
+						+ "should affect the other lines",
+				value -> {
+					config.matchNametagTweaks = value;
+					config.save();
+				});
 	}
 
 	/**
@@ -738,166 +404,181 @@ public class ConfigScreen extends Screen {
 	 * <p>MT shades are used, which are the midpoints of each tier's HT and LT,
 	 * so one example stands for the three colours that tier can appear in.
 	 */
-	private void drawPaletteSample(DrawContext graphics,
-			SpogTiersConfig.TierPalette choice, int x, int y) {
+	private void drawPaletteSample(Body body, SpogTiersConfig.TierPalette choice,
+			int x, int y) {
 		int cursor = x;
 		for (int tier = 5; tier >= 1; tier--) {
 			String label = "T" + tier;
 			int color = Tier.paletteRow(choice, tier)[Tier.Position.MID.ordinal()];
-			graphics.drawTextWithShadow(textRenderer, Text.literal(label), cursor, y, color);
-			cursor += textRenderer.getWidth(label) + 8;
+			body.graphics().drawTextWithShadow(body.font(), Text.literal(label), cursor, y, color);
+			cursor += body.font().getWidth(label) + 8;
 		}
 	}
 
-	/** A column heading, centred over a switch at {@code x}. */
-	private void drawColumnLabel(DrawContext graphics, String title,
-			int x, int y) {
-		graphics.drawTextWithShadow(textRenderer, Text.literal(title),
-				x + SLIDER_WIDTH / 2 - textRenderer.getWidth(title) / 2, y, LABEL_COLOR);
-	}
+	// --- The nametag tab's own input and overlays ------------------------
+	//
+	// The editor is a screen's worth of behaviour inside one tab: it owns
+	// dropdowns, text boxes, draggable elements and its own tooltips. The
+	// library offers each input to the active tab before taking it, so all of
+	// this is a straight forward to the editor, and only while its tab is up.
 
-
-	/** A sample nametag built from the current settings. */
-	/**
-	 * The player the preview is built around.
-	 *
-	 * <p>A real account rather than a made-up one, so the preview shows the
-	 * tags he actually holds once his tiers are in the cache. Nothing is
-	 * fetched from here: this runs on the render thread, so it reads whatever
-	 * the cache already has and falls back to a sample tier otherwise.
-	 */
-	private static final UUID PREVIEW_PLAYER =
-			UUID.fromString("ebd7af32-759e-41e2-b227-9eeb8576d609");
-
-	private static final String PREVIEW_NAME = "Swight";
-
-
-
-
-
-	/**
-	 * A section heading, and the y to carry on drawing at.
-	 *
-	 * <p>The first one in a tab is its title; the ones after it divide the
-	 * body up. Drawn the same either way, with a rule above every heading but
-	 * the first so the divisions read as sections rather than as stray bold
-	 * text -- a tab with one section looks exactly as it did before.
-	 */
-	private int drawSection(DrawContext graphics, String title,
-			int x, int y, int right, boolean first) {
-		if (!first) {
-			// No gap added above the rule. The row before it already ends with
-			// one: a switch row advances by ROW_HEIGHT but its text is only
-			// fontHeight tall, so eleven pixels of blank are there already,
-			// against the nine below the rule. Adding more on top put the
-			// divider visibly nearer the section it introduces than the one
-			// it closes.
-			graphics.fill(x, y, right - CARD_PADDING, y + 1, 0xFF2A3341);
-			y += 9;
+	@Override
+	protected boolean requestTabCursor(DrawContext graphics, Tab tab,
+			int mouseX, int mouseY) {
+		if (tab != Tab.NAMETAG) {
+			return false;
 		}
-		graphics.drawTextWithShadow(textRenderer, Text.literal(title), x, y, 0xFFFFFFFF);
-		return y + textRenderer.fontHeight + 10;
-	}
-
-	private int drawSwitch(DrawContext graphics, String title, boolean on,
-			int x, int y, Runnable onClick) {
-		return drawSwitch(graphics, title, on, x, y, onClick, null);
+		// A held element first: while one is on the pointer it does not matter
+		// what the pointer happens to be over, the hand stays shut until it is
+		// let go.
+		if (tagEditor.isHoldingElement()) {
+			graphics.setCursor(hand(HandCursors.closed()));
+			return true;
+		}
+		// A text box next: it sits inside the same panel the rows do, so
+		// asking for the hand first would win and the box would never show the
+		// caret that says it can be typed in.
+		if (tagEditor.isOverText(mouseX, mouseY)) {
+			graphics.setCursor(StandardCursors.IBEAM);
+			return true;
+		}
+		// An element that can be picked up, before the buttons: an element is
+		// dragged where a button is pressed, and the cursor is what says so
+		// before anyone tries it.
+		//
+		// The pointing hand rather than an open one. GLFW has no open-hand
+		// shape and Windows ships no such cursor to copy -- its only hand is
+		// this one -- so a drawn stand-in was never going to match the system
+		// it sat beside.
+		if (tagEditor.isOverElement(mouseX, mouseY)) {
+			graphics.setCursor(StandardCursors.POINTING_HAND);
+			return true;
+		}
+		for (Dropdown<?> dropdown : tagEditor.dropdowns()) {
+			if (dropdown.isHovered(textRenderer, mouseX, mouseY)) {
+				graphics.setCursor(StandardCursors.POINTING_HAND);
+				return true;
+			}
+		}
+		if (tagEditor.isOverControl(mouseX, mouseY)) {
+			graphics.setCursor(StandardCursors.POINTING_HAND);
+			return true;
+		}
+		return false;
 	}
 
 	/**
-	 * A labelled on/off row, with an optional line explaining it on hover.
+	 * One of our own hands, or the pointing hand when it could not be built.
 	 *
-	 * <p>The label is what carries the explanation, not the toggle: the toggle
-	 * is what you click, and a tooltip appearing under the cursor as you go to
-	 * press it is in the way.
+	 * <p>GLFW has no open or grabbing hand of its own, so ours are made from
+	 * images and can fail on a driver that refuses them. The pointing hand at
+	 * least still says the thing under it can be used.
 	 */
-	private int drawSwitch(DrawContext graphics, String title, boolean on,
-			int x, int y, Runnable onClick, String description) {
-		graphics.drawTextWithShadow(textRenderer, Text.literal(title), x, y, LABEL_COLOR);
-		// The nametag editor's sliding switch rather than a lettered box, so
-		// the two tabs read the same way.
-		int toggleX = x + 118;
-		drawSlider(graphics, toggleX, y - 2, on);
-		zones.add(new Zone(toggleX, y - 4, toggleX + SLIDER_WIDTH, y + 12, () -> {
-			onClick.run();
-			click();
-		}));
-		hoverFor(x, y, title, description);
-		return y + ROW_HEIGHT;
+	private static net.minecraft.client.gui.cursor.Cursor hand(
+			net.minecraft.client.gui.cursor.Cursor cursor) {
+		return cursor != null ? cursor : StandardCursors.POINTING_HAND;
 	}
 
-	/**
-	 * Records the tooltip for a labelled row, to be drawn after the panel.
-	 *
-	 * <p>Recorded rather than drawn here: the body is scissored, so a tooltip
-	 * drawn now would be clipped to the panel.
-	 *
-	 * <p>Kept only when nothing else has already claimed the cursor, so that
-	 * two explained rows next to each other each show their own line rather
-	 * than the later one overwriting the earlier.
-	 */
-	private void hoverFor(int x, int y, String title, String description) {
-		if (description == null) {
+	@Override
+	protected void drawTabOverlay(DrawContext graphics, Tab tab,
+			int mouseX, int mouseY) {
+		if (tab != Tab.NAMETAG) {
 			return;
 		}
-		HoverLabel candidate =
-				new HoverLabel(x, y - 2, x + textRenderer.getWidth(title), y + 10, description);
-		if (hoverLabel == null || candidate.contains(hoverMouseX, hoverMouseY)) {
-			hoverLabel = candidate;
+		if (tagEditor.hoverText() != null) {
+			drawHoverText(graphics, tagEditor.hoverText(), mouseX, mouseY);
+		}
+		tagEditor.drawButtonTooltip(graphics, mouseX, mouseY, width, height);
+		tagEditor.drawOverlays(graphics, mouseX, mouseY);
+		// After the list, since that is what decides which row is under the
+		// pointer, and over it so the text is not painted beneath.
+		if (tagEditor.optionHoverText() != null) {
+			drawHoverText(graphics, tagEditor.optionHoverText(), mouseX, mouseY);
 		}
 	}
 
 	/**
-	 * A sliding switch: green when on, red when off, with the knob at the
-	 * end it is set to. The same control the nametag editor draws.
+	 * The editor's tooltip: a bordered card in the same palette as the panels,
+	 * kept inside the window.
 	 *
-	 * <p>Ringed in white while the pointer is on it, so a switch says it can
-	 * be clicked the way the tabs and buttons already do.
+	 * <p>Drawn here rather than through the library's own tooltips because the
+	 * editor hands back a plain string for a point it has already chosen,
+	 * rather than registering a labelled row the way a settings tab does.
 	 */
-	private void drawSlider(DrawContext graphics, int x, int y, boolean on) {
-		drawSlider(graphics, x, y, on, true);
+	private void drawHoverText(DrawContext graphics, String text,
+			int mouseX, int mouseY) {
+		int boxWidth = textRenderer.getWidth(text) + 12;
+		int boxHeight = textRenderer.fontHeight + 12;
+		int boxX = Tooltips.x(mouseX, boxWidth, width);
+		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
+
+		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight,
+				SporeTheme.CARD_BORDER);
+		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1,
+				0xE00E1219);
+		graphics.drawTextWithShadow(textRenderer, Text.literal(text), boxX + 6, boxY + 6,
+				SporeTheme.LABEL_COLOR);
 	}
 
-	/**
-	 * As above, but greyed and inert when {@code enabled} is false.
-	 *
-	 * <p>For a switch whose setting cannot apply yet -- a list's nametag
-	 * switch while the list itself is hidden. Drawn rather than hidden, so the
-	 * grid keeps its shape and the row does not appear to be missing a
-	 * control; it just plainly cannot be used.
-	 */
-	private void drawSlider(DrawContext graphics, int x, int y, boolean on,
-			boolean enabled) {
-		int height = 12;
-		int fill = !enabled ? 0xFF2A3341 : on ? SLIDER_ON : SLIDER_OFF;
-		graphics.fill(x, y, x + SLIDER_WIDTH, y + height, fill);
-		int knob = on ? x + SLIDER_WIDTH - 10 : x + 2;
-		graphics.fill(knob, y + 2, knob + 8, y + height - 2,
-				enabled ? 0xFFFFFFFF : 0xFF59636F);
-		if (!enabled) {
-			return;
+	@Override
+	protected boolean tabMouseClicked(Tab tab, net.minecraft.client.gui.Click event,
+			boolean doubled) {
+		if (tab != Tab.NAMETAG) {
+			return false;
 		}
-		// Measured against the zone that takes the click, not the painted
-		// switch: the zone is the taller of the two, so ringing the fill would
-		// light up only after the pointer was already well inside it.
-		if (hoverMouseX >= x && hoverMouseX < x + SLIDER_WIDTH
-				&& hoverMouseY >= y - 2 && hoverMouseY < y + height + 2) {
-			ring(graphics, x - 1, y - 1, x + SLIDER_WIDTH + 1, y + height + 1);
+		// Open lists get first refusal, so a click inside one is not taken by
+		// whatever it happens to overlap.
+		for (Dropdown<?> dropdown : tagEditor.dropdowns()) {
+			if (dropdown.isOpen() && dropdown.click(textRenderer, event.x(), event.y())) {
+				return true;
+			}
 		}
+		for (Dropdown<?> dropdown : tagEditor.dropdowns()) {
+			if (dropdown.click(textRenderer, event.x(), event.y())) {
+				return true;
+			}
+		}
+		return tagEditor.click(event, doubled);
 	}
 
-	/**
-	 * A one-pixel outline, drawn just outside what it marks.
-	 *
-	 * <p>Four edges rather than {@link #drawFrame}, which fills its middle: a
-	 * ring has to leave the switch underneath it visible.
-	 */
-	private void ring(DrawContext graphics, int left, int top, int right,
-			int bottom) {
-		graphics.fill(left, top, right, top + 1, 0xFFFFFFFF);
-		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
-		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
-		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
+	@Override
+	protected boolean tabMouseDragged(Tab tab, net.minecraft.client.gui.Click event,
+			double dragX, double dragY) {
+		if (tab != Tab.NAMETAG) {
+			return false;
+		}
+		tagEditor.drag(event, dragX, dragY);
+		// Not consumed: the editor tracks the drag itself, and the screen has
+		// nothing else to do with it either way.
+		return false;
+	}
+
+	@Override
+	protected boolean tabMouseReleased(Tab tab, net.minecraft.client.gui.Click event) {
+		return tab == Tab.NAMETAG && tagEditor.release(event.x(), event.y());
+	}
+
+	@Override
+	protected boolean tabMouseScrolled(Tab tab, double mouseX, double mouseY, double deltaY) {
+		if (tab != Tab.NAMETAG) {
+			return false;
+		}
+		for (Dropdown<?> dropdown : tagEditor.dropdowns()) {
+			if (dropdown.scroll(deltaY)) {
+				return true;
+			}
+		}
+		return tagEditor.scroll(mouseX, mouseY, deltaY);
+	}
+
+	@Override
+	protected boolean tabKeyPressed(Tab tab, net.minecraft.client.input.KeyInput event) {
+		return tab == Tab.NAMETAG && tagEditor.keyPressed(event);
+	}
+
+	@Override
+	protected boolean tabCharTyped(Tab tab, net.minecraft.client.input.CharInput event) {
+		return tab == Tab.NAMETAG && tagEditor.charTyped(event);
 	}
 
 	static Identifier logoOf(TierList list) {
@@ -916,179 +597,5 @@ public class ConfigScreen extends Screen {
 			return null;
 		}
 		return Identifier.of(SpogTiers.MOD_ID, list.modeIconPath(mode.key()));
-	}
-
-	/** Any enabled list, for a preview that is not bound to one. */
-	private TierList firstEnabledList() {
-		SpogTiersConfig config = config();
-		for (TierList list : TierList.values()) {
-			if (config.isEnabled(list)) {
-				return list;
-			}
-		}
-		return null;
-	}
-
-	/** An enabled list that ranks this mode, for borrowing its icon. */
-	private TierList firstListWith(Gamemode mode) {
-		SpogTiersConfig config = config();
-		for (TierList list : TierList.values()) {
-			if (config.isEnabled(list) && list.gamemodes().contains(mode)) {
-				return list;
-			}
-		}
-		return null;
-	}
-
-	private void closeDropdowns() {
-		sortOrder.close();
-		tierPalette.close();
-		tabPrimary.close();
-		tabSecondary.close();
-		tabLimit.close();
-		tagEditor.closeDropdowns();
-	}
-
-	@Override
-	public boolean mouseClicked(net.minecraft.client.gui.Click event, boolean doubled) {
-		// Dropdowns first: an open list sits above everything else.
-		if (active == Tab.TAB && (tabPrimary.click(textRenderer, event.x(), event.y())
-				|| tabSecondary.click(textRenderer, event.x(), event.y())
-				|| (config().tabSortLimited
-						&& tabLimit.click(textRenderer, event.x(), event.y())))) {
-			click();
-			return true;
-		}
-		if (active == Tab.GENERAL && sortOrder.click(textRenderer, event.x(), event.y())) {
-			click();
-			return true;
-		}
-		if (active == Tab.TIER_LISTS && tierPalette.click(textRenderer, event.x(), event.y())) {
-			click();
-			return true;
-		}
-		if (active == Tab.NAMETAG) {
-			// Open lists get first refusal, so a click inside one is not taken
-			// by whatever it happens to overlap. This is the branch a pick
-			// goes through, so it sounds like the rest of them.
-			for (Dropdown<?> dropdown : dropdowns()) {
-				if (dropdown.isOpen() && dropdown.click(textRenderer, event.x(), event.y())) {
-					click();
-					return true;
-				}
-			}
-			for (Dropdown<?> dropdown : dropdowns()) {
-				if (dropdown.click(textRenderer, event.x(), event.y())) {
-					click();
-					return true;
-				}
-			}
-			if (tagEditor.click(event, doubled)) {
-				click();
-				return true;
-			}
-		}
-
-		for (Zone zone : zones) {
-			if (zone.contains(event.x(), event.y())) {
-				zone.action().run();
-				return true;
-			}
-		}
-		return super.mouseClicked(event, doubled);
-	}
-
-	@Override
-	public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
-		if (active == Tab.NAMETAG && tagEditor.keyPressed(input)) {
-			return true;
-		}
-		return super.keyPressed(input);
-	}
-
-	@Override
-	public boolean charTyped(net.minecraft.client.input.CharInput input) {
-		if (active == Tab.NAMETAG && tagEditor.charTyped(input)) {
-			return true;
-		}
-		return super.charTyped(input);
-	}
-
-	@Override
-	public boolean mouseDragged(net.minecraft.client.gui.Click event,
-			double dragX, double dragY) {
-		if (active == Tab.NAMETAG) {
-			tagEditor.drag(event, dragX, dragY);
-		}
-		return super.mouseDragged(event, dragX, dragY);
-	}
-
-	@Override
-	public boolean mouseReleased(net.minecraft.client.gui.Click event) {
-		if (active == Tab.NAMETAG && tagEditor.release(event.x(), event.y())) {
-			click();
-			return true;
-		}
-		return super.mouseReleased(event);
-	}
-
-	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-		if (active == Tab.TAB && (tabPrimary.scroll(deltaY) || tabSecondary.scroll(deltaY)
-				|| (config().tabSortLimited && tabLimit.scroll(deltaY)))) {
-			return true;
-		}
-		if (active == Tab.GENERAL && sortOrder.scroll(deltaY)) {
-			return true;
-		}
-		if (active == Tab.TIER_LISTS && tierPalette.scroll(deltaY)) {
-			return true;
-		}
-		if (active == Tab.NAMETAG) {
-			for (Dropdown<?> dropdown : dropdowns()) {
-				if (dropdown.scroll(deltaY)) {
-					return true;
-				}
-			}
-			if (tagEditor.scroll(mouseX, mouseY, deltaY)) {
-				return true;
-			}
-		}
-		scroll = Math.clamp(scroll - (int) (deltaY * 12), 0, maxScroll);
-		return true;
-	}
-
-	@Override
-	public void close() {
-		client.setScreen(parent);
-	}
-
-	/** A label with an explanation, and the box that triggers it. */
-	private record HoverLabel(int left, int top, int right, int bottom, String text) {
-		boolean contains(int mouseX, int mouseY) {
-			return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
-		}
-	}
-
-	/**
-	 * The mod's tooltip: a bordered card in the same palette as the panels,
-	 * kept inside the window.
-	 */
-	private void drawHoverText(DrawContext graphics, String text,
-			int mouseX, int mouseY) {
-		int boxWidth = textRenderer.getWidth(text) + 12;
-		int boxHeight = textRenderer.fontHeight + 12;
-		int boxX = Tooltips.x(mouseX, boxWidth, width);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
-
-		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, CARD_BORDER);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
-		graphics.drawTextWithShadow(textRenderer, Text.literal(text), boxX + 6, boxY + 6, LABEL_COLOR);
-	}
-
-	private record Zone(int left, int top, int right, int bottom, Runnable action) {
-		boolean contains(double x, double y) {
-			return x >= left && x <= right && y >= top && y <= bottom;
-		}
 	}
 }
