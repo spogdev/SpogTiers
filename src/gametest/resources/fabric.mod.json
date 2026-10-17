@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "spogtiers-gametest",
+  "version": "1.0.0",
+  "name": "SpogTiers Game Tests",
+  "description": "Client game tests for SpogTiers. Not published.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": [
+      "dev.spog.tiers.test.ConfigScreenGameTest"
+    ]
+  },
+  "depends": {
+    "spogtiers": "*"
+  }
+}
