@@ -17,10 +17,13 @@ public enum TierList {
 	// software, down to the endpoint list and the response shapes, so the same
 	// flag gets the same tester data.
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/v2/profile/", false, "?tests"),
-	// v2, with tests asked for: v1 was deprecated with a stated removal date of
-	// 1 June 2026, and only v2 publishes who tested a placement. The flag takes
-	// no value, which is why it hangs off the end of the path.
-	MCTIERS("mctiers", "MCTiers", "https://mctiers.com/api/v2/profile/", false, "?tests"),
+	// mctiers.com stopped resolving when the list moved to mctiers.gg, and the
+	// move dropped the versioned routes with it: /api/v2/profile/ now answers
+	// with the site's HTML 404 page, while /api/profile/ returns the same JSON
+	// the shared parser already reads. "?tests" is kept because the request
+	// still accepts it, but the new route ignores it and sends no tests array,
+	// so MCTiers placements no longer carry a tester name.
+	MCTIERS("mctiers", "MCTiers", "https://mctiers.gg/api/profile/", false, "?tests"),
 	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false),
 	CATPVP("catpvp", "CatPVP", "https://catpvp.net/player/", true);
 
