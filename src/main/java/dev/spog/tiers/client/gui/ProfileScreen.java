@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import com.mojang.authlib.GameProfile;
 import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.SpogTiersClient;
@@ -1245,17 +1248,11 @@ public class ProfileScreen extends Screen {
 		int right = x + width;
 		int bottom = y + height;
 
-		// The body, inset a pixel top and bottom: those rows are the border
-		// itself, so filling under them would only be overdrawn.
-		graphics.fill(x + 1, y + 1, right - 1, bottom - 1, background);
-
-		// Top and bottom borders, each a pixel short at both ends, which is
-		// what removes the corner.
-		graphics.fill(x + 1, y, right - 1, y + 1, border);
-		graphics.fill(x + 1, bottom - 1, right - 1, bottom, border);
-		// Sides, likewise short, so no corner pixel is ever drawn.
-		graphics.fill(x, y + 1, x + 1, bottom - 1, border);
-		graphics.fill(right - 1, y + 1, right, bottom - 1, border);
+		// This used to clip its own corners by hand, a pixel at a time, which
+		// is the same idea the library now does properly and by a settable
+		// amount. A badge is control-height, so it takes the control radius.
+		SporeDraw.roundedPanel(graphics, x, y, right, bottom,
+				SporeTheme.CONTROL_RADIUS, background, border);
 	}
 
 	/**
@@ -1398,11 +1395,10 @@ public class ProfileScreen extends Screen {
 	}
 
 	private void drawCardFrame(DrawContext graphics, int left, int top, int right, int bottom) {
-		graphics.fill(left, top, right, bottom, CARD_FILL);
-		graphics.fill(left, top, right, top + 1, CARD_BORDER);
-		graphics.fill(left, bottom - 1, right, bottom, CARD_BORDER);
-		graphics.fill(left, top, left + 1, bottom, CARD_BORDER);
-		graphics.fill(right - 1, top, right, bottom, CARD_BORDER);
+		// A card is a panel-sized surface, so it rounds like the panels on
+		// the settings screen rather than like a control.
+		SporeDraw.roundedPanel(graphics, left, top, right, bottom,
+				SporeTheme.PANEL_RADIUS, CARD_FILL, CARD_BORDER);
 	}
 
 	/**

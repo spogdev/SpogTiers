@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -50,11 +53,10 @@ public class PanelButton extends PressableWidget {
 		int fill = hovered ? FILL_HOVERED : FILL;
 		int border = hovered ? BORDER_HOVERED : BORDER;
 
-		context.fill(left, top, right, bottom, fill);
-		context.fill(left, top, right, top + 1, border);
-		context.fill(left, bottom - 1, right, bottom, border);
-		context.fill(left, top, left + 1, bottom, border);
-		context.fill(right - 1, top, right, bottom, border);
+		// The library's control corner, so this button matches the ones
+		// SporeUI draws on the settings screen beside it.
+		SporeDraw.roundedPanel(context, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, fill, border);
 
 		TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
 		context.drawTextWithShadow(textRenderer, getMessage(),

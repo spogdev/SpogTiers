@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
@@ -57,12 +60,9 @@ public class IconButton extends PressableWidget {
 		int bottom = top + height;
 
 		boolean hovered = isHovered();
-		graphics.fill(left, top, right, bottom, hovered ? FILL_HOVERED : FILL);
 		int border = hovered ? BORDER_HOVERED : BORDER;
-		graphics.fill(left, top, right, top + 1, border);
-		graphics.fill(left, bottom - 1, right, bottom, border);
-		graphics.fill(left, top, left + 1, bottom, border);
-		graphics.fill(right - 1, top, right, bottom, border);
+		SporeDraw.roundedPanel(graphics, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, hovered ? FILL_HOVERED : FILL, border);
 
 		int color = hovered ? ICON_HOVERED : ICON;
 		int cx = left + width / 2;

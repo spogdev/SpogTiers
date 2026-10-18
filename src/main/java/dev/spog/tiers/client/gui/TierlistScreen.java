@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
@@ -279,8 +282,8 @@ public class TierlistScreen extends Screen {
 		int frameY = (height - frameHeight) / 2;
 
 		// The frame itself: translucent, so the world stays visible behind it.
-		graphics.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, FRAME_FILL);
-		outline(graphics, frameX, frameY, frameX + frameWidth, frameY + frameHeight, GRID);
+		SporeDraw.roundedPanel(graphics, frameX, frameY, frameX + frameWidth,
+				frameY + frameHeight, SporeTheme.PANEL_RADIUS, FRAME_FILL, GRID);
 
 		int x = frameX + FRAME_PADDING;
 		int y = frameY + FRAME_PADDING;
@@ -604,8 +607,8 @@ public class TierlistScreen extends Screen {
 		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, Math.max(4, height - boxHeight - 4));
 
-		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
-		outline(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, GRID);
+		SporeDraw.roundedPanel(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight,
+				SporeTheme.CONTROL_RADIUS, 0xE00E1219, GRID);
 		graphics.drawTextWithShadow(font, Text.literal(name),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
 	}
