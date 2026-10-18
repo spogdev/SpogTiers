@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -275,11 +278,11 @@ public class Dropdown<T> {
 
 	private static void frame(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int bottom, int fill, int border) {
-		graphics.fill(left, top, right, bottom, fill);
-		graphics.fill(left, top, right, top + 1, border);
-		graphics.fill(left, bottom - 1, right, bottom, border);
-		graphics.fill(left, top, left + 1, bottom, border);
-		graphics.fill(right - 1, top, right, bottom, border);
+		// The library's control corner, so this dropdown matches the ones
+		// SporeUI draws. Both callers are control-height boxes -- the closed
+		// box and the list under it -- so one radius covers them.
+		SporeDraw.roundedPanel(graphics, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, fill, border);
 	}
 
 	/**
