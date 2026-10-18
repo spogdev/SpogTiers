@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.Minecraft;
@@ -43,11 +46,10 @@ public class PanelButton extends AbstractButton {
 		int fill = hovered ? FILL_HOVERED : FILL;
 		int border = hovered ? BORDER_HOVERED : BORDER;
 
-		graphics.fill(left, top, right, bottom, fill);
-		graphics.fill(left, top, right, top + 1, border);
-		graphics.fill(left, bottom - 1, right, bottom, border);
-		graphics.fill(left, top, left + 1, bottom, border);
-		graphics.fill(right - 1, top, right, bottom, border);
+		// The library's control corner, so this button matches the ones
+		// SporeUI draws on the settings screen beside it.
+		SporeDraw.roundedPanel(graphics, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, fill, border);
 
 		var font = Minecraft.getInstance().font;
 		graphics.text(font, getMessage(),

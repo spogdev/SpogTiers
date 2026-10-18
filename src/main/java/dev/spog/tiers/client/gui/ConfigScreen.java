@@ -2,6 +2,7 @@ package dev.spog.tiers.client.gui;
 
 import dev.spog.spore.ui.screen.SporeConfigScreen;
 import dev.spog.spore.ui.screen.SporeTab;
+import dev.spog.spore.ui.theme.SporeDraw;
 import dev.spog.spore.ui.theme.SporeTheme;
 import dev.spog.spore.ui.widget.SporeDropdown;
 import dev.spog.tiers.SpogTiers;
@@ -512,10 +513,12 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 		int boxX = Tooltips.x(mouseX, boxWidth, width);
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
-		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight,
-				SporeTheme.CARD_BORDER);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1,
-				0xE00E1219);
+		SporeDraw.roundedFill(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight,
+				SporeTheme.CONTROL_RADIUS, SporeTheme.CARD_BORDER);
+		// One step shallower, so the inner fill follows the border it is
+		// nested inside rather than poking through its corners.
+		SporeDraw.roundedFill(graphics, boxX + 1, boxY + 1, boxX + boxWidth - 1,
+				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS - 1, 0xE00E1219);
 		graphics.text(font, Component.literal(text), boxX + 6, boxY + 6,
 				SporeTheme.LABEL_COLOR);
 	}

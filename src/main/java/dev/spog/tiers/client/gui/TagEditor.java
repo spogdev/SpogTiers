@@ -1,5 +1,8 @@
 package dev.spog.tiers.client.gui;
 
+import dev.spog.spore.ui.theme.SporeDraw;
+import dev.spog.spore.ui.theme.SporeTheme;
+
 import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.client.ClientCommands;
 import dev.spog.tiers.client.GlyphIcons;
@@ -490,7 +493,7 @@ public final class TagEditor {
 			int width = span(dragging);
 			int x = mouseX - width / 2;
 			int y = mouseY - PREVIEW_ROW / 2;
-			graphics.fill(x, y, x + width, y + PREVIEW_ROW, 0x90222A35);
+			filled(graphics, x, y, x + width, y + PREVIEW_ROW, 0x90222A35);
 			outline(graphics, x, y, x + width, y + PREVIEW_ROW, ACCENT);
 			drawElementText(graphics, dragging, x + 3,
 					y + (PREVIEW_ROW - font.lineHeight) / 2, true);
@@ -596,7 +599,7 @@ public final class TagEditor {
 		int textY = y + (BUTTON_HEIGHT - font.lineHeight) / 2;
 		codeField(x + CODE_INSET, textY, width - CODE_INSET * 2);
 		boolean focused = codeField.isFocused();
-		graphics.fill(x, y, x + width, y + BUTTON_HEIGHT, PANEL_FILL);
+		filled(graphics, x, y, x + width, y + BUTTON_HEIGHT, PANEL_FILL);
 		outline(graphics, x, y, x + width, y + BUTTON_HEIGHT,
 				focused ? ACCENT : PANEL_BORDER);
 		codeField.extractWidgetRenderState(graphics, mouseX, mouseY, 0.0f);
@@ -1297,7 +1300,7 @@ public final class TagEditor {
 					0xEDE04E, 0xEB8526, 0xD46A6A, 0xA034C7};
 			int sx = x;
 			for (int colour : palette) {
-				graphics.fill(sx, y, sx + 18, y + 18, 0xFF000000 | colour);
+				filled(graphics, sx, y, sx + 18, y + 18, 0xFF000000 | colour);
 				if (colour == selected.colour) {
 					outline(graphics, sx - 1, y - 1, sx + 19, y + 19, ACCENT);
 				}
@@ -2109,17 +2112,29 @@ public final class TagEditor {
 	}
 
 	private void panel(GuiGraphicsExtractor graphics, int left, int top, int right, int bottom) {
-		graphics.fill(left, top, right, bottom, PANEL_FILL);
-		outline(graphics, left, top, right, bottom, PANEL_BORDER);
+		// The library's panel corner: these three fill the body of the
+		// settings screen, so they round like the panels on every other tab.
+		SporeDraw.roundedPanel(graphics, left, top, right, bottom,
+				SporeTheme.PANEL_RADIUS, PANEL_FILL, PANEL_BORDER);
 	}
 
 	/** A one-pixel border, the same weight on every edge. */
 	private void outline(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int bottom, int colour) {
-		graphics.fill(left, top, right, top + 1, colour);
-		graphics.fill(left, bottom - 1, right, bottom, colour);
-		graphics.fill(left, top, left + 1, bottom, colour);
-		graphics.fill(right - 1, top, right, bottom, colour);
+		SporeDraw.roundedOutline(graphics, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, colour);
+	}
+
+	/**
+	 * The filled interior that an {@link #outline} is drawn around.
+	 *
+	 * <p>Paired with it so the two round by the same amount: a square fill
+	 * under a rounded border shows its own corners poking out past the curve.
+	 */
+	private void filled(GuiGraphicsExtractor graphics, int left, int top, int right,
+			int bottom, int colour) {
+		SporeDraw.roundedFill(graphics, left, top, right, bottom,
+				SporeTheme.CONTROL_RADIUS, colour);
 	}
 
 	/** A divider between groups, inset from both edges of the panel. */
@@ -2139,7 +2154,7 @@ public final class TagEditor {
 		int height = 20;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
-		graphics.fill(x, y, x + width, y + height, hovered ? 0x8022303F : 0x60161B22);
+		filled(graphics, x, y, x + width, y + height, hovered ? 0x8022303F : 0x60161B22);
 		outline(graphics, x, y, x + width, y + height,
 				hovered ? 0xA05B6B7D : PANEL_BORDER);
 		graphics.text(font, Component.literal(label),
@@ -2186,7 +2201,7 @@ public final class TagEditor {
 		int height = BUTTON_HEIGHT;
 		boolean hovered = mouseX >= x && mouseX < x + width
 				&& mouseY >= y && mouseY < y + height;
-		graphics.fill(x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
+		filled(graphics, x, y, x + width, y + height, hovered ? tint.hovered() : tint.fill());
 		outline(graphics, x, y, x + width, y + height,
 				hovered ? tint.text() : tint.border());
 		// Centred on the height the button used to be, so shortening it moved
@@ -2209,7 +2224,7 @@ public final class TagEditor {
 			int mouseX, int mouseY, String id, boolean picked) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
+		filled(graphics, x, y, x + size, y + size, hovered ? 0x8022303F : 0x60161B22);
 		outline(graphics, x, y, x + size, y + size, picked ? ACCENT : PANEL_BORDER);
 		graphics.text(font, Component.literal(label),
 				x + (size - font.width(label)) / 2,
@@ -2228,7 +2243,7 @@ public final class TagEditor {
 			int mouseX, int mouseY) {
 		boolean hovered = mouseX >= x && mouseX < x + size
 				&& mouseY >= y && mouseY < y + size;
-		graphics.fill(x, y, x + size, y + size, hovered ? GREEN.hovered() : GREEN.fill());
+		filled(graphics, x, y, x + size, y + size, hovered ? GREEN.hovered() : GREEN.fill());
 		outline(graphics, x, y, x + size, y + size, hovered ? GREEN.text() : GREEN.border());
 
 		// Both strokes share one centre and one thickness, so the cross is
@@ -2266,7 +2281,7 @@ public final class TagEditor {
 				&& mouseY >= y && mouseY < y + size;
 		int fill = allowed ? (hovered ? RED.hovered() : RED.fill()) : dim(RED.fill());
 		int border = allowed ? (hovered ? RED.text() : RED.border()) : dim(RED.border());
-		graphics.fill(x, y, x + size, y + size, fill);
+		filled(graphics, x, y, x + size, y + size, fill);
 		outline(graphics, x, y, x + size, y + size, border);
 
 		int ink = allowed ? RED.text() : dim(RED.text());
