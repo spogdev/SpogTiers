@@ -703,8 +703,12 @@ public final class TagEditor {
 		int boxX = Tooltips.x(mouseX, boxWidth, screenWidth);
 		int boxY = Math.clamp(mouseY - 8, 4, screenHeight - boxHeight - 4);
 
-		graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, tint.border());
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1,
+		SporeDraw.roundedFill(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight,
+				SporeTheme.CONTROL_RADIUS, tint.border());
+		// One step shallower, so the inner fill follows the border it is
+		// nested inside rather than poking through its corners.
+		SporeDraw.roundedFill(graphics, boxX + 1, boxY + 1, boxX + boxWidth - 1,
+				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS - 1,
 				tint.fill() | 0xE0000000);
 		graphics.text(font, Component.literal(text), boxX + 6, boxY + 6, tint.text());
 	}
@@ -881,8 +885,8 @@ public final class TagEditor {
 		// the world rather than as three lines of loose text.
 		int plateTop = y;
 		int plateHeight = PREVIEW_ROW * 3 + 8;
-		graphics.fill(left + PADDING, plateTop, right - PADDING, plateTop + plateHeight,
-				0xA0080C12);
+		SporeDraw.roundedFill(graphics, left + PADDING, plateTop, right - PADDING,
+				plateTop + plateHeight, SporeTheme.PANEL_RADIUS, 0xA0080C12);
 
 		// How far the outer rows move to sit over the name, mirroring what
 		// the game does, so the preview shows the arrangement that will be
@@ -1064,7 +1068,8 @@ public final class TagEditor {
 			// Hover still needs a hint of a box to show it is grabbable, but
 			// the selection itself is carried by the text, not a panel behind it.
 			if (hovered && dragging == null) {
-				graphics.fill(x, y + 1, x + span, y + PREVIEW_ROW - 1, 0x18FFFFFF);
+				SporeDraw.roundedFill(graphics, x, y + 1, x + span, y + PREVIEW_ROW - 1,
+						SporeTheme.SWITCH_RADIUS, 0x18FFFFFF);
 			}
 			drawElementText(graphics, element, x + 3, textY, chosen);
 
@@ -1345,7 +1350,12 @@ public final class TagEditor {
 			int bottom, int mouseX, int mouseY) {
 		int footer = bottom - FOOTER_HEIGHT;
 		graphics.fill(left + 1, footer, right - 1, footer + 1, PANEL_BORDER);
-		graphics.fill(left + 1, footer + 1, right - 1, bottom - 1, 0x40101720);
+		// Rounded along the bottom only, by the panel's own radius: this strip
+		// sits in the foot of a rounded panel, so square corners here would
+		// poke out through the curve above them. The top edge stays straight,
+		// since the rule just drawn is what separates it from the list.
+		SporeDraw.roundedFillBottom(graphics, left + 1, footer + 1, right - 1, bottom - 1,
+				SporeTheme.PANEL_RADIUS, 0x40101720);
 		// The same gap from the right edge as from the top and bottom of the
 		// footer, so it sits square in its corner.
 		int inset = (FOOTER_HEIGHT - 18) / 2;
@@ -2337,9 +2347,11 @@ public final class TagEditor {
 		int boxWidth = 22;
 		int boxX = right - boxWidth;
 		graphics.text(font, Component.literal(label), x, y + 4, LABEL_COLOR);
-		graphics.fill(boxX, y + 2, boxX + boxWidth, y + height - 2, on ? ON_FILL : OFF_FILL);
+		SporeDraw.roundedFill(graphics, boxX, y + 2, boxX + boxWidth, y + height - 2,
+				SporeTheme.SWITCH_RADIUS, on ? ON_FILL : OFF_FILL);
 		int knob = on ? boxX + boxWidth - 10 : boxX + 2;
-		graphics.fill(knob, y + 4, knob + 8, y + height - 4, 0xFFFFFFFF);
+		SporeDraw.roundedFill(graphics, knob, y + 4, knob + 8, y + height - 4,
+				SporeTheme.SWITCH_RADIUS, 0xFFFFFFFF);
 		// Asked of overRow rather than of the painted box, because the whole
 		// row takes the click here: ringing only on the box would leave most
 		// of what is clickable saying nothing.
@@ -2358,9 +2370,9 @@ public final class TagEditor {
 	 */
 	private void ring(GuiGraphicsExtractor graphics, int left, int top, int right,
 			int bottom) {
-		graphics.fill(left, top, right, top + 1, 0xFFFFFFFF);
-		graphics.fill(left, bottom - 1, right, bottom, 0xFFFFFFFF);
-		graphics.fill(left, top, left + 1, bottom, 0xFFFFFFFF);
-		graphics.fill(right - 1, top, right, bottom, 0xFFFFFFFF);
+		// One step wider than the switch it rings, so it follows that corner
+		// rather than cutting across it.
+		SporeDraw.roundedOutline(graphics, left, top, right, bottom,
+				SporeTheme.SWITCH_RADIUS + 1, 0xFFFFFFFF);
 	}
 }
