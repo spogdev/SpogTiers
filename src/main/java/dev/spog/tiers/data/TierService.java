@@ -39,7 +39,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +52,13 @@ import java.util.regex.Pattern;
  */
 public class TierService {
 	private static final long FAILURE_BACKOFF_MILLIS = 60_000L;
+	/**
+	 * Pauses before each retry of a list that failed while the others
+	 * answered. Short first, since a stalled PvPTiers request is usually
+	 * followed by one that answers at once, then backing off so a list that
+	 * really is down costs three requests per player rather than a stream.
+	 */
+	private static final long[] RETRY_DELAYS_MILLIS = {3_000L, 15_000L, 60_000L};
 	private static final String SESSION_PROFILE =
 			"https://sessionserver.mojang.com/session/minecraft/profile/";
 	/**
@@ -197,6 +206,8 @@ public class TierService {
 	/** When a failed lookup may be tried again. */
 	private final Map<UUID, Long> discordRetryAfter = new ConcurrentHashMap<>();
 	private final Set<UUID> gradePending = ConcurrentHashMap.newKeySet();
+	/** Players with a retry chain under way, so only one runs per player. */
+	private final Set<UUID> retrying = ConcurrentHashMap.newKeySet();
 
 	public TierService(SpogTiersConfig config, TierCache cache) {
 		this.config = config;
@@ -461,7 +472,14 @@ public class TierService {
 	 * concurrently rather than one after another.
 	 */
 	public void requestNow(UUID uuid) {
-		if (uuid == null || !cache.needsLookup(uuid)) {
+		if (uuid == null) {
+			return;
+		}
+		if (!cache.needsLookup(uuid)) {
+			// Already looked up, but a list may have failed while the others
+			// answered. Someone opening the profile is the moment that gap
+			// matters, so it is asked for now rather than left until expiry.
+			fillGaps(uuid);
 			return;
 		}
 		queue.remove(uuid);
@@ -492,6 +510,7 @@ public class TierService {
 			}
 		}
 
+		Set<TierList> failed = ConcurrentHashMap.newKeySet();
 		List<CompletableFuture<Boolean>> pending = new ArrayList<>(lists.size());
 		for (TierList list : lists) {
 			pending.add(CompletableFuture.supplyAsync(() -> {
@@ -506,6 +525,7 @@ public class TierService {
 					}
 				} catch (Exception e) {
 					responseMillis.remove(list);
+					failed.add(list);
 					SpogTiers.LOGGER.debug("{} lookup failed for {}", list.key(), uuid, e);
 				}
 				return false;
@@ -524,6 +544,9 @@ public class TierService {
 					}
 					if (any) {
 						cache.markComplete(uuid);
+						if (!failed.isEmpty() && retrying.add(uuid)) {
+							retryLists(uuid, failed, 0);
+						}
 					} else {
 						cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
 					}
@@ -629,6 +652,7 @@ public class TierService {
 	/** Queries every enabled list; one failing must not sink the others. */
 	private void fetchAll(UUID uuid) {
 		boolean any = false;
+		Set<TierList> failed = ConcurrentHashMap.newKeySet();
 		for (TierList list : TierList.values()) {
 			if (!config.isEnabled(list)) {
 				continue;
@@ -647,6 +671,7 @@ public class TierService {
 				}
 			} catch (Exception e) {
 				responseMillis.remove(list);
+				failed.add(list);
 				// A host that does not resolve or refuses the connection is the
 				// list being down, not this player being absent from it. Said
 				// at WARN, because the alternative is what actually happened
@@ -667,9 +692,104 @@ public class TierService {
 		}
 		if (any) {
 			cache.markComplete(uuid);
+			// Only for players in view: this path walks the whole tab list at a
+			// polite rate, and retries go around that limit, so on a full server
+			// with a list down they would arrive as a burst. Nameplates are
+			// what needs the data anyway; anyone else has the gap filled
+			// when their profile is opened (requestNow).
+			if (!failed.isEmpty() && isLoaded(uuid) && retrying.add(uuid)) {
+				retryLists(uuid, failed, 0);
+			}
 		} else {
 			cache.markFailed(uuid, FAILURE_BACKOFF_MILLIS);
 		}
+	}
+
+	/**
+	 * Asks again, after a pause, the lists that failed while others answered.
+	 *
+	 * <p>Without this a list that threw once was gone for the whole cache
+	 * lifetime: the other lists answering marks the player complete, and a
+	 * complete player is not looked up again until the entry expires --
+	 * fifteen minutes by default. A list that is down is no loss there, but
+	 * PvPTiers stalls on a large share of requests and answers the next one at
+	 * once (five timeouts in twelve when it was measured), so a single bad
+	 * request was enough to make it look absent rather than flaky.
+	 *
+	 * <p>Lists that answered, including with a 404, are left alone: only a
+	 * request that threw is retried. A retry only fills a gap -- it never
+	 * replaces data that arrived some other way, and never brings back an
+	 * entry that has since been dropped, which would be stored with no
+	 * completion time and so never expire.
+	 */
+	private void retryLists(UUID uuid, Set<TierList> lists, int attempt) {
+		if (lists.isEmpty() || attempt >= RETRY_DELAYS_MILLIS.length) {
+			retrying.remove(uuid);
+			return;
+		}
+		// -1 is "now", for a profile being opened; the schedule picks up
+		// from the first pause after that.
+		long delay = attempt < 0 ? 0L : RETRY_DELAYS_MILLIS[attempt];
+		Executor later = CompletableFuture.delayedExecutor(
+				delay, TimeUnit.MILLISECONDS, fanout);
+		CompletableFuture.runAsync(() -> {
+			Set<TierList> stillFailing = ConcurrentHashMap.newKeySet();
+			List<CompletableFuture<Void>> pending = new ArrayList<>(lists.size());
+			for (TierList list : lists) {
+				if (!config.isEnabled(list) || !needsRetry(uuid, list)) {
+					continue;
+				}
+				pending.add(CompletableFuture.runAsync(() -> {
+					long startedAt = System.nanoTime();
+					try {
+						PlayerTiers result = fetchOne(list, uuid);
+						responseMillis.put(list,
+								(int) ((System.nanoTime() - startedAt) / 1_000_000L));
+						reportedDown.remove(list);
+						if (result != null && needsRetry(uuid, list)) {
+							cache.put(uuid, list, result);
+						}
+					} catch (Exception e) {
+						stillFailing.add(list);
+						SpogTiers.LOGGER.debug("{} retry {} failed for {}",
+								list.key(), attempt + 1, uuid, e);
+					}
+				}, fanout));
+			}
+			CompletableFuture.allOf(pending.toArray(new CompletableFuture[0]))
+					.whenComplete((ignored, error) ->
+							retryLists(uuid, stillFailing, attempt + 1));
+		}, later).exceptionally(error -> {
+			// Never leave the flag set: it would stop this player retrying
+			// for the rest of the session.
+			retrying.remove(uuid);
+			return null;
+		});
+	}
+
+	/**
+	 * Asks again for any enabled list this player's entry is missing.
+	 *
+	 * <p>Nothing happens while a chain is already running for them, so
+	 * reopening the screen -- or {@code init} running again on a resize --
+	 * does not stack up duplicate requests.
+	 */
+	private void fillGaps(UUID uuid) {
+		Set<TierList> gaps = ConcurrentHashMap.newKeySet();
+		for (TierList list : TierList.values()) {
+			if (config.isEnabled(list) && needsRetry(uuid, list)) {
+				gaps.add(list);
+			}
+		}
+		if (!gaps.isEmpty() && retrying.add(uuid)) {
+			retryLists(uuid, gaps, -1);
+		}
+	}
+
+	/** Whether the player is still cached but this one list is missing. */
+	private boolean needsRetry(UUID uuid, TierList list) {
+		Map<TierList, PlayerTiers> lists = cache.allLists(uuid);
+		return !lists.isEmpty() && !lists.containsKey(list);
 	}
 
 	/**
