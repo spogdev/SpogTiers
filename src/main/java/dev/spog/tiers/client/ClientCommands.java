@@ -25,9 +25,11 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.Component;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +56,17 @@ public final class ClientCommands {
 	private static final String TIERLIST = "tierlist";
 	private static final String MOJANG_PROFILE =
 			"https://api.mojang.com/users/profiles/minecraft/";
+	/**
+	 * Mojang's other name lookup, asked at the same time as the one above.
+	 *
+	 * <p>Both answer with the same {"id", "name"} body and a 404 for an unknown
+	 * name, and both stall at random -- four and nine seconds were each seen
+	 * when they were measured side by side -- but not in the same moment: over
+	 * ten paired requests the quicker of the two always answered in under
+	 * 0.6s. Racing them turns those stalls into nothing.
+	 */
+	private static final String SERVICES_PROFILE =
+			"https://api.minecraftservices.com/minecraft/profile/lookup/name/";
 	/** Session server: unlike the profile API, this returns skin textures. */
 	private static final String MOJANG_SESSION =
 			"https://sessionserver.mojang.com/session/minecraft/profile/";
@@ -195,15 +208,25 @@ public final class ClientCommands {
 		}
 
 		feedback(Component.literal("Looking up " + name + "...").withStyle(ChatFormatting.GRAY));
+		// Opened on the id alone, with the skin following. The textures come
+		// from a second request, to the session server, which stalls for
+		// seconds at a time on its own; waiting for it before opening is what
+		// kept the menu off screen, when the rankings -- the reason for
+		// opening it -- only need the id.
 		CompletableFuture
-				.supplyAsync(() -> resolveProfile(name))
-				.thenAcceptAsync(profile -> {
-					if (profile == null) {
+				.supplyAsync(() -> resolveId(name))
+				.thenAcceptAsync(found -> {
+					if (found == null) {
 						feedback(Component.literal("No such player: " + name)
 								.withStyle(ChatFormatting.RED));
 						return;
 					}
-					client.gui.setScreen(new ProfileScreen(profile));
+					ProfileScreen screen = new ProfileScreen(found);
+					client.gui.setScreen(screen);
+					CompletableFuture
+							.supplyAsync(() -> withTextures(found.id(), found.name(),
+									found.id().toString().replace("-", "")))
+							.thenAcceptAsync(screen::useTextures, client);
 				}, client);
 	}
 
@@ -229,28 +252,70 @@ public final class ClientCommands {
 	 * mean two lookups that could disagree.
 	 */
 	public static GameProfile resolveProfile(String name) {
+		GameProfile found = resolveId(name);
+		return found == null
+				? null
+				: withTextures(found.id(), found.name(), found.id().toString().replace("-", ""));
+	}
+
+	/**
+	 * Resolves a name to its id and canonical spelling, without textures.
+	 * Returns null when unknown.
+	 *
+	 * <p>Blocking. Both of Mojang's name lookups are asked at once and the
+	 * first to find the player wins; null only once both have answered
+	 * without one, so a stalled endpoint cannot turn a real player into "no
+	 * such player" while the other is still on its way.
+	 */
+	public static GameProfile resolveId(String name) {
+		List<CompletableFuture<GameProfile>> attempts = List.of(
+				lookupName(MOJANG_PROFILE, name),
+				lookupName(SERVICES_PROFILE, name));
+		CompletableFuture<GameProfile> first = new CompletableFuture<>();
+		for (CompletableFuture<GameProfile> attempt : attempts) {
+			attempt.thenAccept(profile -> {
+				if (profile != null) {
+					first.complete(profile);
+				}
+			});
+		}
+		CompletableFuture.allOf(attempts.toArray(new CompletableFuture[0]))
+				.whenComplete((ignored, error) -> first.complete(null));
 		try {
-			HttpRequest request = HttpRequest.newBuilder(URI.create(MOJANG_PROFILE + name))
-					.header("Accept", "application/json")
-					.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
-					.timeout(Duration.ofSeconds(10))
-					.GET()
-					.build();
-
-			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-			// 204/404 both mean "no account with that name".
-			if (response.statusCode() != 200 || response.body().isBlank()) {
-				return null;
-			}
-
-			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-			String id = root.get("id").getAsString();
-			String resolved = root.has("name") ? root.get("name").getAsString() : name;
-			return withTextures(parseUndashed(id), resolved, id);
+			return first.get();
 		} catch (Exception e) {
 			SpogTiers.LOGGER.debug("Profile lookup failed for {}", name, e);
 			return null;
+		} finally {
+			// The loser is still holding a socket for nothing.
+			attempts.forEach(attempt -> attempt.cancel(true));
 		}
+	}
+
+	/** One name lookup; never fails, only completes with null. */
+	private static CompletableFuture<GameProfile> lookupName(String endpoint, String name) {
+		HttpRequest request = HttpRequest.newBuilder(URI.create(
+						endpoint + URLEncoder.encode(name, StandardCharsets.UTF_8)))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+		return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+				.thenApply(response -> {
+					// 204/404 both mean "no account with that name".
+					if (response.statusCode() != 200 || response.body().isBlank()) {
+						return (GameProfile) null;
+					}
+					JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+					String id = root.get("id").getAsString();
+					String resolved = root.has("name") ? root.get("name").getAsString() : name;
+					return new GameProfile(parseUndashed(id), resolved);
+				})
+				.exceptionally(error -> {
+					SpogTiers.LOGGER.debug("Name lookup at {} failed for {}", endpoint, name, error);
+					return null;
+				});
 	}
 
 	/**

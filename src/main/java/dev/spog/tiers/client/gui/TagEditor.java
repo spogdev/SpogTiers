@@ -532,7 +532,7 @@ public final class TagEditor {
 		}
 
 		CompletableFuture
-				.supplyAsync(() -> ClientCommands.resolveProfile(wanted), LOOKUP)
+				.supplyAsync(() -> ClientCommands.resolveId(wanted), LOOKUP)
 				.thenAcceptAsync(profile -> {
 					if (profile != null) {
 						adopt(wanted, profile.id());
