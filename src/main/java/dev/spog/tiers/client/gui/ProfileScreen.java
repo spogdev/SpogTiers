@@ -187,7 +187,7 @@ public class ProfileScreen extends Screen {
 
 	private final UUID target;
 	private final String playerName;
-	private final GameProfile profile;
+	private GameProfile profile;
 
 	/** Where closing goes, or null to close to the game. See the constructor. */
 	private final Screen back;
@@ -352,6 +352,25 @@ public class ProfileScreen extends Screen {
 	 * {@link #extractRenderState}, and mouse coordinates are divided back in
 	 * {@link #toLocalX}.
 	 */
+	/**
+	 * Swaps in a profile that carries skin textures, for a screen opened on a
+	 * bare one. Call on the render thread.
+	 *
+	 * <p>{@code /tiers} for a player who is not online opens on the id alone
+	 * and fetches the textures afterwards, rather than keeping the menu shut
+	 * while the session server answers. Ignored when it is someone else, or
+	 * when the fetch came back with no textures and would only reset the
+	 * lookup to the default skin it is already showing.
+	 */
+	public void useTextures(GameProfile textured) {
+		if (textured == null || !target.equals(textured.id())
+				|| textured.properties().get("textures").isEmpty()) {
+			return;
+		}
+		profile = textured;
+		skin = Minecraft.getInstance().getSkinManager().createLookup(profile, false);
+	}
+
 	@Override
 	protected void init() {
 		Minecraft client = Minecraft.getInstance();
