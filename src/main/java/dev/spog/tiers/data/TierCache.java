@@ -1,5 +1,6 @@
 package dev.spog.tiers.data;
 
+import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.config.SpogTiersConfig;
 
 import java.util.EnumMap;
@@ -25,6 +26,11 @@ public class TierCache {
 
 	/** One list's data for a player, or null when absent or stale. */
 	public PlayerTiers get(UUID uuid, TierList list) {
+		// Every tag is drawn from here, so this one check hides them all for a
+		// player the dashboard has denied.
+		if (!SpogTiersClient.allowed()) {
+			return null;
+		}
 		if (isExpired(uuid)) {
 			invalidate(uuid);
 			return null;
@@ -40,6 +46,9 @@ public class TierCache {
 
 	/** Every list we have data for, in enum order. */
 	public Map<TierList, PlayerTiers> allLists(UUID uuid) {
+		if (!SpogTiersClient.allowed()) {
+			return Map.of();
+		}
 		if (isExpired(uuid)) {
 			invalidate(uuid);
 			return Map.of();
