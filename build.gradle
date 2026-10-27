@@ -58,6 +58,11 @@ dependencies {
 	modImplementation("dev.spog:sporeui:${project.sporeui_version}") { transitive = false }
 	include("dev.spog:sporeui:${project.sporeui_version}")
 
+	// Reports to the SpogStats dashboard and applies its blacklist/whitelist.
+	// Plain Java with no dependencies, bundled so players install nothing extra.
+	implementation "dev.spog:spogstats:${project.spogstats_version}"
+	include "dev.spog:spogstats:${project.spogstats_version}"
+
 }
 
 processResources {
