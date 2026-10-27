@@ -128,6 +128,9 @@ public final class ClientCommands {
 	 * @return true when handled client-side and the server must not see it
 	 */
 	public static boolean handle(String command) {
+		if (!dev.spog.tiers.SpogTiersClient.allowed()) {
+			return false;
+		}
 		String trimmed = command.trim();
 		String lower = trimmed.toLowerCase(Locale.ROOT);
 
