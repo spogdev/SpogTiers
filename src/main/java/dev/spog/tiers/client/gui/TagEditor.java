@@ -73,6 +73,18 @@ public final class TagEditor {
 	 * being wrong.
 	 */
 	private static final int BUTTON_HEIGHT = 18;
+	/**
+	 * Corner radius for this editor's switch tracks.
+	 *
+	 * <p>Larger than SporeUI's {@code SWITCH_RADIUS}, which is one: SporeDraw
+	 * steps a corner in by one pixel per row, so a radius of one only trims
+	 * the single corner pixel and a 12-pixel track still reads as a square.
+	 * Three rounds it into a pill. Not more, because the steps are linear:
+	 * past three they stop reading as a curve and become a 45-degree bevel.
+	 */
+	private static final int SWITCH_CORNER = 3;
+	/** The knob inside it, 8 pixels square, which two rounds into a dot. */
+	private static final int KNOB_CORNER = 2;
 
 	/**
 	 * The gap between the card's border and the text inside it.
@@ -705,11 +717,14 @@ public final class TagEditor {
 
 		SporeDraw.roundedFill(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight,
 				SporeTheme.CONTROL_RADIUS, tint.border());
-		// The same radius, not one less: the interior is already inset by a
-		// pixel, which is what makes the border a pixel thick, and taking a
-		// step off as well cancels that exactly at the corners.
+		// One step less radius than the border. SporeDraw steps a corner in by
+		// (radius - row), so a box inset by a pixel at the same radius sits a
+		// pixel further in on every corner row than the border does: the
+		// border colour showed through there as a stair, twice as thick at the
+		// corners as along the sides. Taking the step off lines each row up
+		// with the border's, which leaves exactly one pixel of it all round.
 		SporeDraw.roundedFill(graphics, boxX + 1, boxY + 1, boxX + boxWidth - 1,
-				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS,
+				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS - 1,
 				tint.fill() | 0xE0000000);
 		graphics.text(font, Component.literal(text), boxX + 6, boxY + 6, tint.text());
 	}
@@ -1306,9 +1321,16 @@ public final class TagEditor {
 					0xEDE04E, 0xEB8526, 0xD46A6A, 0xA034C7};
 			int sx = x;
 			for (int colour : palette) {
-				filled(graphics, sx, y, sx + 18, y + 18, 0xFF000000 | colour);
 				if (colour == selected.colour) {
+					// The ring sits a pixel outside the swatch, so the swatch
+					// inside it takes one step less radius: at the same radius
+					// each corner row started a pixel short of the ring and
+					// left a notch of background between them.
+					SporeDraw.roundedFill(graphics, sx, y, sx + 18, y + 18,
+							SporeTheme.CONTROL_RADIUS - 1, 0xFF000000 | colour);
 					outline(graphics, sx - 1, y - 1, sx + 19, y + 19, ACCENT);
+				} else {
+					filled(graphics, sx, y, sx + 18, y + 18, 0xFF000000 | colour);
 				}
 				buttons.add(new Button("colour." + colour, sx, y, sx + 18, y + 18, true));
 				sx += 20;
@@ -2349,10 +2371,10 @@ public final class TagEditor {
 		int boxX = right - boxWidth;
 		graphics.text(font, Component.literal(label), x, y + 4, LABEL_COLOR);
 		SporeDraw.roundedFill(graphics, boxX, y + 2, boxX + boxWidth, y + height - 2,
-				SporeTheme.SWITCH_RADIUS, on ? ON_FILL : OFF_FILL);
+				SWITCH_CORNER, on ? ON_FILL : OFF_FILL);
 		int knob = on ? boxX + boxWidth - 10 : boxX + 2;
 		SporeDraw.roundedFill(graphics, knob, y + 4, knob + 8, y + height - 4,
-				SporeTheme.SWITCH_RADIUS, 0xFFFFFFFF);
+				KNOB_CORNER, 0xFFFFFFFF);
 		// Asked of overRow rather than of the painted box, because the whole
 		// row takes the click here: ringing only on the box would leave most
 		// of what is clickable saying nothing.
@@ -2374,6 +2396,6 @@ public final class TagEditor {
 		// One step wider than the switch it rings, so it follows that corner
 		// rather than cutting across it.
 		SporeDraw.roundedOutline(graphics, left, top, right, bottom,
-				SporeTheme.SWITCH_RADIUS + 1, 0xFFFFFFFF);
+				SWITCH_CORNER + 1, 0xFFFFFFFF);
 	}
 }
