@@ -516,11 +516,14 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 
 		SporeDraw.roundedFill(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight,
 				SporeTheme.CONTROL_RADIUS, SporeTheme.CARD_BORDER);
-		// The same radius, not one less: the interior is already inset by a
-		// pixel, which is what makes the border a pixel thick, and taking a
-		// step off as well cancels that exactly at the corners.
+		// One step less radius than the border. SporeDraw steps a corner in by
+		// (radius - row), so a box inset by a pixel at the same radius sits a
+		// pixel further in on every corner row than the border does: the
+		// border colour showed through there as a stair, twice as thick at the
+		// corners as along the sides. Taking the step off lines each row up
+		// with the border's, which leaves exactly one pixel of it all round.
 		SporeDraw.roundedFill(graphics, boxX + 1, boxY + 1, boxX + boxWidth - 1,
-				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS, 0xE00E1219);
+				boxY + boxHeight - 1, SporeTheme.CONTROL_RADIUS - 1, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text), boxX + 6, boxY + 6,
 				SporeTheme.LABEL_COLOR);
 	}

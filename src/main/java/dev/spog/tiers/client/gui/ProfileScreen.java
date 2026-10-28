@@ -1421,6 +1421,22 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
+	 * A solid interior for a {@link #drawCardFrame card frame}, given the
+	 * frame's own bounds, leaving its one-pixel border showing.
+	 *
+	 * <p>The tooltips used to put a square fill a pixel inside the frame. The
+	 * frame's corners are stepped, so that square covered the border on every
+	 * corner row and the tooltips came out square-cornered with the rounded
+	 * border drawn inside them. Inset by a pixel at one step less radius, each
+	 * row starts exactly where the border's does.
+	 */
+	private static void fillInsideFrame(DrawContext graphics, int left, int top,
+			int right, int bottom, int colour) {
+		SporeDraw.roundedFill(graphics, left + 1, top + 1, right - 1, bottom - 1,
+				SporeTheme.PANEL_RADIUS - 1, colour);
+	}
+
+	/**
 	 * One drawn tile, kept so a click can be matched back to its skin.
 	 *
 	 * <p>A null entry is the live skin's tile, which is always first and is how
@@ -2500,7 +2516,7 @@ public class ProfileScreen extends Screen {
 		boxY = 0;
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
 
 		int lineY = boxY + TOOLTIP_PADDING;
 		for (Line line : lines) {
@@ -2642,7 +2658,7 @@ public class ProfileScreen extends Screen {
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, 0xFFE4EAF2);
 	}
@@ -2669,7 +2685,7 @@ public class ProfileScreen extends Screen {
 		graphics.getMatrices().translate(boxX, boxY);
 		graphics.getMatrices().scale(scale, scale);
 		drawCardFrame(graphics, 0, 0, boxWidth, boxHeight);
-		graphics.fill(1, 1, boxWidth - 1, boxHeight - 1, 0xE00E1219);
+		fillInsideFrame(graphics, 0, 0, boxWidth, boxHeight, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text),
 				TOOLTIP_PADDING, TOOLTIP_PADDING, 0xFFE4EAF2);
 		graphics.getMatrices().popMatrix();
@@ -2686,7 +2702,7 @@ public class ProfileScreen extends Screen {
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(name),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, color);
 	}
@@ -2702,7 +2718,7 @@ public class ProfileScreen extends Screen {
 		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
 
 		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		graphics.fill(boxX + 1, boxY + 1, boxX + boxWidth - 1, boxY + boxHeight - 1, 0xE00E1219);
+		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
 		graphics.drawTextWithShadow(textRenderer, Text.literal(text),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, gradeColor);
 	}
