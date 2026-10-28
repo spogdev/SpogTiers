@@ -54,6 +54,7 @@ public class SpogTiersClient implements ClientModInitializer {
 				.attr("modVersion", version)
 				.attr("mcVersion", mcVersion)
 				.attr("loader", "Fabric")
+				.attr("scope", SpogTiersClient::scope)
 				.profileName(() -> MinecraftClient.getInstance().getSession().getUsername())
 				.joinServer(serverId -> {
 					MinecraftClient mc = MinecraftClient.getInstance();
@@ -62,6 +63,23 @@ public class SpogTiersClient implements ClientModInitializer {
 				})
 				.cacheFile(loader.getConfigDir().resolve("spogstats/" + SpogTiers.MOD_ID + ".json"))
 				.start();
+	}
+
+	/**
+	 * Where the player is, sent with every beat so the dashboard counts only
+	 * server time as online. The beats themselves never stop: they also carry
+	 * the access rules, which apply in the menu and singleplayer too. Names
+	 * match TeamLocator's scopes, with "server" for any multiplayer server.
+	 */
+	private static String scope() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		if (mc == null) {
+			return "menu";
+		}
+		if (mc.isIntegratedServerRunning()) {
+			return "singleplayer";
+		}
+		return mc.getNetworkHandler() != null ? "server" : "menu";
 	}
 
 	public static SpogTiersConfig config() {
