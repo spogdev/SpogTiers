@@ -30,6 +30,7 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.text.Style;
@@ -1155,7 +1156,10 @@ public class ProfileScreen extends Screen {
 			if (!tile.contains(event.x(), event.y())) {
 				continue;
 			}
-			if (event.button() == 1) {
+			// The named constant, never 1: 26.3 moved input to SDL, which numbers
+			// left 1 and right 3, so a bare 1 meant right-click before and
+			// left-click after, and the two actions swapped.
+			if (event.button() == InputUtil.GLFW_MOUSE_BUTTON_RIGHT) {
 				openTileMenu(tile.entry(), event.x(), event.y());
 				MinecraftClient.getInstance().getSoundManager()
 						.play(PositionedSoundInstance.ui(SoundEvents.UI_BUTTON_CLICK, 1.0f));
