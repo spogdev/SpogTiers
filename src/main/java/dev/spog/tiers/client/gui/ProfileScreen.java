@@ -4,6 +4,7 @@ import dev.spog.spore.ui.theme.SporeDraw;
 import dev.spog.spore.ui.theme.SporeTheme;
 
 import com.mojang.authlib.GameProfile;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.spog.tiers.SpogTiers;
 import dev.spog.tiers.SpogTiersClient;
@@ -1154,7 +1155,10 @@ public class ProfileScreen extends Screen {
 			if (!tile.contains(event.x(), event.y())) {
 				continue;
 			}
-			if (event.button() == 1) {
+			// The named constant, never 1: 26.3 moved input to SDL, which numbers
+			// left 1 and right 3, so a bare 1 meant right-click before and
+			// left-click after, and the two actions swapped.
+			if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
 				openTileMenu(tile.entry(), event.x(), event.y());
 				Minecraft.getInstance().getSoundManager().play(
 						SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0f));
