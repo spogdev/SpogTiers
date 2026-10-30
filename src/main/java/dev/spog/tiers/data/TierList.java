@@ -17,13 +17,12 @@ public enum TierList {
 	// software, down to the endpoint list and the response shapes, so the same
 	// flag gets the same tester data.
 	SUBTIERS("subtiers", "SubTiers", "https://subtiers.net/api/v2/profile/", false, "?tests"),
-	// mctiers.com stopped resolving when the list moved to mctiers.gg, and the
-	// move dropped the versioned routes with it: /api/v2/profile/ now answers
-	// with the site's HTML 404 page, while /api/profile/ returns the same JSON
-	// the shared parser already reads. "?tests" is kept because the request
-	// still accepts it, but the new route ignores it and sends no tests array,
-	// so MCTiers placements no longer carry a tester name.
-	MCTIERS("mctiers", "MCTiers", "https://mctiers.gg/api/profile/", false, "?tests"),
+	// mctiers.net runs the original mctiers.com API again, v2 included, so this
+	// is the same request the list used before mctiers.com went down: v2 with
+	// tests asked for, since only v2 publishes discord_id and who tested a
+	// placement. An unranked player is a 404 with an empty body, which the
+	// fetch treats as "not on this list" before it reads anything.
+	MCTIERS("mctiers", "MCTiers", "https://mctiers.net/api/v2/profile/", false, "?tests"),
 	MCPVP("mcpvp", "MCPvP", "https://www.mcpvp.com/tiers/search", false),
 	CATPVP("catpvp", "CatPVP", "https://catpvp.net/player/", true);
 
