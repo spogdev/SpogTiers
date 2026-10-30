@@ -227,7 +227,7 @@ def main():
 
     print("MCTiers")
     for mode, icon in MCTIERS.items():
-        if fetch(f"https://mctiers.com/tier_icons/{icon}.svg", "mctiers", mode):
+        if fetch(f"https://mctiers.net/tier_icons/{icon}.svg", "mctiers", mode):
             total += 1
 
     print("PvPTiers")
