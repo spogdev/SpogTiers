@@ -35,6 +35,8 @@ import java.util.List;
 public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 	/** The logo drawn beside a tierlist's name. */
 	private static final int LOGO_SIZE = 14;
+	/** The space between the tabs and the tag editor's panels. */
+	private static final int TAG_EDITOR_GAP = 2;
 
 	public enum Tab implements SporeTab {
 		// The constants keep their old names: they are referred to all over
@@ -173,7 +175,9 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 	@Override
 	protected void drawBareTab(GuiGraphicsExtractor graphics, Tab tab, int left, int top,
 			int right, int bottom, int mouseX, int mouseY) {
-		tagEditor.draw(graphics, left, top, right, bottom, mouseX, mouseY);
+		// SporeUI hands a bare tab the body from the line the tabs stand on, so
+		// the panels would otherwise sit directly against it.
+		tagEditor.draw(graphics, left, top + TAG_EDITOR_GAP, right, bottom, mouseX, mouseY);
 		// Lined up with the right panel's edge rather than the screen's
 		// margin, so the row of buttons ends where the panels above it do, at
 		// the same height Done sits at.
