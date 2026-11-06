@@ -592,6 +592,14 @@ public class SpogTiersConfig {
 	 */
 	public boolean showCopyButton = false;
 
+	/**
+	 * Show a toast when a newer SpogTiers is out for this Minecraft version.
+	 *
+	 * <p>Checked against Modrinth once a launch, the first time the
+	 * multiplayer menu opens.
+	 */
+	public boolean updateToast = true;
+
 	private static Map<TierList, Boolean> defaultLists() {
 		Map<TierList, Boolean> map = new EnumMap<>(TierList.class);
 		for (TierList list : TierList.values()) {
