@@ -209,6 +209,14 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 		body.dropdown("Sorting", sortOrder, config.sortOrder,
 				"How the rows inside each tierlist card are ordered");
 
+		body.toggle("Update Toast", config.updateToast,
+				"Show a toast when a newer SpogTiers is out for this Minecraft "
+						+ "version",
+				value -> {
+					config.updateToast = value;
+					config.save();
+				});
+
 		body.section("Toggle Elements");
 
 		body.toggle("Show HQ Placements", config.showPlacements,

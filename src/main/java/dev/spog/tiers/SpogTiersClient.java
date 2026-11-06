@@ -31,6 +31,8 @@ public class SpogTiersClient implements ClientModInitializer {
 			dev.spog.tiers.client.QuickTiers.tick(client);
 		});
 
+		dev.spog.tiers.client.UpdateChecker.register();
+
 		SpogTiers.LOGGER.info("SpogTiers initialised");
 	}
 
