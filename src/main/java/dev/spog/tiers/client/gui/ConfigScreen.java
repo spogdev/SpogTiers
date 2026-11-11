@@ -36,8 +36,14 @@ import java.util.List;
 public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 	/** The logo drawn beside a tierlist's name. */
 	private static final int LOGO_SIZE = 14;
-	/** The space between the tabs and the tag editor's panels. */
-	private static final int TAG_EDITOR_GAP = 2;
+	/**
+	 * The space between the tabs and the tag editor's panels.
+	 *
+	 * <p>CARD_PADDING, which is how far a framed tab's first row sits below
+	 * the top of its panel, so the editor's panels start at the same depth
+	 * the content of every other tab does rather than up against the tabs.
+	 */
+	private static final int TAG_EDITOR_GAP = SporeTheme.CARD_PADDING;
 
 	public enum Tab implements SporeTab {
 		// The constants keep their old names: they are referred to all over
