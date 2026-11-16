@@ -15,6 +15,9 @@ The three glyphs after the modes -- the Door SMP door, its raised nametag
 variant and the Discord mark -- are appended last and pinned here, so adding a
 mode never moves them.
 
+The default font also carries each icon's width, keyed by these codepoints,
+so run tools/generate_glyph_advances.py afterwards.
+
 Usage:  python tools/generate_icon_font.py [--check]
 """
 

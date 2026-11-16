@@ -126,8 +126,9 @@ public enum TierList {
 	 */
 	public List<Gamemode> gamemodes() {
 		return switch (this) {
-			case MCTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp", "sword",
-					"uhc", "vanilla");
+			// MCTiers calls it spear; it is the mode the others call spear mace.
+			case MCTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp",
+					"spear_mace", "sword", "uhc", "vanilla");
 			// No "crystal": PVPHQ declares one but has never returned it, and
 			// its vanilla is the same mode the other lists call vanilla.
 			case PVPHQ -> modes("axe", "cart", "dia_smp", "mace", "neth_pot",
