@@ -26,8 +26,8 @@ import java.util.List;
 /**
  * Full-screen settings, built on the shared SporeUI config screen.
  *
- * <p>Four of the five tabs are plain lists of settings, which the library
- * draws: this class only says what rows they hold. The fifth is the nametag
+ * <p>Five of the six tabs are plain lists of settings, which the library
+ * draws: this class only says what rows they hold. The sixth is the nametag
  * editor, which is an editor rather than a list -- it fills the body with
  * panels of its own, scrolls inside one of them, and takes keys and drags --
  * so it is a bare tab and keeps all of its own code.
@@ -52,6 +52,7 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 		TAB("Tab"),
 		TIER_LISTS("Tiers"),
 		NAMETAG("Tier Tagger"),
+		TOASTS("Toasts"),
 		INTEGRATIONS("Integrations");
 
 		private final String title;
@@ -171,6 +172,7 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 			case GENERAL -> drawGeneral(body);
 			case TAB -> drawTabList(body);
 			case TIER_LISTS -> drawTierLists(body);
+			case TOASTS -> drawToasts(body);
 			case INTEGRATIONS -> drawIntegrations(body);
 			// Drawn by drawBareTab instead: it is a bare tab.
 			case NAMETAG -> {
@@ -193,6 +195,21 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 				DONE_WIDTH, mouseX, mouseY);
 	}
 
+	/** The Toasts tab: which of SpogTiers' toasts are shown. */
+	private void drawToasts(Body body) {
+		SpogTiersConfig config = config();
+
+		body.section("Shown Toasts");
+
+		body.toggle("Update Toast", config.updateToast,
+				"Show a toast when a newer SpogTiers is out for this Minecraft "
+						+ "version",
+				value -> {
+					config.updateToast = value;
+					config.save();
+				});
+	}
+
 	/**
 	 * The Profiles tab: how a profile is ordered, then what it shows.
 	 *
@@ -213,14 +230,6 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 				SpogTiersConfig.SortOrder::title);
 		body.dropdown("Sorting", sortOrder, config.sortOrder,
 				"How the rows inside each tierlist card are ordered");
-
-		body.toggle("Update Toast", config.updateToast,
-				"Show a toast when a newer SpogTiers is out for this Minecraft "
-						+ "version",
-				value -> {
-					config.updateToast = value;
-					config.save();
-				});
 
 		body.section("Toggle Elements");
 
