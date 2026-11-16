@@ -442,7 +442,7 @@ public final class TagRenderer {
 				// Our own list is not part of the six, so it never counts as
 				// a duplicate of one of them.
 				if (!element.doorSmp) {
-					shown.add(duplicateKey(tier.mode(), tier.label()));
+					shown.add(duplicateKey(tier.mode()));
 				}
 			}
 		}
@@ -458,15 +458,15 @@ public final class TagRenderer {
 	}
 
 	/**
-	 * What makes two tiers the same for Prevent Duplicates: the same tier in
-	 * the same gamemode.
+	 * What makes two tiers the same for Prevent Duplicates: the gamemode.
 	 *
-	 * <p>The label alone used to be enough, which made Spear LT3 and Speed LT3
-	 * duplicates of each other -- different modes, different achievements --
-	 * and only one of them was drawn.
+	 * <p>A duplicate is one gamemode shown more than once on the tag, whatever
+	 * the tiers or lists. The label used to be the key, which made Spear LT3
+	 * and Speed LT3 duplicates of each other while Speed LT3 and Speed HT4
+	 * from two lists were both drawn.
 	 */
-	private static String duplicateKey(Gamemode mode, String label) {
-		return (mode == null ? "" : mode.key()) + ":" + label;
+	private static String duplicateKey(Gamemode mode) {
+		return mode == null ? "" : mode.key();
 	}
 
 	/**
@@ -481,7 +481,7 @@ public final class TagRenderer {
 	/**
 	 * One tier element, or null when it resolves to nothing.
 	 *
-	 * @param exclude {@link #duplicateKey duplicate keys} already drawn; empty
+	 * @param exclude the {@link #duplicateKey gamemodes} already drawn; empty
 	 *     when Prevent Duplicates is off and a repeat is allowed to stand
 	 */
 	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
@@ -634,16 +634,16 @@ public final class TagRenderer {
 	 * One configured slot, or null when it is off or nothing is ranked.
 	 *
 	 * <p>Searches every place the slot allows -- one list or every tagged
-	 * list, one gamemode or every gamemode -- for the best tier not already
-	 * drawn. A slot pinned to both a list and a mode has one place to look,
-	 * so if that tier is excluded it shows nothing; anything looser falls back
-	 * to its next best tier instead.
+	 * list, one gamemode or every gamemode -- for the best tier in a gamemode
+	 * not already drawn. A slot pinned to a mode that is already on the tag
+	 * shows nothing; anything looser falls back to its best tier in another
+	 * mode instead.
 	 *
 	 * <p>A Best slot used to compare only each list's single top tier, so
 	 * when that one was excluded the whole list dropped out and the slot drew
 	 * nothing, though the player held other tiers on it.
 	 *
-	 * @param exclude {@link #duplicateKey duplicate keys} the slot must not
+	 * @param exclude the {@link #duplicateKey gamemodes} the slot must not
 	 *     repeat; empty for no restriction
 	 */
 	private static Resolved resolve(UUID uuid, SpogTiersConfig.TagSlot slot, Set<String> exclude) {
@@ -675,7 +675,7 @@ public final class TagRenderer {
 					continue;
 				}
 				if (tier == null || !tier.isRanked()
-						|| exclude.contains(duplicateKey(mode, tier.label()))) {
+						|| exclude.contains(duplicateKey(mode))) {
 					continue;
 				}
 				if (best == null || outranks(tier, best)) {
