@@ -17,6 +17,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -176,17 +177,12 @@ public final class TagRenderer {
 			after.addAll(row.subList(left, row.size()));
 		}
 
-		// One set across both sides, so a tier shown on the left is not
-		// repeated on the right: resolve() adds to it as it goes, which is
-		// what carries the suppression from one side to the other.
-		//
-		// Null when the setting is off, as on the nametag: an accumulating
-		// set dedupes whatever the setting says, and chat should not quietly
-		// differ from the tag above the player's head.
-		Set<String> shown = SpogTiersClient.config().preventDuplicateTiers
-				? new LinkedHashSet<>() : null;
-		Component head = sideOf(uuid, before, shown, true);
-		Component tail = sideOf(uuid, after, shown, false);
+		// The tiers are settled for the whole tag once, the same way the
+		// nametag settles them, so chat never quietly differs from the tag
+		// above the player's head about which duplicate gave way.
+		Map<TagLayout.Element, Resolved> tiers = resolveTiers(uuid, config.tagLayout);
+		Component head = sideOf(uuid, before, tiers, true);
+		Component tail = sideOf(uuid, after, tiers, false);
 		if (head == null && tail == null) {
 			return null;
 		}
@@ -220,8 +216,8 @@ public final class TagRenderer {
 	 * and duplicate suppression still applies across both sides.
 	 */
 	private static Component sideOf(UUID uuid, List<TagLayout.Element> side,
-			Set<String> shown, boolean leading) {
-		List<Component> pieces = resolve(uuid, side, null, shown);
+			Map<TagLayout.Element, Resolved> tiers, boolean leading) {
+		List<Component> pieces = resolve(uuid, side, null, tiers);
 		if (pieces.isEmpty()) {
 			return null;
 		}
@@ -266,7 +262,7 @@ public final class TagRenderer {
 			if (element.kind != TagLayout.Kind.TIER) {
 				continue;
 			}
-			Resolved tier = resolveTier(uuid, element, null);
+			Resolved tier = resolveTier(uuid, element, Set.of());
 			if (tier != null) {
 				return tier.text();
 			}
@@ -303,10 +299,9 @@ public final class TagRenderer {
 	 * Builds one row of the tag.
 	 *
 	 * <p>All three rows come through here, so they cannot disagree about what
-	 * an element means or how duplicates are avoided. Tiers are resolved in
-	 * the order they are drawn -- top row, then middle, then bottom -- and
-	 * each one is told what the earlier ones settled on, so Prevent Duplicates
-	 * works across the whole tag rather than only between two fixed slots.
+	 * an element means or how duplicates are avoided. The tiers come from
+	 * {@link #resolveTiers}, which settles the whole tag at once, so Prevent
+	 * Duplicates works across every row rather than only within one.
 	 *
 	 * @param name what a name element draws, or null to skip name elements
 	 * @return the row, or null if it came out empty
@@ -352,26 +347,19 @@ public final class TagRenderer {
 	 * find it by identity and split the row there.
 	 */
 	private static List<Component> rowPieces(UUID uuid, TagLayout.Row row, Component name) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		TagLayout layout = config.tagLayout;
-		// Null, not empty, when the setting is off. An empty set still
-		// accumulates as the row is built, and every element now consults it,
-		// so an empty one would dedupe anyway -- which is the setting doing
-		// the opposite of what it says.
-		Set<String> shown = config.preventDuplicateTiers
-				? labelsBefore(uuid, row) : null;
+		TagLayout layout = SpogTiersClient.config().tagLayout;
 		List<TagLayout.Element> wanted = new ArrayList<>();
 		for (TagLayout.Element element : layout.elements) {
 			if (element.row == row) {
 				wanted.add(element);
 			}
 		}
-		return resolve(uuid, wanted, name, shown);
+		return resolve(uuid, wanted, name, resolveTiers(uuid, layout));
 	}
 
 	/** Turns a list of elements into the pieces that get drawn. */
 	private static List<Component> resolve(UUID uuid, List<TagLayout.Element> elements,
-			Component name, Set<String> shown) {
+			Component name, Map<TagLayout.Element, Resolved> tiers) {
 		List<Component> pieces = new ArrayList<>();
 		// A separator is only worth drawing between two things, so it is held
 		// back until something after it earns it. This is what lets a tier
@@ -384,14 +372,8 @@ public final class TagRenderer {
 				case REGION -> regionFor(uuid);
 				case SEPARATOR -> null;
 				case TIER -> {
-					Resolved tier = resolveTier(uuid, element, shown);
-					if (tier == null) {
-						yield null;
-					}
-					if (shown != null) {
-						shown.add(tier.label());
-					}
-					yield tier.text();
+					Resolved tier = tiers.get(element);
+					yield tier == null ? null : tier.text();
 				}
 			};
 
@@ -419,34 +401,72 @@ public final class TagRenderer {
 		return pieces;
 	}
 
-
 	/**
-	 * The tier labels drawn before this row, so a later row does not repeat
-	 * them.
+	 * What every tier element of a layout draws, settled for the whole tag at
+	 * once.
 	 *
-	 * <p>Recomputed rather than remembered between calls: each row is built
-	 * from its own mixin at its own time, and state passed between them would
-	 * go stale the moment the layout or the player's tiers changed.
+	 * <p>With Prevent Duplicates on, the most specific elements choose first:
+	 * those fixed to both a list and a gamemode, then those fixed to one of
+	 * the two, then Best elements, each group in layout order. A fixed element
+	 * has few places to look while a Best one can always look further, so
+	 * handing tiers out in drawing order let a Best element early in the tag
+	 * take the very tier a list element further along was pinned to. The
+	 * pinned one was then left with nothing, and the tag drew one tier where
+	 * it had room for two.
+	 *
+	 * <p>The whole tag, not one row: each row is built by its own mixin at its
+	 * own time, and they have to agree about who gave way.
+	 *
+	 * <p>Public so the editor's preview draws exactly what the tag will.
+	 *
+	 * @return each element that resolved, by identity; an element missing
+	 *     from the map draws nothing
 	 */
-	private static Set<String> labelsBefore(UUID uuid, TagLayout.Row row) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		Set<String> labels = new LinkedHashSet<>();
-		for (TagLayout.Element element : config.tagLayout.elements) {
-			if (element.kind != TagLayout.Kind.TIER
-					|| element.row.ordinal() >= row.ordinal()) {
-				continue;
-			}
-			// Our own list is not part of the six, so it never counts as a
-			// duplicate of one of them.
-			if (element.doorSmp) {
-				continue;
-			}
-			Resolved tier = resolveTier(uuid, element, labels);
-			if (tier != null) {
-				labels.add(tier.label());
+	public static Map<TagLayout.Element, Resolved> resolveTiers(UUID uuid, TagLayout layout) {
+		Map<TagLayout.Element, Resolved> out = new IdentityHashMap<>();
+		if (uuid == null || layout == null) {
+			return out;
+		}
+		boolean dedupe = SpogTiersClient.config().preventDuplicateTiers;
+		Set<String> shown = new LinkedHashSet<>();
+		for (int fixed = 2; fixed >= 0; fixed--) {
+			for (TagLayout.Element element : layout.elements) {
+				if (element.kind != TagLayout.Kind.TIER || fixedness(element) != fixed) {
+					continue;
+				}
+				Resolved tier = resolveTier(uuid, element, dedupe ? shown : Set.of());
+				if (tier == null) {
+					continue;
+				}
+				out.put(element, tier);
+				// Our own list is not part of the six, so it never counts as
+				// a duplicate of one of them.
+				if (!element.doorSmp) {
+					shown.add(duplicateKey(tier.mode(), tier.label()));
+				}
 			}
 		}
-		return labels;
+		return out;
+	}
+
+	/** How many of list and gamemode an element pins: 0 for Best, 2 for both. */
+	private static int fixedness(TagLayout.Element element) {
+		if (element.doorSmp) {
+			return 2;
+		}
+		return (element.list() != null ? 1 : 0) + (element.gamemode != null ? 1 : 0);
+	}
+
+	/**
+	 * What makes two tiers the same for Prevent Duplicates: the same tier in
+	 * the same gamemode.
+	 *
+	 * <p>The label alone used to be enough, which made Spear LT3 and Speed LT3
+	 * duplicates of each other -- different modes, different achievements --
+	 * and only one of them was drawn.
+	 */
+	private static String duplicateKey(Gamemode mode, String label) {
+		return (mode == null ? "" : mode.key()) + ":" + label;
 	}
 
 	/**
@@ -461,8 +481,8 @@ public final class TagRenderer {
 	/**
 	 * One tier element, or null when it resolves to nothing.
 	 *
-	 * @param exclude labels already drawn, or null when Prevent Duplicates is
-	 *     off and a repeat is allowed to stand
+	 * @param exclude {@link #duplicateKey duplicate keys} already drawn; empty
+	 *     when Prevent Duplicates is off and a repeat is allowed to stand
 	 */
 	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
 			Set<String> exclude) {
@@ -476,7 +496,8 @@ public final class TagRenderer {
 				return null;
 			}
 			PlayerGrade grade = SpogTiersClient.service().grade(uuid);
-			return new Resolved(door, grade == null ? "" : grade.label(), null);
+			return new Resolved(door, grade == null ? "" : grade.label(), Gamemode.DIA_SMP,
+					null, null);
 		}
 
 		SpogTiersConfig.TagSlot slot =
@@ -495,7 +516,7 @@ public final class TagRenderer {
 		// same gamemode on lists that agree -- Diamond SMP on PVPHQ and on
 		// SubTiers, both HT2 -- drew HT2 twice with Prevent Duplicates on,
 		// which is the whole thing it is meant to stop.
-		return resolve(uuid, slot, exclude == null ? Set.of() : exclude);
+		return resolve(uuid, slot, exclude);
 	}
 
 
@@ -598,16 +619,32 @@ public final class TagRenderer {
 		return best;
 	}
 
-	/** What a slot settled on: the drawn text, and the tier label behind it. */
-	private record Resolved(Component text, String label, Gamemode mode) {
+	/**
+	 * What a tier element settled on: the drawn text, the tier label behind
+	 * it, and the gamemode and list it was found at.
+	 *
+	 * <p>{@code tier} and {@code list} are null for our own list, which is a
+	 * grade rather than a tier.
+	 */
+	public record Resolved(Component text, String label, Gamemode mode, Tier tier,
+			TierList list) {
 	}
 
 	/**
-	 * One configured side, or null when it is off or nothing is ranked.
+	 * One configured slot, or null when it is off or nothing is ranked.
 	 *
-	 * @param exclude tier labels the slot must not repeat; empty for no
-	 *     restriction. A Best slot searches past them for the next best thing;
-	 *     a slot pinned to one list has nowhere else to look and shows nothing.
+	 * <p>Searches every place the slot allows -- one list or every tagged
+	 * list, one gamemode or every gamemode -- for the best tier not already
+	 * drawn. A slot pinned to both a list and a mode has one place to look,
+	 * so if that tier is excluded it shows nothing; anything looser falls back
+	 * to its next best tier instead.
+	 *
+	 * <p>A Best slot used to compare only each list's single top tier, so
+	 * when that one was excluded the whole list dropped out and the slot drew
+	 * nothing, though the player held other tiers on it.
+	 *
+	 * @param exclude {@link #duplicateKey duplicate keys} the slot must not
+	 *     repeat; empty for no restriction
 	 */
 	private static Resolved resolve(UUID uuid, SpogTiersConfig.TagSlot slot, Set<String> exclude) {
 		SpogTiersConfig config = SpogTiersClient.config();
@@ -615,99 +652,52 @@ public final class TagRenderer {
 			return null;
 		}
 
-		// A null list is the Best option: search every enabled list rather than
-		// one in particular.
-		TierList source = slot.list;
-		PlayerTiers tiers;
-		Tier tier;
-
-		// A list can be shown in results but kept off tags, so an explicitly
-		// picked slot is dropped rather than quoting a list the player asked
-		// not to see on nametags.
-		if (source != null && !config.isTagged(source)) {
-			return null;
-		}
-
-		if (source == null) {
-			Best best = bestAcrossLists(uuid, slot.gamemode, exclude);
-			if (best == null) {
-				return null;
-			}
-			source = best.list();
-			tiers = best.tiers();
-			tier = best.tier();
-		} else {
-			if (!config.isEnabled(source)) {
-				return null;
-			}
-			tiers = SpogTiersClient.cache().get(uuid, source);
-			if (tiers == null) {
-				return null;
-			}
-			tier = slot.gamemode == null ? tiers.best() : tiers.get(slot.gamemode);
-		}
-
-		if (tier == null || !tier.isRanked()) {
-			return null;
-		}
-		// A pinned slot has only one answer, so if that is an excluded one it
-		// simply has nothing to show.
-		if (exclude.contains(tier.label())) {
-			return null;
-		}
-
-		MutableComponent out = Component.empty();
-		Gamemode shown = slot.gamemode != null ? slot.gamemode : tiers.bestMode();
-		if (config.showTagIcons) {
-			Component icon = iconFor(source, slot.gamemode, tiers, tier);
-			if (icon != null) {
-				out.append(icon).append(glyphGap());
-			}
-		}
-		appendTier(out, tier);
-		return new Resolved(out, tier.label(), shown);
-	}
-
-	/**
-	 * The single best tier a player holds across every enabled list.
-	 *
-	 * <p>With no gamemode it considers every mode on every list; with one, only
-	 * that mode, on the lists that rank it. The owning list comes back too, so
-	 * the caller can draw that list's own artwork for the mode.
-	 */
-	private static Best bestAcrossLists(UUID uuid, Gamemode mode, Set<String> exclude) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		Best best = null;
-
+		TierList bestList = null;
+		Gamemode bestMode = null;
+		Tier best = null;
 		for (Map.Entry<TierList, PlayerTiers> entry
 				: SpogTiersClient.cache().allLists(uuid).entrySet()) {
 			TierList list = entry.getKey();
 			PlayerTiers tiers = entry.getValue();
-			if (tiers == null || !config.isEnabled(list)) {
+			// A null list is the Best option: every list is a candidate.
+			if (slot.list != null && list != slot.list) {
 				continue;
 			}
-			if (!config.isTagged(list)) {
+			// A list can be shown in results but kept off tags, so it is never
+			// quoted on a nametag, picked explicitly or not.
+			if (tiers == null || !config.isEnabled(list) || !config.isTagged(list)) {
 				continue;
 			}
-			// A list that does not rank the chosen mode has no say here.
-			if (mode != null && !list.gamemodes().contains(mode)) {
-				continue;
-			}
-
-			Tier candidate = mode == null ? tiers.best() : tiers.get(mode);
-			if (candidate == null || !candidate.isRanked()) {
-				continue;
-			}
-			// Skipped rather than returned, so the search carries on to the
-			// next best thing instead of giving up on the slot entirely.
-			if (exclude.contains(candidate.label())) {
-				continue;
-			}
-			if (best == null || outranks(candidate, best.tier())) {
-				best = new Best(list, tiers, candidate);
+			for (Map.Entry<Gamemode, Tier> ranked : tiers.all().entrySet()) {
+				Gamemode mode = ranked.getKey();
+				Tier tier = ranked.getValue();
+				if (slot.gamemode != null && mode != slot.gamemode) {
+					continue;
+				}
+				if (tier == null || !tier.isRanked()
+						|| exclude.contains(duplicateKey(mode, tier.label()))) {
+					continue;
+				}
+				if (best == null || outranks(tier, best)) {
+					bestList = list;
+					bestMode = mode;
+					best = tier;
+				}
 			}
 		}
-		return best;
+		if (best == null) {
+			return null;
+		}
+
+		MutableComponent out = Component.empty();
+		if (config.showTagIcons) {
+			Component icon = iconFor(bestList, bestMode);
+			if (icon != null) {
+				out.append(icon).append(glyphGap());
+			}
+		}
+		appendTier(out, best);
+		return new Resolved(out, best.label(), bestMode, best, bestList);
 	}
 
 	/** Lunar Client's own retired colour, from its tiertagger config. */
@@ -745,49 +735,8 @@ public final class TagRenderer {
 		return candidate.position().ordinal() < current.position().ordinal();
 	}
 
-	/** A winning tier along with the list it came from. */
-	private record Best(TierList list, PlayerTiers tiers, Tier tier) {
-	}
-
-	/**
-	 * The best tier across every enabled list, for the editor's preview.
-	 *
-	 * <p>Exposed so the preview resolves a Best element the way the tag itself
-	 * does. It used to read the cache for the one list being displayed, which
-	 * is not what Best means: a player ranked on another list showed the
-	 * stand-in tier instead of the tier they actually hold.
-	 *
-	 * <p>Null when nothing is known yet, which the caller shows a stand-in for.
-	 */
-	public static Tier bestTier(UUID uuid, Gamemode mode) {
-		Best best = bestAcrossLists(uuid, mode, Set.of());
-		return best == null ? null : best.tier();
-	}
-
-	/** The list that best tier came from, for its artwork. */
-	public static TierList bestList(UUID uuid, Gamemode mode) {
-		Best best = bestAcrossLists(uuid, mode, Set.of());
-		return best == null ? null : best.list();
-	}
-
-	/**
-	 * The icon for the gamemode the tag is showing. When the slot tracks the
-	 * player's best tier the gamemode is not fixed, so it is resolved by
-	 * finding which mode actually holds that tier.
-	 */
-	private static Component iconFor(TierList list, Gamemode fixed, PlayerTiers tiers, Tier shown) {
-		Gamemode mode = fixed;
-		if (mode == null) {
-			for (Map.Entry<Gamemode, Tier> entry : tiers.all().entrySet()) {
-				if (entry.getValue().equals(shown)) {
-					mode = entry.getKey();
-					break;
-				}
-			}
-		}
-		if (mode == null) {
-			return null;
-		}
+	/** The icon for a tier found at {@code mode} on {@code list}. */
+	private static Component iconFor(TierList list, Gamemode mode) {
 		// A glyph style first, and only when it has one for this mode: the
 		// modes only CatPVP and MCPvP rank have no Lunar equivalent, and they
 		// keep their own list's artwork rather than losing an icon.
