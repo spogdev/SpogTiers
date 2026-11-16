@@ -30,11 +30,13 @@ OUT = os.path.join(
 SIZE = 64
 
 # Gamemode keys as the mod models them, mapped to each site's own icon name.
-# MCTiers only covers the eight vanilla-adjacent kits, and spells its
-# netherite-pot icon "nethop".
+# MCTiers covers the eight vanilla-adjacent kits plus spear, and spells its
+# netherite-pot icon "nethop". Its spear is the same mode the other lists call
+# spear mace, so it is filed under that key.
 MCTIERS = {
     "sword": "sword", "axe": "axe", "mace": "mace", "vanilla": "vanilla",
     "uhc": "uhc", "pot": "pot", "neth_pot": "nethop", "smp": "smp",
+    "spear_mace": "spear",
 }
 PVPTIERS = {
     "sword": "sword", "axe": "axe", "mace": "mace", "uhc": "uhc",
