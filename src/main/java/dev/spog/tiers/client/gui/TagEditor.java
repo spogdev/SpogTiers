@@ -12,7 +12,6 @@ import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.config.TagLayout;
 import dev.spog.tiers.data.Gamemode;
 import dev.spog.tiers.data.PlayerGrade;
-import dev.spog.tiers.data.PlayerTiers;
 import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
 import dev.spog.tiers.data.TierList;
@@ -2047,34 +2046,32 @@ public final class TagEditor {
 		if (element.list() != null) {
 			return element.list();
 		}
-		if (previewPlayer == null) {
-			return null;
-		}
-		// Asked of the renderer rather than searched for here: it already knows
-		// which list won, and matching a tier back to a list compared only each
-		// list's overall best, so an element pinned to a gamemode found nothing
-		// and lost its icon.
-		return TagRenderer.bestList(previewPlayer, element.gamemode);
+		TagRenderer.Resolved shown = resolved(element);
+		return shown == null ? null : shown.list();
 	}
 
 	/** The gamemode the shown tier came from, or null when it is not known. */
 	private Gamemode modeOf(TierList list, TagLayout.Element element) {
-		if (previewPlayer == null) {
-			return null;
-		}
-		PlayerTiers tiers = SpogTiersClient.cache().get(previewPlayer, list);
-		if (tiers == null) {
-			return null;
-		}
-		Tier shown = tierFor(element);
-		for (var entry : tiers.all().entrySet()) {
-			if (entry.getValue().equals(shown)) {
-				return entry.getKey();
-			}
-		}
-		return tiers.bestMode();
+		TagRenderer.Resolved shown = resolved(element);
+		return shown == null ? null : shown.mode();
 	}
 
+	/**
+	 * What the tag itself would draw for an element, or null when it draws
+	 * nothing.
+	 *
+	 * <p>Asked of the renderer for the whole working layout, so the preview
+	 * agrees with the nametag about which tier a Best element falls back to
+	 * and which duplicate gives way. Resolving each element on its own drew
+	 * every one of them as if it were alone in the tag, which showed two of
+	 * a tier the nametag drew once.
+	 */
+	private TagRenderer.Resolved resolved(TagLayout.Element element) {
+		if (previewPlayer == null || element == null || element.doorSmp) {
+			return null;
+		}
+		return TagRenderer.resolveTiers(previewPlayer, working).get(element);
+	}
 
 	/**
 	 * The tier an element would actually draw for the preview player.
@@ -2084,27 +2081,9 @@ public final class TagEditor {
 	 * row still has something to show and a width to measure.
 	 */
 	private Tier tierFor(TagLayout.Element element) {
-		if (previewPlayer != null && element != null && !element.doorSmp) {
-			if (element.list() == null) {
-				// Best means the best across every enabled list, which is what
-				// the tag itself draws. Reading the cache for the one list
-				// being displayed showed the stand-in for anyone ranked
-				// elsewhere.
-				Tier best = TagRenderer.bestTier(previewPlayer, element.gamemode);
-				if (best != null && best.isRanked()) {
-					return best;
-				}
-			} else {
-				PlayerTiers tiers =
-						SpogTiersClient.cache().get(previewPlayer, element.list());
-				if (tiers != null) {
-					Tier tier = element.gamemode == null
-							? tiers.best() : tiers.get(element.gamemode);
-					if (tier != null && tier.isRanked()) {
-						return tier;
-					}
-				}
-			}
+		TagRenderer.Resolved shown = resolved(element);
+		if (shown != null && shown.tier() != null) {
+			return shown.tier();
 		}
 		return new Tier(1, Tier.Position.HIGH, false);
 	}
