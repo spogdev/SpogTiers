@@ -660,6 +660,10 @@ public class SpogTiersConfig {
 		// which Gson omits, so the editor's own saves had nothing to merge
 		// into and every tier element was lost on restart.
 		SpogTiersConfig fresh = new SpogTiersConfig();
+		// The shipped tag, set before normalise() so a new player gets it
+		// rather than a layout rebuilt from the old slots' field defaults,
+		// which only an upgraded config should be.
+		fresh.tagLayout = TagLayout.defaults();
 		fresh.normalise();
 		fresh.save();
 		return fresh;

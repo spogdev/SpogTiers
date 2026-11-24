@@ -206,15 +206,27 @@ public class TagLayout {
 	}
 
 	/**
-	 * What Reset returns to: the player's plain nameplate.
+	 * The shipped tag: what a new config starts with and what Reset returns
+	 * to.
 	 *
-	 * <p>Nothing but the name, so resetting clears every tier and separator
-	 * rather than restoring some other arrangement the user did not choose.
+	 * <p>The player's best MCTiers tier left of the name and best PvPTiers
+	 * tier right of it, each held off the name by a dark grey bar.
 	 */
 	public static TagLayout defaults() {
 		TagLayout layout = new TagLayout();
+		layout.elements.add(bestOn(TierList.MCTIERS));
+		layout.elements.add(new Element(Kind.SEPARATOR, Row.MIDDLE));
 		layout.elements.add(new Element(Kind.NAME, Row.MIDDLE));
+		layout.elements.add(new Element(Kind.SEPARATOR, Row.MIDDLE));
+		layout.elements.add(bestOn(TierList.PVPTIERS));
 		return layout;
+	}
+
+	/** A middle-row tier showing the player's best tier on one list. */
+	private static Element bestOn(TierList list) {
+		Element element = new Element(Kind.TIER, Row.MIDDLE);
+		element.list(list);
+		return element;
 	}
 
 	/** A deep copy, for editing without committing. */
