@@ -380,40 +380,20 @@ public class ProfileScreen extends Screen {
 		skin = client.getSkinManager().createLookup(profile, false);
 
 		int cardLeft = MARGIN;
-		int cardTop = MARGIN;
 		int cardBottom = height - MARGIN;
-
-		// The name history sits between the model and the close button, so it is
-		// carved out first and the model gets whatever remains. On a very short
-		// window the model has a minimum height and would grow back into this
-		// band, so the history yields rather than being drawn over.
-		historyBottom = cardBottom - CARD_PADDING - 20 - HISTORY_BUTTON_GAP;
-		historyTop = Math.max(
-				cardTop + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom() + 80 + 8,
-				historyBottom - historyBandHeight());
-
-		// Fit the model to whatever is left between the header and the history,
-		// so it never spills out of the profile card.
-		int skinTop = cardTop + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom();
-		// The tiles sit under the model, so the model is fitted to what is left
-		// above them rather than being drawn over.
-		int skinBottom = historyTop - 8 - tileRowHeight();
-		int skinHeight = Math.clamp(skinBottom - skinTop, 80, SKIN_HEIGHT);
 
 		// The widget pulls from this every frame, so a tile switching the
 		// chosen skin is picked up without rebuilding the widget.
 		AnimatedSkinWidget skinWidget = new AnimatedSkinWidget(
-				skinWidgetWidth(), skinHeight, client.getEntityModels(), this::modelSkin);
-		int skinY = skinTop + Math.max(0, (skinBottom - skinTop - skinHeight) / 2);
-		skinWidget.setPosition(cardLeft + (profileWidth() - skinWidgetWidth()) / 2, skinY);
+				skinWidgetWidth(), SKIN_HEIGHT, client.getEntityModels(), this::modelSkin);
 		addRenderableWidget(skinWidget);
-
-		// Kept so the export can re-centre the model in the shorter panel and
-		// put it straight back afterwards.
 		this.skinWidget = skinWidget;
-		this.skinScreenY = skinY;
-		this.skinTopLimit = skinTop;
-		this.skinModelHeight = skinHeight;
+		// Placed by the same fit every frame runs, rather than by a copy of it
+		// here: the two used to disagree, so a profile opened before its data
+		// landed was laid out one way and a second opening, with everything
+		// cached, the other.
+		historyTop = -1;
+		refitSkin();
 
 		// Close takes the row, less two squares on the right: copy, then
 		// refresh.
@@ -676,34 +656,43 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * Re-fits the model to the room the history leaves.
+	 * Fits the model between the header and the history.
 	 *
-	 * <p>The history arrives after the screen opens, so the split cannot be
-	 * settled once in {@code init}: a player whose names land late would keep
-	 * the layout chosen when there were none.
+	 * <p>Both ends move after the screen opens: the Discord row arrives and
+	 * pushes the model's top down, and the name history arrives and claims
+	 * room at its foot. So this runs every frame rather than once in
+	 * {@code init}, and does nothing when neither has changed.
 	 */
 	private void refitSkin() {
 		if (skinWidget == null || exporting) {
 			return;
 		}
 
+		// The model starts under the name row and the Discord row, which is
+		// only there once the account has loaded.
+		int skinTop = MARGIN + CARD_PADDING + FACE_SIZE + HEADER_GAP + discordRoom();
 		// The history sits between the model and the button row. It is given
-		// only the rows it has, but never so much that the model is squeezed
-		// past its floor -- past that point the list scrolls instead.
+		// only the rows it has, but never so much that the model and its tile
+		// row are squeezed past the model's floor -- past that point the list
+		// scrolls instead.
 		int cardBottom = height - MARGIN;
 		int listBottom = cardBottom - CARD_PADDING - 20 - HISTORY_BUTTON_GAP;
+		historyBottom = listBottom;
+		boolean moved = skinTop != skinTopLimit;
+		skinTopLimit = skinTop;
 		int wanted = Math.min(
 				listBottom,
-				Math.max(skinTopLimit + modelFloor() + 8,
+				Math.max(skinTop + modelFloor() + tileRowHeight() + 8,
 						listBottom - historyBandHeight()));
-		if (wanted == historyTop) {
+		if (wanted == historyTop && !moved) {
 			return;
 		}
 
 		historyTop = wanted;
-		// The model gets the room above the history and no more, so the two
-		// can never overlap however the floor works out.
-		int band = historyTop - 8 - skinTopLimit;
+		// The model gets the room above the tiles and the history and no
+		// more, so none of the three can overlap however the floor works out.
+		// The tiles hang off the model's foot, so they are left their row.
+		int band = historyTop - 8 - tileRowHeight() - skinTopLimit;
 		int fitted = Math.clamp(Math.min(band, SKIN_HEIGHT), 40, SKIN_HEIGHT);
 		skinModelHeight = fitted;
 		skinScreenY = skinTopLimit + Math.max(0, (band - fitted) / 2);
