@@ -77,11 +77,9 @@ public final class LayoutCode {
 		SWITCHES.put("bt", new Switch(c -> c.showBestTier, (c, v) -> c.showBestTier = v));
 		SWITCHES.put("rt", new Switch(c -> c.showRetired, (c, v) -> c.showRetired = v));
 		SWITCHES.put("pl", new Switch(c -> c.showPlacements, (c, v) -> c.showPlacements = v));
-		SWITCHES.put("pa", new Switch(c -> c.showParticles, (c, v) -> c.showParticles = v));
 		SWITCHES.put("sp", new Switch(c -> c.showSeparators, (c, v) -> c.showSeparators = v));
 		SWITCHES.put("pd", new Switch(c -> c.preventDuplicateTiers,
 				(c, v) -> c.preventDuplicateTiers = v));
-		SWITCHES.put("xt", new Switch(c -> c.extraTierlists, (c, v) -> c.extraTierlists = v));
 		SWITCHES.put("cn", new Switch(c -> c.tagLayout != null && c.tagLayout.centerOnName,
 				(c, v) -> c.tagLayout.centerOnName = v));
 		SWITCHES.put("ax", new Switch(c -> c.tagLayout != null && c.tagLayout.autoExpand,
@@ -89,6 +87,16 @@ public final class LayoutCode {
 		SWITCHES.put("al", new Switch(c -> c.tagLayout != null && c.tagLayout.autoAdjustLines,
 				(c, v) -> c.tagLayout.autoAdjustLines = v));
 	}
+
+	/**
+	 * Switches older codes carry for settings that no longer exist: the tier
+	 * aura's particles and the Door SMP list.
+	 *
+	 * <p>Skipped without comment, so an old code imports without being told
+	 * it lost something the player could not have set anyway. Never reused
+	 * for another setting, for the same reason as {@link #SWITCHES}.
+	 */
+	private static final java.util.Set<String> RETIRED_SWITCHES = java.util.Set.of("pa", "xt");
 
 	/**
 	 * The switches that belong to the layout rather than to the config.
@@ -218,6 +226,9 @@ public final class LayoutCode {
 				continue;
 			}
 			String name = part.endsWith("/") ? part.substring(0, part.length() - 1) : part;
+			if (RETIRED_SWITCHES.contains(name)) {
+				continue;
+			}
 			Switch setting = SWITCHES.get(name);
 			if (setting != null) {
 				// These live on the layout being built, so they are held until
@@ -269,9 +280,7 @@ public final class LayoutCode {
 			case BOTTOM -> "B";
 		});
 		if (element.kind == TagLayout.Kind.TIER) {
-			if (element.doorSmp) {
-				out.append(".door");
-			} else if (element.best || element.list == null) {
+			if (element.best || element.list == null) {
 				out.append(".best");
 			} else {
 				out.append('.').append(element.list.name());
@@ -318,7 +327,10 @@ public final class LayoutCode {
 
 		if (kind == TagLayout.Kind.TIER && bits.length > 2) {
 			if (bits[2].equals("door")) {
-				element.doorSmp = true;
+				// Door SMP was a list of its own, which this version no longer
+				// reads; the rest of the tag is still worth keeping.
+				note(dropped, "a Door SMP tier, which this version does not have");
+				return null;
 			} else if (bits[2].equals("best")) {
 				element.best = true;
 			} else {

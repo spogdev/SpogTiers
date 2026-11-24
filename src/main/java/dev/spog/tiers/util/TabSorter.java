@@ -4,7 +4,6 @@ import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.config.TagLayout;
 import dev.spog.tiers.data.Gamemode;
-import dev.spog.tiers.data.PlayerGrade;
 import dev.spog.tiers.data.PlayerTiers;
 import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
@@ -17,7 +16,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -58,16 +56,6 @@ public final class TabSorter {
 	 */
 	private static final Map<String, String> REGION_ALIASES = Map.of("AU", "OC", "OCE", "OC");
 
-	/**
-	 * Door SMP's ladder, best first.
-	 *
-	 * <p>Its grades are letters with no tier number, so they cannot go through
-	 * {@link Tier#ladderOrdinal()} and need their own order. Kept in step with
-	 * the backend's own Grade enum.
-	 */
-	private static final List<String> DOOR_ORDER =
-			List.of("S", "A+", "A", "B+", "B", "C", "D", "F");
-
 	private TabSorter() {
 	}
 
@@ -80,10 +68,6 @@ public final class TabSorter {
 	 * moment to the next. That breaks the transitivity a sort requires, and
 	 * TimSort notices and throws "Comparison method violates its general
 	 * contract".
-	 *
-	 * <p>Asking once also matters on its own: the grade lookup queues a fetch
-	 * when it misses, so a comparator that called it made a request per
-	 * comparison rather than per player.
 	 */
 	private record Key(int primary, int secondary, int regionPrimary,
 			int regionSecondary, String regionNamePrimary, String regionNameSecondary,
@@ -218,14 +202,7 @@ public final class TabSorter {
 		return player.getProfile().id();
 	}
 
-	/**
-	 * The player's best rank across every enabled list, Door SMP included.
-	 *
-	 * <p>Door SMP is mapped onto the same scale as the numbered lists so one
-	 * comparison covers both: its grades are a ladder of eight, the tier lists
-	 * a ladder of five with three positions each, and a player on both sorts by
-	 * whichever placement is stronger.
-	 */
+	/** The player's best rank across every enabled list. */
 	private static int bestRank(UUID uuid) {
 		SpogTiersConfig config = SpogTiersClient.config();
 		if (uuid == null || config == null) {
@@ -244,39 +221,7 @@ public final class TabSorter {
 				best = Math.min(best, tier.ladderOrdinal());
 			}
 		}
-		return Math.min(best, doorRank(uuid));
-	}
-
-	/**
-	 * Door SMP's grade on the tier lists' scale.
-	 *
-	 * <p>Eight grades spread over the five tiers the other lists use, so S
-	 * lands with tier 1 and F below tier 5. Spread rather than packed at the
-	 * top: a C on our list should not outrank an HT2 on MCTiers.
-	 */
-	private static int doorRank(UUID uuid) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		if (config == null || !config.extraTierlists) {
-			return UNRANKED;
-		}
-		PlayerGrade grade = SpogTiersClient.service().grade(uuid);
-		if (grade == null || !grade.isGraded()) {
-			return UNRANKED;
-		}
-		int place = DOOR_ORDER.indexOf(grade.grade().toUpperCase(Locale.ROOT));
-		if (place < 0) {
-			return UNRANKED;
-		}
-		// The numbered ladder runs tier * 20 + position * 2 (see
-		// Tier.ladderOrdinal, doubled there for the named-rank tiebreak), so
-		// tier 1 starts at 20 and tier 5 at 100. Eight grades over that span
-		// is a step of 10, placing S with tier 1 and F just past LT5.
-		//
-		// The +1 is what Tier.ladderOrdinal does for a named rank, and for the
-		// same reason: landing exactly on an HT slot would tie, and a tie here
-		// would be broken by the secondary sort rather than by the grade. An S
-		// now sits just below HT1 -- the one placement it cannot beat.
-		return 20 + place * 10 + 1;
+		return best;
 	}
 
 	/**
@@ -310,14 +255,10 @@ public final class TabSorter {
 	/**
 	 * What one tier element of the layout resolves to for this player.
 	 *
-	 * <p>Mirrors the element kinds the renderer honours: our own list, a Best
-	 * across every list, or one list -- at a fixed gamemode or at that list's
-	 * own best.
+	 * <p>Mirrors the element kinds the renderer honours: a Best across every
+	 * list, or one list -- at a fixed gamemode or at that list's own best.
 	 */
 	private static int rankOf(UUID uuid, TagLayout.Element element) {
-		if (element.doorSmp) {
-			return doorRank(uuid);
-		}
 		if (element.list() == null) {
 			return bestRank(uuid);
 		}

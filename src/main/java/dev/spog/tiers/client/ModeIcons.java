@@ -28,31 +28,18 @@ public final class ModeIcons {
 	private static final int FIRST_CODEPOINT = 0xE000;
 
 	/**
-	 * The door, one past the last generated glyph.
-	 *
-	 * <p>Hard-coded on purpose: it belongs to no TierList, so the index
-	 * arithmetic below cannot reach it. If a list ever gains a mode, this must
-	 * move up with it -- there are 70 generated glyphs, E000 through E045.
-	 * {@code tools/generate_icon_font.py} prints these three when it runs.
-	 */
-	private static final int DOOR_CODEPOINT = 0xE046;
-
-	/**
-	 * The same door, raised a pixel, for nametags.
-	 *
-	 * <p>Vertical placement is a property of the font provider rather than the
-	 * draw call, so a glyph that needs a different offset needs its own entry.
-	 */
-	private static final int DOOR_RAISED_CODEPOINT = 0xE047;
-
-	/**
 	 * The Discord mark, for the row that carries a linked account.
 	 *
 	 * <p>The colour is baked into the texture rather than tinted at draw time:
 	 * a bitmap glyph takes the style's colour, and leaving it to that would
 	 * let a row's own colour repaint the logo.
+	 *
+	 * <p>Hard-coded, one past the last generated glyph: it belongs to no
+	 * TierList, so the index arithmetic below cannot reach it. If a list ever
+	 * gains a mode this must move up with it -- there are 70 generated glyphs,
+	 * E000 through E045. {@code tools/generate_icon_font.py} prints it.
 	 */
-	private static final int DISCORD_CODEPOINT = 0xE048;
+	private static final int DISCORD_CODEPOINT = 0xE046;
 
 
 	/**
@@ -101,25 +88,6 @@ public final class ModeIcons {
 				.setStyle(Style.EMPTY.withFont(FONT));
 	}
 
-	/**
-	 * The Door SMP door, for our own tierlist's tag.
-	 *
-	 * <p>Appended after every list's glyphs rather than slotted in
-	 * alphabetically: the codepoints are index arithmetic over {@link #ORDER},
-	 * so inserting one in the middle would shift every glyph after it and mean
-	 * renumbering the whole font by hand. Adding at the end shifts nothing.
-	 */
-	public static Text door() {
-		return Text.literal(Character.toString(DOOR_CODEPOINT))
-				.setStyle(Style.EMPTY.withFont(FONT));
-	}
-
-	/** The door for a nametag, sitting a pixel higher than {@link #door()}. */
-	public static Text doorRaised() {
-		return Text.literal(Character.toString(DOOR_RAISED_CODEPOINT))
-				.setStyle(Style.EMPTY.withFont(FONT));
-	}
-
 	/** The Discord mark, raised to sit level with the text beside it. */
 	public static Text discord() {
 		return Text.literal(Character.toString(DISCORD_CODEPOINT))
@@ -127,7 +95,7 @@ public final class ModeIcons {
 	}
 
 	/**
-	 * A two-pixel gap, for after the door.
+	 * A two-pixel gap.
 	 *
 	 * <p>Lives in the default font rather than ours, alongside the icon widths
 	 * the mod already publishes there, so it measures the same for anything

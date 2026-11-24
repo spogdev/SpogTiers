@@ -79,10 +79,8 @@ def main():
                 problems += 1
         offset += len(names)
 
-    # The three pinned glyphs sit immediately after the generated ones.
+    # The pinned glyph sits immediately after the generated ones.
     trailing = [
-        ("DOOR_CODEPOINT", "spogtiers:gui/modes/doorsmp/door.png"),
-        ("DOOR_RAISED_CODEPOINT", "spogtiers:gui/modes/doorsmp/door_nametag.png"),
         ("DISCORD_CODEPOINT", "spogtiers:gui/discord/logo.png"),
     ]
     for position, (constant, path) in enumerate(trailing):

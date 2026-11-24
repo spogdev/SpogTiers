@@ -218,9 +218,6 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 	 * rather than content; everything that turns a part of the profile on or
 	 * off is a Toggle Elements row, which is a long list and reads better
 	 * under its own heading than appended to a section about sorting.
-	 *
-	 * <p>Show Particles is not here: it is about the tier aura, so it lives
-	 * with the tier settings on the Tiers tab.
 	 */
 	private void drawGeneral(Body body) {
 		SpogTiersConfig config = config();
@@ -345,14 +342,6 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 		body.dropdown("Tier Colors", tierPalette, config.tierPalette,
 				"Which palette the tier colors are drawn from, everywhere in the mod");
 		drawPaletteSample(body, config.tierPalette, sampleX, paletteY);
-
-		body.toggle("Show Particles", config.showParticles,
-				"Draw the tier aura around a player, in the world and on their "
-						+ "profile",
-				value -> {
-					config.showParticles = value;
-					config.save();
-				});
 
 		body.section("Tierlists");
 

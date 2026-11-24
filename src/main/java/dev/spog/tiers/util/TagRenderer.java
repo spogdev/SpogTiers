@@ -6,7 +6,6 @@ import dev.spog.tiers.client.ModeIcons;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.config.TagLayout;
 import dev.spog.tiers.data.Gamemode;
-import dev.spog.tiers.data.PlayerGrade;
 import dev.spog.tiers.data.PlayerTiers;
 import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
@@ -439,11 +438,7 @@ public final class TagRenderer {
 					continue;
 				}
 				out.put(element, tier);
-				// Our own list is not part of the six, so it never counts as
-				// a duplicate of one of them.
-				if (!element.doorSmp) {
-					shown.add(duplicateKey(tier.mode()));
-				}
+				shown.add(duplicateKey(tier.mode()));
 			}
 		}
 		return out;
@@ -451,9 +446,6 @@ public final class TagRenderer {
 
 	/** How many of list and gamemode an element pins: 0 for Best, 2 for both. */
 	private static int fixedness(TagLayout.Element element) {
-		if (element.doorSmp) {
-			return 2;
-		}
 		return (element.list() != null ? 1 : 0) + (element.gamemode != null ? 1 : 0);
 	}
 
@@ -470,15 +462,6 @@ public final class TagRenderer {
 	}
 
 	/**
-	 * One tier element, or null when it has nothing to show.
-	 *
-	 * <p>Our own tierlist stands in for a Diamond SMP tier, which is the mode
-	 * it is played at: the two say the same thing and ours is the more
-	 * specific. A door tier also fills a tier element that resolved to
-	 * nothing, so a graded player shows their grade even when no other list
-	 * ranks them.
-	 */
-	/**
 	 * One tier element, or null when it resolves to nothing.
 	 *
 	 * @param exclude the {@link #duplicateKey gamemodes} already drawn; empty
@@ -486,20 +469,6 @@ public final class TagRenderer {
 	 */
 	private static Resolved resolveTier(UUID uuid, TagLayout.Element element,
 			Set<String> exclude) {
-		// Our own list is asked for by name now, rather than standing in for a
-		// Diamond SMP tier whenever one happened to appear. That guess was
-		// wrong as often as it was right, and an element that says Door SMP
-		// says what it means.
-		if (element.doorSmp) {
-			Text door = doorTag(uuid);
-			if (door == null) {
-				return null;
-			}
-			PlayerGrade grade = SpogTiersClient.service().grade(uuid);
-			return new Resolved(door, grade == null ? "" : grade.label(), Gamemode.DIA_SMP,
-					null, null);
-		}
-
 		SpogTiersConfig.TagSlot slot =
 				new SpogTiersConfig.TagSlot(true, element.list(), element.gamemode);
 		// Every element honours the exclusion, pinned or not.
@@ -517,38 +486,6 @@ public final class TagRenderer {
 		// SubTiers, both HT2 -- drew HT2 twice with Prevent Duplicates on,
 		// which is the whole thing it is meant to stop.
 		return resolve(uuid, slot, exclude);
-	}
-
-
-	private static boolean isDiaSmp(Resolved slot) {
-		return slot != null && slot.mode() == Gamemode.DIA_SMP;
-	}
-
-	/**
-	 * Our own tierlist as a nametag tag: the door, then the tier.
-	 *
-	 * <p>Null unless the player is on it and Door SMP is switched on, so this
-	 * only ever displaces another tag when there is something to put there.
-	 */
-	private static Text doorTag(UUID uuid) {
-		SpogTiersConfig config = SpogTiersClient.config();
-		if (config == null || !config.extraTierlists) {
-			return null;
-		}
-		PlayerGrade grade = SpogTiersClient.service().grade(uuid);
-		if (grade == null || !grade.isGraded()) {
-			return null;
-		}
-		MutableText out = Text.empty();
-		if (config.showTagIcons) {
-			// No gap of its own: the glyph was shifted right inside its cell,
-			// which already widened its advance, so anything added after it
-			// read as a space before the tier that no other icon has.
-			out.append(ModeIcons.doorRaised());
-		}
-		out.append(Text.literal(grade.label())
-				.setStyle(Style.EMPTY.withColor(grade.foreground() & 0xFFFFFF)));
-		return out;
 	}
 
 	/**
@@ -622,9 +559,6 @@ public final class TagRenderer {
 	/**
 	 * What a tier element settled on: the drawn text, the tier label behind
 	 * it, and the gamemode and list it was found at.
-	 *
-	 * <p>{@code tier} and {@code list} are null for our own list, which is a
-	 * grade rather than a tier.
 	 */
 	public record Resolved(Text text, String label, Gamemode mode, Tier tier,
 			TierList list) {

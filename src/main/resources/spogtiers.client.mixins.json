@@ -9,7 +9,6 @@
 		"PlayerLabelMixin",
 		"NameTagFeatureRendererMixin",
 		"NameTagStorageAccessor",
-		"AuraMixin",
 		"TextDisplayMixin",
 		"TextDisplayAboveMixin",
 		"ClientPlayNetworkHandlerMixin",

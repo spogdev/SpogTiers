@@ -174,22 +174,11 @@ public class SpogTiersConfig {
 	 * Show retirement, rather than presenting a retired rank as an active one.
 	 *
 	 * <p>Off, an RHT1 reads and colours exactly as an HT1 everywhere: the R
-	 * goes, and the washed-out retired colour with it. Two exceptions. Our own
-	 * Door SMP tierlist still shows its R, because retirement there is the
-	 * point of the list rather than an annotation on someone else's. And the
-	 * profile tooltip still says so, because a tooltip is where someone asks
-	 * for the detail the label left out.
+	 * goes, and the washed-out retired colour with it. The profile tooltip
+	 * still says so, because a tooltip is where someone asks for the detail
+	 * the label left out.
 	 */
 	public boolean showRetired = true;
-
-	/**
-	 * Draw the ember aura around graded players and on their profile.
-	 *
-	 * <p>Only the particles: a door tier stays on the tag and on the profile,
-	 * for someone who wants the tier without the decoration around every
-	 * graded player they walk past.
-	 */
-	public boolean showParticles = true;
 
 	/**
 	 * Which palette the HT/MT/LT tier colours are drawn from.
@@ -291,22 +280,6 @@ public class SpogTiersConfig {
 	 * leaves a card showing just the ranks actually held.
 	 */
 	public boolean showPlacements = true;
-
-	/**
-	 * Our own Door SMP tierlist: the badge beside the region tag and the embers
-	 * around the model.
-	 *
-	 * <p>One switch for all of it. It is a first-party addition on top of the
-	 * six read-only lists, so someone who only wants those can turn the whole
-	 * thing off without hunting through several options.
-	 */
-	public boolean extraTierlists = true;
-
-	// NB: no longer has a switch on the config screen. Door SMP is asked for
-	// by name in the tag editor now, and the profile aura has its own
-	// Particles option, so a second master switch only gave two ways to turn
-	// the same things off. The field stays so an existing config that turned
-	// it off is still honoured, and forced back on below.
 
 	/**
 	 * Per-list tag toggles, separate from {@link #enabledLists}.
@@ -474,7 +447,7 @@ public class SpogTiersConfig {
 	 * leaves the list exactly as it would be without this mod.
 	 */
 	public enum TabSort {
-		/** The player's best tier across every enabled list, Door SMP included. */
+		/** The player's best tier across every enabled list. */
 		TIER_BEST("Tier (Best)"),
 		/**
 		 * The first tier the nametag actually shows, middle row first.
@@ -737,11 +710,6 @@ public class SpogTiersConfig {
 			}
 		}
 		tagLayout.normalise();
-
-		// Nothing sets this false any more, and leaving an old config's false
-		// in place would hide the door tier with no way in the UI to bring it
-		// back.
-		extraTierlists = true;
 
 		if (regionSlot == null) {
 			regionSlot = Boolean.TRUE.equals(showRegionOnNametag)
