@@ -3,6 +3,7 @@ package dev.spog.tiers.client.gui;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.model.Model;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.util.Mth;
@@ -140,7 +141,7 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 		}
 		try {
 			PlayerSkin current = skin.get();
-			Model.Simple model = (Model.Simple) (current.model() == PlayerModelType.SLIM
+			PlayerModel model = (PlayerModel) (current.model() == PlayerModelType.SLIM
 					? SLIM_MODEL.get(this) : WIDE_MODEL.get(this));
 			Vector2f topLeft = pose.transformPosition(getX(), getY(), new Vector2f());
 			Vector2f bottomRight = pose.transformPosition(getRight(), getBottom(), new Vector2f());
