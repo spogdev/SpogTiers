@@ -5,7 +5,6 @@ import net.minecraft.client.gui.components.PlayerSkinWidget;
 import net.minecraft.client.model.Model;
 import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.model.geom.ModelPart;
-import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
@@ -24,9 +23,8 @@ import java.util.function.Supplier;
  * the whole body rises and falls a little and the arms drift in and out, the
  * way the skin preview in the Modrinth app does.
  *
- * <p>Vanilla keeps its two {@code PlayerModel} instances private and rebuilds
- * the pose from the render state each frame, so the pose is applied here just
- * before the widget extracts its own render state.
+ * <p>Vanilla keeps its two models private, so the pose is applied to their
+ * parts here just before the widget extracts its own render state.
  */
 public class AnimatedSkinWidget extends PlayerSkinWidget {
 	/** Seconds for one full breath in and out. */
@@ -38,7 +36,7 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 	private static final float ARM_SWING = 0.022f;
 	private static final float ARM_PITCH = 0.018f;
 
-	private final List<PlayerModel> models = new ArrayList<>();
+	private final List<Rig> rigs = new ArrayList<>();
 	/** Rest y of every animated part, so offsets never accumulate. */
 	private final Map<ModelPart, Float> restY = new HashMap<>();
 
@@ -63,45 +61,52 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 	}
 
 	/**
-	 * Grabs the widget's own wide and slim models. They are private with no
-	 * accessor, and mixing in to vanilla for a cosmetic idle is not worth the
-	 * porting cost, so this reads them reflectively and simply does nothing if
-	 * the fields ever move.
+	 * The parts of one model the idle animation moves.
+	 *
+	 * <p>Only the six that hang off the root: the hat, jacket, sleeves and
+	 * trousers are children of these, so they follow without being moved
+	 * themselves.
+	 */
+	private record Rig(ModelPart head, ModelPart body, ModelPart rightArm,
+			ModelPart leftArm, ModelPart rightLeg, ModelPart leftLeg) {
+		ModelPart[] all() {
+			return new ModelPart[] {head, body, rightArm, leftArm, rightLeg, leftLeg};
+		}
+	}
+
+	/**
+	 * Finds vanilla's two player models and the parts to animate in each.
+	 *
+	 * <p>Vanilla keeps them as plain {@link Model.Simple}s built from the
+	 * player layer rather than as player models, so the parts are looked up
+	 * by their layer names under each one's root. Looking for player-model
+	 * fields instead found nothing, and the model stood still.
+	 *
+	 * <p>Read reflectively, since the fields have no accessor and mixing in to
+	 * vanilla for a cosmetic idle is not worth the porting cost. If they ever
+	 * move, the widget simply stands still.
 	 */
 	private void collectModels() {
 		for (Field field : PlayerSkinWidget.class.getDeclaredFields()) {
-			if (!PlayerModel.class.isAssignableFrom(field.getType())) {
+			if (!Model.class.isAssignableFrom(field.getType())) {
 				continue;
 			}
 			try {
 				field.setAccessible(true);
-				if (field.get(this) instanceof PlayerModel model) {
-					models.add(model);
-					rememberRest(model);
+				if (field.get(this) instanceof Model<?> model) {
+					ModelPart root = model.root();
+					Rig rig = new Rig(root.getChild("head"), root.getChild("body"),
+							root.getChild("right_arm"), root.getChild("left_arm"),
+							root.getChild("right_leg"), root.getChild("left_leg"));
+					rigs.add(rig);
+					for (ModelPart part : rig.all()) {
+						restY.putIfAbsent(part, part.y);
+					}
 				}
 			} catch (ReflectiveOperationException | RuntimeException ignored) {
 				// Leave the widget static rather than failing to draw at all.
 			}
 		}
-	}
-
-	/**
-	 * Parts do not all rest at y=0 -- arms and legs sit lower down the rig --
-	 * so their rest positions are captured once and everything is animated as
-	 * an offset from those.
-	 */
-	private void rememberRest(PlayerModel model) {
-		for (ModelPart part : parts(model)) {
-			restY.putIfAbsent(part, part.y);
-		}
-	}
-
-	private static ModelPart[] parts(PlayerModel model) {
-		return new ModelPart[] {
-			model.head, model.hat, model.body, model.jacket,
-			model.rightArm, model.leftArm, model.rightSleeve, model.leftSleeve,
-			model.rightLeg, model.leftLeg, model.rightPants, model.leftPants,
-		};
 	}
 
 	@Override
@@ -168,7 +173,7 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 	}
 
 	private void animate() {
-		if (models.isEmpty()) {
+		if (rigs.isEmpty()) {
 			return;
 		}
 
@@ -176,30 +181,23 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 		float sway = Mth.sin(elapsed / SWAY_PERIOD * Mth.TWO_PI);
 		float lift = breath * BODY_LIFT;
 
-		for (PlayerModel model : models) {
+		for (Rig rig : rigs) {
 			// Everything above the feet rises together, so the torso never
 			// detaches from the legs. The legs stay planted.
-			liftFrom(model.head, lift);
-			liftFrom(model.hat, lift);
-			liftFrom(model.body, lift);
-			liftFrom(model.jacket, lift);
-			liftFrom(model.rightArm, lift);
-			liftFrom(model.leftArm, lift);
-			liftFrom(model.rightSleeve, lift);
-			liftFrom(model.leftSleeve, lift);
-			liftFrom(model.rightLeg, 0.0f);
-			liftFrom(model.leftLeg, 0.0f);
-			liftFrom(model.rightPants, 0.0f);
-			liftFrom(model.leftPants, 0.0f);
+			liftFrom(rig.head(), lift);
+			liftFrom(rig.body(), lift);
+			liftFrom(rig.rightArm(), lift);
+			liftFrom(rig.leftArm(), lift);
+			liftFrom(rig.rightLeg(), 0.0f);
+			liftFrom(rig.leftLeg(), 0.0f);
 
 			// Arms drift away from the torso and back, mirrored left to right.
+			// The sleeves are the arms' children and swing with them.
 			float swing = ARM_SWING + sway * ARM_SWING * 0.6f;
 			float pitch = sway * ARM_PITCH;
 
-			pose(model.rightArm, pitch, swing);
-			pose(model.leftArm, pitch, -swing);
-			pose(model.rightSleeve, pitch, swing);
-			pose(model.leftSleeve, pitch, -swing);
+			pose(rig.rightArm(), pitch, swing);
+			pose(rig.leftArm(), pitch, -swing);
 		}
 	}
 
