@@ -237,7 +237,7 @@ public class SpogTiersConfig {
 	 * <p>Applies to the rows this mod draws in the world. The tab list and chat
 	 * are drawn by the game, which decides shadowing there for itself.
 	 */
-	public TextShadow textShadow = TextShadow.SHOWN;
+	public TextShadow textShadow = TextShadow.AUTO;
 
 	/** Where a tier icon's artwork comes from. */
 	public enum IconStyle {
@@ -759,7 +759,7 @@ public class SpogTiersConfig {
 			tierPalette = TierPalette.MCTIERS;
 		}
 		if (textShadow == null) {
-			textShadow = TextShadow.SHOWN;
+			textShadow = TextShadow.AUTO;
 		}
 		if (tabPrimarySort == null) {
 			tabPrimarySort = TabSort.SERVER;
