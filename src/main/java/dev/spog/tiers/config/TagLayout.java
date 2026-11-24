@@ -137,6 +137,29 @@ public class TagLayout {
 			}
 		}
 
+		/**
+		 * Whether this element shows the player's Hole PvP tier.
+		 *
+		 * <p>Hole PvP ranks one gamemode and is fetched alongside SubTiers, so
+		 * it is stored as that list and that mode rather than as a list of its
+		 * own. The editor offers it as a list all the same, since that is how
+		 * it reads to someone building a tag.
+		 */
+		public boolean holePvp() {
+			return kind == Kind.TIER && list() == TierList.SUBTIERS
+					&& gamemode == Gamemode.HOLE;
+		}
+
+		/** Points the element at the player's Hole PvP tier. */
+		public void holePvp(boolean value) {
+			if (value) {
+				list(TierList.SUBTIERS);
+				gamemode = Gamemode.HOLE;
+			} else if (gamemode == Gamemode.HOLE) {
+				gamemode = null;
+			}
+		}
+
 		/** A copy, so an editing session can be abandoned without effect. */
 		public Element copy() {
 			Element copy = new Element(kind, row);
@@ -154,8 +177,8 @@ public class TagLayout {
 				case NAME -> "Name";
 				case REGION -> "Region";
 				case SEPARATOR -> "Separator";
-				case TIER -> best || list == null
-						? "Tier: Best" : "Tier: " + list.displayName();
+				case TIER -> holePvp() ? "Tier: Hole PvP"
+						: best || list == null ? "Tier: Best" : "Tier: " + list.displayName();
 			};
 		}
 	}
