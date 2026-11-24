@@ -4,7 +4,6 @@ import dev.spog.tiers.SpogTiersClient;
 import dev.spog.tiers.util.AboveLabel;
 import dev.spog.tiers.util.NameShift;
 import dev.spog.tiers.util.RowPadding;
-import dev.spog.tiers.util.AuraTarget;
 import dev.spog.tiers.util.TagRenderer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.network.chat.Component;
@@ -31,12 +30,6 @@ public class EntityRendererMixin {
 		if (SpogTiersClient.config() == null || !(entity instanceof Player player)) {
 			return;
 		}
-
-		// Parked for AuraMixin before the nametag work, and outside its guards:
-		// the aura is its own feature, so it must not depend on nametags being
-		// switched on or on this player having a nameplate at all.
-		AuraTarget.set(state, SpogTiersClient.service() == null
-				? null : SpogTiersClient.service().grade(player.getUUID()));
 
 		if (!SpogTiersClient.config().showNametags || state.nameTag == null) {
 			return;

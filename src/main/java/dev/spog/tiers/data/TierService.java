@@ -83,19 +83,10 @@ public class TierService {
 	public static final int TOP_RANK_LIMIT = 500;
 
 	/**
-	 * Our own grade service. Hardcoded like every other list's endpoint.
-	 *
-	 * <p>See the backend branch of this repository for what serves it.
-	 */
-	private static final String GRADE_ENDPOINT = "https://doorsmptl.spog.dev/api/v1/grade/";
-
-	/**
 	 * Discord accounts, from their own service.
 	 *
-	 * <p>A different host from the grade endpoint above, and deliberately so:
-	 * naming a Discord id needs a bot token, and that lives on a server rather
-	 * than in a jar anyone can open. Keeping it apart from the tierlist means
-	 * one being down does not cost the other.
+	 * <p>Naming a Discord id needs a bot token, and that lives on a server
+	 * rather than in a jar anyone can open.
 	 */
 	private static final String DISCORD_ENDPOINT =
 			"https://dua.spog.dev/api/v1/discord/";
@@ -165,21 +156,7 @@ public class TierService {
 	private long lastDispatchMillis;
 
 	/**
-	 * Door SMP grades, our own list.
-	 *
-	 * <p>Kept here rather than in {@link TierCache} because that is keyed by
-	 * {@code (uuid, list)} and a grade belongs to no {@link TierList} -- it has
-	 * no gamemodes and no card, so making it one would drag in the whole card,
-	 * icon and config apparatus for a single badge.
-	 *
-	 * <p>A cached {@link PlayerGrade#UNGRADED} is a definite "they have none",
-	 * which is the common case; absent means "not asked yet".
-	 */
-	private final Map<UUID, PlayerGrade> grades = new ConcurrentHashMap<>();
-	private final Map<UUID, Long> gradeFetchedAt = new ConcurrentHashMap<>();
-
-	/**
-	 * Discord accounts, cached the same way grades are.
+	 * Discord accounts, by player.
 	 *
 	 * <p>Kept far longer than a tier: a handle changes far less often than one
 	 * is asked for, and every miss costs the backend a call against a rate
@@ -205,7 +182,6 @@ public class TierService {
 
 	/** When a failed lookup may be tried again. */
 	private final Map<UUID, Long> discordRetryAfter = new ConcurrentHashMap<>();
-	private final Set<UUID> gradePending = ConcurrentHashMap.newKeySet();
 	/** Players with a retry chain under way, so only one runs per player. */
 	private final Set<UUID> retrying = ConcurrentHashMap.newKeySet();
 
@@ -251,7 +227,6 @@ public class TierService {
 	/** Forces a re-fetch for one player, bypassing the cache (Update button). */
 	public void refresh(UUID uuid) {
 		cache.invalidate(uuid);
-		gradeFetchedAt.remove(uuid);
 		discordFetchedAt.remove(uuid);
 		requestNow(uuid);
 	}
@@ -259,7 +234,7 @@ public class TierService {
 	/**
 	 * This player's linked Discord account, or null while it is unknown.
 	 *
-	 * <p>Shaped exactly like {@link #grade}: called from the render thread, so
+	 * <p>Called from the render thread, so
 	 * it answers from the map and fetches in the background, and the next
 	 * frame picks the answer up.
 	 *
@@ -287,7 +262,7 @@ public class TierService {
 	/**
 	 * Reads one Discord account from our own service.
 	 *
-	 * <p>Quiet on failure, like the grade fetch beside it: a name under a
+	 * <p>Quiet on failure: a name under a
 	 * nameplate is a nice-to-have, and an unreachable service should cost that
 	 * line and nothing else.
 	 */
@@ -379,80 +354,6 @@ public class TierService {
 	}
 
 	/**
-	 * This player's Door SMP grade, or null if it is not known yet.
-	 *
-	 * <p>Called from the render thread every frame, so it never blocks: it
-	 * answers from the map and kicks off a fetch in the background when the
-	 * answer is missing or stale. The next frame picks up the result.
-	 *
-	 * @return the grade, {@link PlayerGrade#UNGRADED} if they have none, or
-	 *     null while the answer is still unknown
-	 */
-	public PlayerGrade grade(UUID uuid) {
-		if (uuid == null) {
-			return null;
-		}
-		PlayerGrade known = grades.get(uuid);
-		Long fetchedAt = gradeFetchedAt.get(uuid);
-		boolean stale = fetchedAt == null
-				|| System.currentTimeMillis() - fetchedAt > config.cacheTtlSeconds * 1000L;
-		if (stale && gradePending.add(uuid)) {
-			fanout.submit(() -> fetchGrade(uuid));
-		}
-		return known;
-	}
-
-	/**
-	 * Reads one grade from our own service.
-	 *
-	 * <p>Failure is deliberately quiet. A grade is a nice-to-have beside six
-	 * other lists, so an unreachable service means no badge -- never a stutter
-	 * on the render thread, and never an error in the player's face.
-	 */
-	private void fetchGrade(UUID uuid) {
-		try {
-			HttpRequest request = HttpRequest.newBuilder(
-							URI.create(GRADE_ENDPOINT + uuid))
-					.header("Accept", "application/json")
-					.header("User-Agent", "SpogTiers/1.0 (MinecraftClient mod)")
-					.timeout(Duration.ofSeconds(10))
-					.GET()
-					.build();
-			HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-
-			if (response.statusCode() == 404) {
-				// The normal answer for most players: they are simply not graded.
-				grades.put(uuid, PlayerGrade.UNGRADED);
-				gradeFetchedAt.put(uuid, System.currentTimeMillis());
-				return;
-			}
-			if (response.statusCode() != 200) {
-				// Leave it unfetched so the next look retries rather than
-				// caching a transient failure as "ungraded".
-				SpogTiers.LOGGER.debug("Door SMP returned HTTP {}", response.statusCode());
-				return;
-			}
-
-			JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-			String label = string(root, "grade");
-			if (label.isEmpty()) {
-				grades.put(uuid, PlayerGrade.UNGRADED);
-			} else {
-				grades.put(uuid, new PlayerGrade(label, parseHexColor(string(root, "color")),
-						root.has("gradedAt") ? root.get("gradedAt").getAsLong() : 0L,
-						root.has("retired") && root.get("retired").getAsBoolean()));
-			}
-			gradeFetchedAt.put(uuid, System.currentTimeMillis());
-		} catch (Exception e) {
-			SpogTiers.LOGGER.debug("Door SMP lookup failed for {}", uuid, e);
-		} finally {
-			// Always cleared, or a single failure would wedge this player's
-			// grade as un-fetchable for the rest of the session.
-			gradePending.remove(uuid);
-		}
-	}
-
-	/**
 	 * Queues a lookup for any player, on this server or not. Used by
 	 * {@code /tiers <player>}, where the target may be offline entirely.
 	 */
@@ -493,7 +394,7 @@ public class TierService {
 	 * <p>Nothing here blocks. An earlier version looped over {@code join()},
 	 * which held a {@code priority} thread for as long as the slowest list
 	 * took -- up to the ten second timeout. That pool is only eight threads
-	 * and Discord and grade lookups share it, so opening a few profiles
+	 * and Discord lookups share it, so opening a few profiles
 	 * parked most of it in {@code join()} and everything queued behind,
 	 * including lookups whose own service would have answered at once.
 	 *
@@ -1235,11 +1136,9 @@ public class TierService {
 	 * Parses {@code "RRGGBB"}, with or without a leading {@code #}; returns 0
 	 * when absent or malformed.
 	 *
-	 * <p>Both forms are accepted because the services disagree: the Door SMP
-	 * API serves bare hex, while the third-party lists send it prefixed. A
-	 * published colour is the source of truth for the grade it describes, so
-	 * rejecting one spelling of it silently fell back to the hardcoded ladder
-	 * and made every colour change need a client update.
+	 * <p>Both forms are accepted so a list that drops or adds the {@code #}
+	 * does not silently fall back to the hardcoded ladder: a published colour
+	 * is the source of truth for the tier it describes.
 	 */
 	private static int parseHexColor(String raw) {
 		if (raw == null) {
