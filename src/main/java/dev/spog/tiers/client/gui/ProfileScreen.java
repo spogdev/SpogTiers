@@ -2260,8 +2260,8 @@ public class ProfileScreen extends Screen {
 				lines.add(recordLine(detail));
 			}
 
-			// TR is progress toward the next tier, written as the site writes
-			// it -- a percentage from tier 2 up, no denominator below. The old
+			// TR is progress toward the next tier: a percentage from tier 2
+			// up, and out of its target below that. The old
 			// line divided the rating band instead, which is a different
 			// number entirely. A player still placing has neither: the run is
 			// the whole story, and their rating is provisional.
