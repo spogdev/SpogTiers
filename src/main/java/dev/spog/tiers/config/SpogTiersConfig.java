@@ -292,6 +292,18 @@ public class SpogTiersConfig {
 	public Map<TierList, Boolean> taggedLists = defaultLists();
 
 	/**
+	 * Hole PvP on profiles, as a row on the SubTiers card.
+	 *
+	 * <p>Its own switch rather than a list's: Hole PvP ranks one gamemode and
+	 * is fetched alongside SubTiers, so it has no entry in the per-list maps.
+	 * Off, the list is never asked.
+	 */
+	public boolean holePvp = true;
+
+	/** Hole PvP on nametags, where a tag element asks for it by name. */
+	public boolean holePvpTagged = true;
+
+	/**
 	 * Draw the {@code |} between a nametag's parts.
 	 *
 	 * <p>Off, the parts are spaced instead. The separators read as structure
@@ -591,6 +603,22 @@ public class SpogTiersConfig {
 	 * <p>A hidden list is never queried, so it cannot be tagged either however
 	 * this is set.
 	 */
+	/**
+	 * Whether Hole PvP is looked up and shown on profiles. It rides on
+	 * SubTiers, so a hidden SubTiers takes it with it.
+	 */
+	public boolean isHolePvpShown() {
+		return isEnabled(TierList.SUBTIERS) && holePvp;
+	}
+
+	/**
+	 * Whether Hole PvP may appear on a nametag. Independent of SubTiers' own
+	 * tag switch: someone can want one on their tags without the other.
+	 */
+	public boolean isHolePvpTagged() {
+		return isHolePvpShown() && holePvpTagged;
+	}
+
 	public boolean isTagged(TierList list) {
 		return isEnabled(list)
 				&& (taggedLists == null || taggedLists.getOrDefault(list, true));

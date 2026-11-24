@@ -2080,6 +2080,11 @@ public class ProfileScreen extends Screen {
 		Set<String> seen = new LinkedHashSet<>();
 
 		for (Gamemode mode : Gamemode.values()) {
+			// Read from the switch rather than left to the fetch: a profile
+			// cached before it was turned off still carries the row.
+			if (mode == Gamemode.HOLE && !SpogTiersClient.config().isHolePvpShown()) {
+				continue;
+			}
 			Tier tier = tiers.get(mode);
 			// A player mid-placement holds no tier yet, but the run itself is
 			// worth a row -- unless the user has turned those off.

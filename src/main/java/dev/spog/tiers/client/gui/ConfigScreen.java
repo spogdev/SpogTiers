@@ -382,6 +382,44 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 
 			body.advance(SporeTheme.ROW_HEIGHT);
 		}
+
+		drawHolePvpRow(body, config);
+	}
+
+	/**
+	 * Hole PvP, under the lists it sits beside.
+	 *
+	 * <p>Not a {@link TierList}, since it ranks one gamemode and rides on the
+	 * SubTiers card, but it reads as a list to anyone choosing what to show,
+	 * so it gets the same row. Both switches go dead while SubTiers is hidden:
+	 * nothing fetches it then.
+	 */
+	private void drawHolePvpRow(Body body, SpogTiersConfig config) {
+		boolean available = config.isEnabled(TierList.SUBTIERS);
+		boolean shown = config.isHolePvpShown();
+
+		int rowY = body.y();
+		if (body.rowHovered()) {
+			body.highlightRow();
+		}
+		body.graphics().blit(RenderPipelines.GUI_TEXTURED,
+				modeIcon(TierList.SUBTIERS, Gamemode.HOLE),
+				body.x(), rowY - 4, 0.0f, 0.0f,
+				LOGO_SIZE, LOGO_SIZE, 64, 64, 64, 64);
+		body.graphics().text(body.font(), Component.literal(Gamemode.HOLE.displayName()),
+				body.x() + LOGO_SIZE + 6, rowY,
+				shown ? SporeTheme.TITLE_COLOR : SporeTheme.MUTED_COLOR);
+
+		body.columnSwitch(0, 2, config.isHolePvpTagged(), shown, value -> {
+			config.holePvpTagged = value;
+			config.save();
+		});
+		body.columnSwitch(1, 2, shown, available, value -> {
+			config.holePvp = value;
+			config.save();
+		});
+
+		body.advance(SporeTheme.ROW_HEIGHT);
 	}
 
 	/**
