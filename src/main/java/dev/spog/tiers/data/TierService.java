@@ -133,7 +133,7 @@ public class TierService {
 
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
-			"HT1", "LT1", "MT1", "HT2", "MT2", "LT2", "HT3", "MT3", "LT3",
+			"HT1", "MT1", "LT1", "HT2", "MT2", "LT2", "HT3", "MT3", "LT3",
 			"HT4", "MT4", "LT4", "HT5", "MT5", "LT5");
 
 	/** CatPVP's starting Elo; anyone still on it has not been placed. */
@@ -1306,7 +1306,10 @@ public class TierService {
 					value.has("hasTr") && value.get("hasTr").getAsBoolean(),
 					intOr(value, "wins", 0),
 					intOr(value, "losses", 0),
-					""));
+					"",
+					string(value, "testType"),
+					string(value, "trUnit"),
+					intOr(value, "trTarget", 0)));
 		}
 		return result;
 	}
