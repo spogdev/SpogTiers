@@ -137,9 +137,10 @@ public record TierDetail(
 	 * alongside it rather than instead of it.
 	 */
 	public boolean isTesting() {
-		// A named test is running whatever the count says: PVPHQ's target is
-		// wins needed, not games, so a test can run past it.
-		return testTarget > 0 && (isPromoting() || isDefending() || testGames < testTarget);
+		// Only while games are left. The target is the series length, and
+		// PVPHQ keeps reporting a finished series until it has settled the
+		// result, so a full count is a test that is over, not one under way.
+		return testTarget > 0 && testGames < testTarget;
 	}
 
 	/** True while the test is to move up a tier. */
