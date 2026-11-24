@@ -599,7 +599,12 @@ public final class TagRenderer {
 			}
 			// A list can be shown in results but kept off tags, so it is never
 			// quoted on a nametag, picked explicitly or not.
-			if (tiers == null || !config.isEnabled(list) || !config.isTagged(list)) {
+			// SubTiers also carries Hole PvP, which has a tag switch of its
+			// own, so the list is still read for it when SubTiers' is off.
+			boolean listTagged = config.isTagged(list);
+			boolean holeOnly = !listTagged && list == TierList.SUBTIERS
+					&& config.isHolePvpTagged();
+			if (tiers == null || !config.isEnabled(list) || (!listTagged && !holeOnly)) {
 				continue;
 			}
 			for (Map.Entry<Gamemode, Tier> ranked : tiers.all().entrySet()) {
@@ -612,6 +617,9 @@ public final class TagRenderer {
 				// SMP was: it rides on SubTiers for fetching, not for ranking
 				// against SubTiers' own modes.
 				if (slot.gamemode == null && mode == Gamemode.HOLE) {
+					continue;
+				}
+				if (mode == Gamemode.HOLE ? !config.isHolePvpTagged() : holeOnly) {
 					continue;
 				}
 				if (tier == null || !tier.isRanked()

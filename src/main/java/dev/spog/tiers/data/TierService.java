@@ -791,6 +791,9 @@ public class TierService {
 	 * out.
 	 */
 	private void addHolePvp(PlayerTiers result, UUID uuid) {
+		if (!config.isHolePvpShown()) {
+			return;
+		}
 		try {
 			String name = result.name();
 			if (name == null || name.isEmpty()) {
