@@ -228,7 +228,7 @@ public final class TagEditor {
 
 	private final Dropdown<TagLayout.Kind> creator;
 	/** The list a tier element reads; null is Best. */
-	private final Dropdown<TierList> tierList;
+	private final Dropdown<Choice> tierList;
 	private final Dropdown<Gamemode> tierMode;
 	private final Dropdown<SpogTiersConfig.IconStyle> iconStyle;
 	private final Dropdown<SpogTiersConfig.TextShadow> textShadow;
@@ -293,6 +293,27 @@ public final class TagEditor {
 	private record RowBand(TagLayout.Row row, int top, int bottom) {
 	}
 
+	/**
+	 * What the list dropdown offers.
+	 *
+	 * <p>Its own type because null already means Best, and Hole PvP needs a
+	 * value of its own: it is not a list here but one mode of SubTiers, which
+	 * the dropdown still shows as a list since that is how it reads.
+	 */
+	private record Choice(TierList list, boolean hole) {
+		static final Choice BEST = new Choice(null, false);
+		static final Choice HOLE = new Choice(null, true);
+
+		static Choice of(TierList list) {
+			return new Choice(list, false);
+		}
+	}
+
+	/** The choice an element currently represents. */
+	private static Choice current(TagLayout.Element element) {
+		return element.holePvp() ? Choice.HOLE : Choice.of(element.list());
+	}
+
 	public TagEditor(Font font, Runnable onChange) {
 		this.font = font;
 		this.onChange = onChange;
@@ -304,12 +325,18 @@ public final class TagEditor {
 		});
 		this.tierList = new Dropdown<>(value -> {
 			if (selected != null) {
-				selected.list(value);
+				if (value.hole()) {
+					selected.holePvp(true);
+					changed();
+					return;
+				}
+				selected.holePvp(false);
+				selected.list(value.list());
 				// A mode the new list does not rank would resolve to nothing,
 				// so it falls back to that list's best rather than being kept
 				// as a setting that cannot work.
 				if (selected.gamemode != null
-						&& !modesFor(value).contains(selected.gamemode)) {
+						&& !modesFor(value.list()).contains(selected.gamemode)) {
 					selected.gamemode = null;
 				}
 				changed();
@@ -709,8 +736,10 @@ public final class TagEditor {
 			optionHover = option;
 		}
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
-			tierList.drawOverlay(graphics, font, selected.list(), mouseX, mouseY);
-			tierMode.drawOverlay(graphics, font, selected.gamemode, mouseX, mouseY);
+			tierList.drawOverlay(graphics, font, current(selected), mouseX, mouseY);
+			if (!selected.holePvp()) {
+				tierMode.drawOverlay(graphics, font, selected.gamemode, mouseX, mouseY);
+			}
 		}
 	}
 
@@ -1211,17 +1240,23 @@ public final class TagEditor {
 		if (selected.kind == TagLayout.Kind.TIER) {
 			graphics.text(font, Component.literal("List"), x, y, LABEL_COLOR);
 			y += font.lineHeight + 6;
-			List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
-			lists.add(new Dropdown.Entry<>(null, "Best", null));
+			List<Dropdown.Entry<Choice>> lists = new ArrayList<>();
+			lists.add(new Dropdown.Entry<>(Choice.BEST, "Best", null));
 			for (TierList list : TierList.values()) {
-				lists.add(new Dropdown.Entry<>(list, list.displayName(),
+				lists.add(new Dropdown.Entry<>(Choice.of(list), list.displayName(),
 						ConfigScreen.logoOf(list)));
 			}
+			lists.add(new Dropdown.Entry<>(Choice.HOLE, Gamemode.HOLE.displayName(),
+					ConfigScreen.modeIcon(TierList.SUBTIERS, Gamemode.HOLE)));
 			tierList.setEntries(lists);
 			tierList.setBounds(x, y, right - x - PADDING);
-			tierList.draw(graphics, font, selected.list(), mouseX, mouseY);
+			tierList.draw(graphics, font, current(selected), mouseX, mouseY);
 			y += ROW_HEIGHT + 8;
+		}
 
+		// Hole PvP ranks one mode, so there is nothing for the second dropdown
+		// to offer.
+		if (selected.kind == TagLayout.Kind.TIER && !selected.holePvp()) {
 			graphics.text(font, Component.literal("Gamemode"), x, y, LABEL_COLOR);
 			y += font.lineHeight + 6;
 			// Only the modes the chosen list actually ranks. Offering all of
@@ -1937,13 +1972,12 @@ public final class TagEditor {
 	 * it takes the union of every list's, which is what it will search.
 	 */
 	private List<Gamemode> modesFor(TierList list) {
-		if (list != null) {
-			return list.gamemodes();
-		}
 		List<Gamemode> all = new ArrayList<>();
-		for (TierList each : TierList.values()) {
+		for (TierList each : list != null ? List.of(list) : List.of(TierList.values())) {
 			for (Gamemode mode : each.gamemodes()) {
-				if (!all.contains(mode)) {
+				// Hole PvP is offered as a list of its own, not as one of
+				// SubTiers' modes.
+				if (mode != Gamemode.HOLE && !all.contains(mode)) {
 					all.add(mode);
 				}
 			}
