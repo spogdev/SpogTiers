@@ -25,26 +25,29 @@ public record TierDetail(
 		boolean reportsTierPoints,
 		int wins,
 		int losses,
-		String tester) {
+		String tester,
+		String testType,
+		String trUnit,
+		int trTarget) {
 
 	/** Tier points always run to this, whatever the tier. */
 	public static final int TIER_POINT_TARGET = 100;
 
 	public static final TierDetail EMPTY =
-			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false, 0, 0, "");
+			new TierDetail(0L, 0, 0, 0, 0, "", 0, null, 0, 0, 0, 0, 0, false, 0, 0, "", "", "", 0);
 
 	/** The shape the other providers use, which report no placement games. */
 	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
 			int tierCeiling, String nextTier, int peakPoints, Tier peak) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
-				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, "");
+				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, "", "", "", 0);
 	}
 
 	/** The shape above, plus the tester who gave the placement. */
 	public TierDetail(long attainedSeconds, int rating, int peakRating, int tierFloor,
 			int tierCeiling, String nextTier, int peakPoints, Tier peak, String tester) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
-				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, tester);
+				peakPoints, peak, 0, 0, 0, 0, 0, false, 0, 0, tester, "", "", 0);
 	}
 
 	/**
@@ -64,7 +67,7 @@ public record TierDetail(
 			int tierPoints, boolean reportsTierPoints) {
 		this(attainedSeconds, rating, peakRating, tierFloor, tierCeiling, nextTier,
 				peakPoints, peak, placementGames, placementTarget, testGames,
-				testTarget, tierPoints, reportsTierPoints, 0, 0, "");
+				testTarget, tierPoints, reportsTierPoints, 0, 0, "", "", "", 0);
 	}
 
 	/** True when the list reports a played record for this ranking. */
@@ -81,10 +84,38 @@ public record TierDetail(
 	/**
 	 * True when the list reports tier points for this ranking.
 	 *
-	 * <p>TR is progress toward the next tier out of {@value #TIER_POINT_TARGET},
+	 * <p>TR is progress toward the next tier, out of {@link #tierPointTarget()},
 	 * which is a different thing from the raw rating: a player can sit high in
 	 * their tier's rating band and still hold few tier points.
 	 */
+	/**
+	 * What TR is counted out of in this tier.
+	 *
+	 * <p>PVPHQ says so per ranking, and it is not always 100: from tier 2 up
+	 * it is a percentage, and at HT3 a target that varies by mode. Read the
+	 * way the site reads it, so the bar fills where the site's does.
+	 */
+	public int tierPointTarget() {
+		if ("percent".equals(trUnit)) {
+			return 100;
+		}
+		return trTarget > 0 ? trTarget : TIER_POINT_TARGET;
+	}
+
+	/**
+	 * TR as the site writes it: {@code 267%} where it is a percentage,
+	 * {@code 211/114 TR} against a target, and {@code 82 TR} otherwise.
+	 */
+	public String tierPointsLabel() {
+		if ("percent".equals(trUnit)) {
+			return tierPoints + "%";
+		}
+		if ("target".equals(trUnit)) {
+			return tierPoints + "/" + tierPointTarget() + " TR";
+		}
+		return tierPoints + " TR";
+	}
+
 	public boolean hasTierPoints() {
 		// PVPHQ's own flag, not the value: a player who has just entered a
 		// tier legitimately sits at 0 TR, and testing the number would have
@@ -108,7 +139,19 @@ public record TierDetail(
 	 * alongside it rather than instead of it.
 	 */
 	public boolean isTesting() {
-		return testTarget > 0 && testGames < testTarget;
+		// A named test is running whatever the count says: PVPHQ's target is
+		// wins needed, not games, so a test can run past it.
+		return testTarget > 0 && (isPromoting() || isDefending() || testGames < testTarget);
+	}
+
+	/** True while the test is to move up a tier. */
+	public boolean isPromoting() {
+		return "PROMOTION".equalsIgnoreCase(testType);
+	}
+
+	/** True while the test is to keep the tier held, rather than move up. */
+	public boolean isDefending() {
+		return "DEFENSE".equalsIgnoreCase(testType);
 	}
 
 	/** Progress through a placement or test run, e.g. {@code 3/10}. */
@@ -147,7 +190,7 @@ public record TierDetail(
 		// number. The rating band it used to divide is a different quantity
 		// and drifts from TR by tens of points.
 		if (reportsTierPoints) {
-			return Math.clamp(tierPoints / (float) TIER_POINT_TARGET, 0.0f, 1.0f);
+			return Math.clamp(tierPoints / (float) tierPointTarget(), 0.0f, 1.0f);
 		}
 		if (!hasRating() || tierCeiling <= tierFloor) {
 			return 0.0f;
