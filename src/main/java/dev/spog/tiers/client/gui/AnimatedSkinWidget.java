@@ -2,11 +2,15 @@ package dev.spog.tiers.client.gui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.PlayerSkinWidget;
+import net.minecraft.client.model.Model;
 import net.minecraft.client.model.geom.EntityModelSet;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
+import org.joml.Matrix3x2f;
+import org.joml.Vector2f;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -40,8 +44,21 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 
 	private float elapsed;
 
+	private final Supplier<PlayerSkin> skin;
+
+	/**
+	 * Vanilla's own fields, read to draw the model the way it would. Null
+	 * when a field could not be found, and the widget then leaves drawing to
+	 * vanilla.
+	 */
+	private static final Field WIDE_MODEL = field("wideModel");
+	private static final Field SLIM_MODEL = field("slimModel");
+	private static final Field ROTATION_X = field("rotationX");
+	private static final Field ROTATION_Y = field("rotationY");
+
 	public AnimatedSkinWidget(int width, int height, EntityModelSet models, Supplier<PlayerSkin> skin) {
 		super(width, height, models, skin);
+		this.skin = skin;
 		collectModels();
 	}
 
@@ -91,7 +108,63 @@ public class AnimatedSkinWidget extends PlayerSkinWidget {
 	public void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
 		elapsed += partialTick / 20.0f;
 		animate();
-		super.extractWidgetRenderState(graphics, mouseX, mouseY, partialTick);
+		if (!drawPosed(graphics)) {
+			super.extractWidgetRenderState(graphics, mouseX, mouseY, partialTick);
+		}
+	}
+
+	/**
+	 * Draws the model through the current pose, as vanilla does not.
+	 *
+	 * <p>Vanilla hands the model's box and scale straight to the
+	 * picture-in-picture renderer, which never sees the pose. A screen drawn
+	 * under a scale of its own -- the profile screen keeps a fixed size that
+	 * way -- had the model land at its unscaled position and size: up and to
+	 * the left of its box and too small for it, by however far the game's GUI
+	 * scale was from the screen's. Small windows pick a smaller GUI scale, so
+	 * that is where it showed.
+	 *
+	 * @return false when there is no pose to undo or vanilla's fields could
+	 *         not be read, leaving the draw to vanilla
+	 */
+	private boolean drawPosed(GuiGraphicsExtractor graphics) {
+		Matrix3x2f pose = graphics.pose();
+		if (isIdentity(pose) || WIDE_MODEL == null || SLIM_MODEL == null
+				|| ROTATION_X == null || ROTATION_Y == null || getHeight() <= 0) {
+			return false;
+		}
+		try {
+			PlayerSkin current = skin.get();
+			Model.Simple model = (Model.Simple) (current.model() == PlayerModelType.SLIM
+					? SLIM_MODEL.get(this) : WIDE_MODEL.get(this));
+			Vector2f topLeft = pose.transformPosition(getX(), getY(), new Vector2f());
+			Vector2f bottomRight = pose.transformPosition(getRight(), getBottom(), new Vector2f());
+			float height = bottomRight.y - topLeft.y;
+			// Vanilla's own fit, taken against the height the box really has.
+			graphics.skin(model, current.body().texturePath(), 0.97f * height / 2.125f,
+					ROTATION_X.getFloat(this), ROTATION_Y.getFloat(this), -1.0625f,
+					Math.round(topLeft.x), Math.round(topLeft.y),
+					Math.round(bottomRight.x), Math.round(bottomRight.y));
+			return true;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return false;
+		}
+	}
+
+	/** No scale and no shift, so vanilla's own draw lands where it should. */
+	private static boolean isIdentity(Matrix3x2f pose) {
+		return pose.m00() == 1.0f && pose.m11() == 1.0f && pose.m01() == 0.0f
+				&& pose.m10() == 0.0f && pose.m20() == 0.0f && pose.m21() == 0.0f;
+	}
+
+	private static Field field(String name) {
+		try {
+			Field field = PlayerSkinWidget.class.getDeclaredField(name);
+			field.setAccessible(true);
+			return field;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
 	}
 
 	private void animate() {
