@@ -172,6 +172,10 @@ public class ProfileScreen extends Screen {
 	private static final int MUTED_COLOR = 0xFF6C7683;
 	/** Placement runs read as pending rather than as a rank. */
 	private static final int PLACEMENT_COLOR = 0xFF7FA8C9;
+	/** A test to move up a tier. */
+	private static final int PROMOTING_COLOR = 0xFF55FF55;
+	/** A test to keep the tier held. */
+	private static final int DEFENDING_COLOR = 0xFFFF5555;
 	private static final int CARD_FILL = 0x50161B22;
 	private static final int CARD_BORDER = 0x70323B47;
 
@@ -1964,7 +1968,7 @@ public class ProfileScreen extends Screen {
 				// overhang into the same gap.
 				int runRight = row.showsPeak() ? extrasRight : valueX - labelOffset - 4;
 				graphics.drawTextWithShadow(textRenderer, Text.literal(progress),
-						runRight - textRenderer.getWidth(progress), textY, PLACEMENT_COLOR);
+						runRight - textRenderer.getWidth(progress), textY, row.runColor());
 			}
 			textY += ROW_HEIGHT;
 		}
@@ -2085,7 +2089,8 @@ public class ProfileScreen extends Screen {
 				TierDetail detail = tiers.detail(mode.displayName());
 				rows.add(new Row(mode.displayName(), tier, mode.accent(), mode.key(),
 						detail.peak(), detail.attainedSeconds(),
-						detail.runLabel(), detail.isPlacing(), detail.placementGames()));
+						detail.runLabel(), detail.isPlacing(), detail.placementGames(),
+						runColor(detail)));
 				seen.add(mode.displayName());
 			}
 		}
@@ -2094,7 +2099,8 @@ public class ProfileScreen extends Screen {
 				TierDetail detail = tiers.detail(entry.getKey());
 				rows.add(new Row(entry.getKey(), entry.getValue(), LABEL_COLOR, null,
 						detail.peak(), detail.attainedSeconds(),
-						detail.runLabel(), detail.isPlacing(), detail.placementGames()));
+						detail.runLabel(), detail.isPlacing(), detail.placementGames(),
+						runColor(detail)));
 			}
 		}
 
@@ -2155,7 +2161,7 @@ public class ProfileScreen extends Screen {
 	}
 
 	private record Row(String label, Tier tier, int accent, String iconKey, Tier peak,
-			long attained, String run, boolean placing, int placementGames) {
+			long attained, String run, boolean placing, int placementGames, int runColor) {
 		/** Only worth showing a peak that is actually better than the current tier. */
 		boolean showsPeak() {
 			// The one gate for every part of a peak -- the struck-through label,
@@ -2172,6 +2178,20 @@ public class ProfileScreen extends Screen {
 			}
 			return peak.position().ordinal() < tier.position().ordinal();
 		}
+	}
+
+	/**
+	 * The colour a test or placement run is drawn in: green for a promotion,
+	 * red for a defence, and the placement blue for anything else.
+	 */
+	private static int runColor(TierDetail detail) {
+		if (detail.isTesting() && detail.isPromoting()) {
+			return PROMOTING_COLOR;
+		}
+		if (detail.isTesting() && detail.isDefending()) {
+			return DEFENDING_COLOR;
+		}
+		return PLACEMENT_COLOR;
 	}
 
 	private record Hover(TierList list, Row row) {
@@ -2203,9 +2223,17 @@ public class ProfileScreen extends Screen {
 			lines.add(new Line(target.row().label() + " " + tier.fullName(), tier.color()));
 		}
 		if (detail.isTesting()) {
-			String next = detail.hasNextTier() ? detail.nextTier() : "next tier";
-			lines.add(new Line("Attempting " + next + " (" + detail.runLabel() + ")",
-					PLACEMENT_COLOR));
+			// Straight under the tier it concerns, in the card's colour for
+			// it. A list that does not say which kind of test it is keeps the
+			// older wording.
+			if (detail.isPromoting() || detail.isDefending()) {
+				String kind = detail.isPromoting() ? "Promoting" : "Defending";
+				lines.add(new Line(kind + " (" + detail.runLabel() + ")", runColor(detail)));
+			} else {
+				String next = detail.hasNextTier() ? detail.nextTier() : "next tier";
+				lines.add(new Line("Attempting " + next + " (" + detail.runLabel() + ")",
+						PLACEMENT_COLOR));
+			}
 		}
 		if (tier.retired()) {
 			lines.add(new Line("(Retired)", MUTED_COLOR));
@@ -2232,15 +2260,15 @@ public class ProfileScreen extends Screen {
 				lines.add(recordLine(detail));
 			}
 
-			// TR is progress toward the next tier, always out of 100. The old
+			// TR is progress toward the next tier, written as the site writes
+			// it -- a percentage from tier 2 up, no denominator below. The old
 			// line divided the rating band instead, which is a different
 			// number entirely. A player still placing has neither: the run is
 			// the whole story, and their rating is provisional.
 			if (detail.isPlacing()) {
 				bar = false;
 			} else if (detail.hasTierPoints()) {
-				lines.add(new Line("TR " + detail.tierPoints() + "/"
-						+ TierDetail.TIER_POINT_TARGET, 0xFFE4EAF2));
+				lines.add(new Line(detail.tierPointsLabel(), 0xFFE4EAF2));
 				// The bar now tracks TR, so it agrees with the line above it.
 				bar = true;
 			} else {
