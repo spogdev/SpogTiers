@@ -632,29 +632,11 @@
     },
     {
       "type": "bitmap",
-      "file": "spogtiers:gui/modes/doorsmp/door.png",
-      "ascent": 7,
-      "height": 9,
-      "chars": [
-        ""
-      ]
-    },
-    {
-      "type": "bitmap",
-      "file": "spogtiers:gui/modes/doorsmp/door_nametag.png",
-      "ascent": 8,
-      "height": 9,
-      "chars": [
-        ""
-      ]
-    },
-    {
-      "type": "bitmap",
       "file": "spogtiers:gui/discord/logo.png",
       "ascent": 8,
       "height": 9,
       "chars": [
-        ""
+        ""
       ]
     }
   ]

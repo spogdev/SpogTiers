@@ -11,7 +11,6 @@ import dev.spog.tiers.config.LayoutCode;
 import dev.spog.tiers.config.SpogTiersConfig;
 import dev.spog.tiers.config.TagLayout;
 import dev.spog.tiers.data.Gamemode;
-import dev.spog.tiers.data.PlayerGrade;
 import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
 import dev.spog.tiers.data.TierList;
@@ -228,7 +227,8 @@ public final class TagEditor {
 	private final List<RowBand> bands = new ArrayList<>();
 
 	private final Dropdown<TagLayout.Kind> creator;
-	private final Dropdown<Choice> tierList;
+	/** The list a tier element reads; null is Best. */
+	private final Dropdown<TierList> tierList;
 	private final Dropdown<Gamemode> tierMode;
 	private final Dropdown<SpogTiersConfig.IconStyle> iconStyle;
 	private final Dropdown<SpogTiersConfig.TextShadow> textShadow;
@@ -293,31 +293,6 @@ public final class TagEditor {
 	private record RowBand(TagLayout.Row row, int top, int bottom) {
 	}
 
-	/**
-	 * What the list dropdown offers.
-	 *
-	 * <p>Its own type because null already means Best, so Door SMP needs a
-	 * value of its own rather than another null.
-	 */
-	private record Choice(TierList list, boolean door) {
-		static Choice best() {
-			return new Choice(null, false);
-		}
-
-		static Choice of(TierList list) {
-			return new Choice(list, false);
-		}
-
-		static Choice doorSmp() {
-			return new Choice(null, true);
-		}
-	}
-
-	/** The choice an element currently represents. */
-	private static Choice current(TagLayout.Element element) {
-		return element.doorSmp ? Choice.doorSmp() : Choice.of(element.list());
-	}
-
 	public TagEditor(Font font, Runnable onChange) {
 		this.font = font;
 		this.onChange = onChange;
@@ -329,13 +304,12 @@ public final class TagEditor {
 		});
 		this.tierList = new Dropdown<>(value -> {
 			if (selected != null) {
-				selected.doorSmp = value.door();
-				selected.list(value.list());
+				selected.list(value);
 				// A mode the new list does not rank would resolve to nothing,
 				// so it falls back to that list's best rather than being kept
 				// as a setting that cannot work.
 				if (selected.gamemode != null
-						&& !modesFor(value.list()).contains(selected.gamemode)) {
+						&& !modesFor(value).contains(selected.gamemode)) {
 					selected.gamemode = null;
 				}
 				changed();
@@ -735,7 +709,7 @@ public final class TagEditor {
 			optionHover = option;
 		}
 		if (selected != null && selected.kind == TagLayout.Kind.TIER) {
-			tierList.drawOverlay(graphics, font, current(selected), mouseX, mouseY);
+			tierList.drawOverlay(graphics, font, selected.list(), mouseX, mouseY);
 			tierMode.drawOverlay(graphics, font, selected.gamemode, mouseX, mouseY);
 		}
 	}
@@ -1174,10 +1148,6 @@ public final class TagEditor {
 				cursor += font.width(icon) + font.width(" ");
 			}
 			String label = labelFor(element, sample);
-			// colourFor rather than the sample's own colour: a Door SMP
-			// element has no tier to read, so tierFor hands back a stand-in
-			// whose colour is tier 1's orange. Asking colourFor instead gets
-			// the grade's own colour, which is what the tag will draw.
 			graphics.text(font, Component.literal(label), cursor, y,
 					chosen ? 0xFFFFFFFF : colourFor(element));
 			if (chosen) {
@@ -1241,47 +1211,37 @@ public final class TagEditor {
 		if (selected.kind == TagLayout.Kind.TIER) {
 			graphics.text(font, Component.literal("List"), x, y, LABEL_COLOR);
 			y += font.lineHeight + 6;
-			List<Dropdown.Entry<Choice>> lists = new ArrayList<>();
-			lists.add(new Dropdown.Entry<>(Choice.best(), "Best", null));
+			List<Dropdown.Entry<TierList>> lists = new ArrayList<>();
+			lists.add(new Dropdown.Entry<>(null, "Best", null));
 			for (TierList list : TierList.values()) {
-				lists.add(new Dropdown.Entry<>(Choice.of(list), list.displayName(),
+				lists.add(new Dropdown.Entry<>(list, list.displayName(),
 						ConfigScreen.logoOf(list)));
 			}
-			lists.add(new Dropdown.Entry<>(Choice.doorSmp(), "Door SMP", null));
 			tierList.setEntries(lists);
 			tierList.setBounds(x, y, right - x - PADDING);
-			tierList.draw(graphics, font, current(selected), mouseX, mouseY);
+			tierList.draw(graphics, font, selected.list(), mouseX, mouseY);
 			y += ROW_HEIGHT + 8;
 
-			// Our own list has one grade per player and no modes to choose
-			// between, so the second dropdown would only offer nothing. Skipped
-			// rather than returned early: this method still has a scissor to
-			// close, a scroll to clamp, a hint to draw and a footer to put at the
-			// bottom, and a return here jumped past all of it -- which is what
-			// left the panel clipped, with no bin and no Done. Dropping one
-			// dropdown is the only way a Door SMP element differs from any other.
-			if (!selected.doorSmp) {
-				graphics.text(font, Component.literal("Gamemode"), x, y, LABEL_COLOR);
-				y += font.lineHeight + 6;
-				// Only the modes the chosen list actually ranks. Offering all of
-				// them let someone pick a mode their list has never heard of,
-				// which then resolved to nothing and looked like a broken tag.
-				// A Best element has no one list, so it offers every mode any
-				// enabled list ranks.
-				List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
-				modes.add(new Dropdown.Entry<>(null, "Best", null));
-				for (Gamemode mode : modesFor(selected.list())) {
-					// A Best element has no one list to take artwork from, so its
-					// modes are drawn from whichever list ranks them.
-					TierList owner = selected.list() != null ? selected.list() : ownerOf(mode);
-					modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
-							ConfigScreen.modeIcon(owner, mode)));
-				}
-				tierMode.setEntries(modes);
-				tierMode.setBounds(x, y, right - x - PADDING);
-				tierMode.draw(graphics, font, selected.gamemode, mouseX, mouseY);
-				y += ROW_HEIGHT + 8;
+			graphics.text(font, Component.literal("Gamemode"), x, y, LABEL_COLOR);
+			y += font.lineHeight + 6;
+			// Only the modes the chosen list actually ranks. Offering all of
+			// them let someone pick a mode their list has never heard of,
+			// which then resolved to nothing and looked like a broken tag.
+			// A Best element has no one list, so it offers every mode any
+			// enabled list ranks.
+			List<Dropdown.Entry<Gamemode>> modes = new ArrayList<>();
+			modes.add(new Dropdown.Entry<>(null, "Best", null));
+			for (Gamemode mode : modesFor(selected.list())) {
+				// A Best element has no one list to take artwork from, so its
+				// modes are drawn from whichever list ranks them.
+				TierList owner = selected.list() != null ? selected.list() : ownerOf(mode);
+				modes.add(new Dropdown.Entry<>(mode, mode.displayName(),
+						ConfigScreen.modeIcon(owner, mode)));
 			}
+			tierMode.setEntries(modes);
+			tierMode.setBounds(x, y, right - x - PADDING);
+			tierMode.draw(graphics, font, selected.gamemode, mouseX, mouseY);
+			y += ROW_HEIGHT + 8;
 		}
 
 		if (selected.kind == TagLayout.Kind.SEPARATOR) {
@@ -1353,8 +1313,8 @@ public final class TagEditor {
 	 * The element panel's footer, with delete pinned to its right.
 	 *
 	 * <p>Its own method because three paths out of the panel end here and
-	 * each had its own copy, which is how the Door SMP branch came to draw a
-	 * bin a pixel out from the others.
+	 * each had its own copy, which is how one of them came to draw a bin a
+	 * pixel out from the others.
 	 */
 	private void drawElementFooter(GuiGraphicsExtractor graphics, int left, int right,
 			int bottom, int mouseX, int mouseY) {
@@ -1936,12 +1896,8 @@ public final class TagEditor {
 		return font.width(preview(element)) + 6;
 	}
 
-	/** The text a tier element draws: our own grade, or the list's tier. */
+	/** The text a tier element draws. */
 	private String labelFor(TagLayout.Element element, Tier tier) {
-		if (element.doorSmp) {
-			PlayerGrade grade = gradeForPreview();
-			return grade != null && grade.isGraded() ? grade.label() : "S";
-		}
 		// The same shape the tag draws. The preview is one colour per element
 		// rather than a component, so the marker is not blue here -- but its
 		// text and width match, which is what the layout is judged on.
@@ -1953,11 +1909,6 @@ public final class TagEditor {
 
 	/** The colour a tier element draws in. */
 	private int colourFor(TagLayout.Element element) {
-		if (element.doorSmp) {
-			PlayerGrade grade = gradeForPreview();
-			return grade != null && grade.isGraded()
-					? grade.foreground() : 0xFFFFFFFF;
-		}
 		return tierFor(element).color();
 	}
 
@@ -2012,9 +1963,6 @@ public final class TagEditor {
 
 	/** The icon a tier element would draw, or null when it has none. */
 	private Component icon(TagLayout.Element element) {
-		if (element.doorSmp) {
-			return ModeIcons.doorRaised();
-		}
 		TierList list = listFor(element);
 		if (list == null) {
 			return null;
@@ -2067,7 +2015,7 @@ public final class TagEditor {
 	 * a tier the nametag drew once.
 	 */
 	private TagRenderer.Resolved resolved(TagLayout.Element element) {
-		if (previewPlayer == null || element == null || element.doorSmp) {
+		if (previewPlayer == null || element == null) {
 			return null;
 		}
 		return TagRenderer.resolveTiers(previewPlayer, working).get(element);
@@ -2086,11 +2034,6 @@ public final class TagEditor {
 			return shown.tier();
 		}
 		return new Tier(1, Tier.Position.HIGH, false);
-	}
-
-	/** The grade our own list holds for the preview player, or null. */
-	private PlayerGrade gradeForPreview() {
-		return previewPlayer == null ? null : SpogTiersClient.service().grade(previewPlayer);
 	}
 
 	private int colour(TagLayout.Element element) {

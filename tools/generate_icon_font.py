@@ -11,9 +11,8 @@ That ordering is why this is a script rather than a hand-edited file: adding
 one icon to a list shifts every codepoint after it, and the two sides have to
 agree or rows draw the wrong icon.
 
-The three glyphs after the modes -- the Door SMP door, its raised nametag
-variant and the Discord mark -- are appended last and pinned here, so adding a
-mode never moves them.
+The Discord mark is appended after the modes and pinned here, as is anything
+else that is not a gamemode icon.
 
 The default font also carries each icon's width, keyed by these codepoints,
 so run tools/generate_glyph_advances.py afterwards.
@@ -37,18 +36,13 @@ FONT = os.path.join(
 
 FIRST = 0xE000
 
-# Door SMP's own tag is not a gamemode, so it is not walked with the lists.
-# Its door needs two entries because vertical placement belongs to the font
-# provider, not the draw call, and a nametag wants it a pixel higher.
+# Not gamemode icons, so not walked with the lists.
 TRAILING = [
-    ("spogtiers:gui/modes/doorsmp/door.png", 9, 7),
-    ("spogtiers:gui/modes/doorsmp/door_nametag.png", 9, 8),
     ("spogtiers:gui/discord/logo.png", 9, 8),
 ]
 
-# The door lives under modes/ but is not a gamemode icon, so it is walked
-# separately and must not be swept up with the lists.
-SKIP_DIRS = {"doorsmp"}
+# Directories under modes/ that hold something other than a list's icons.
+SKIP_DIRS = set()
 
 
 def providers():
