@@ -608,6 +608,12 @@ public final class TagRenderer {
 				if (slot.gamemode != null && mode != slot.gamemode) {
 					continue;
 				}
+				// Hole PvP is shown only where it is asked for by name, as Door
+				// SMP was: it rides on SubTiers for fetching, not for ranking
+				// against SubTiers' own modes.
+				if (slot.gamemode == null && mode == Gamemode.HOLE) {
+					continue;
+				}
 				if (tier == null || !tier.isRanked()
 						|| exclude.contains(duplicateKey(mode))) {
 					continue;

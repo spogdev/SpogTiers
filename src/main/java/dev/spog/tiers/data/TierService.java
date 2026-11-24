@@ -24,7 +24,11 @@ import java.net.http.HttpTimeoutException;
 import javax.net.ssl.SSLException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -90,6 +94,42 @@ public class TierService {
 	 */
 	private static final String DISCORD_ENDPOINT =
 			"https://dua.spog.dev/api/v1/discord/";
+
+	/**
+	 * Hole PvP's whole list, in one response.
+	 *
+	 * <p>The list has no uuid route, or uuids at all: it is keyed by name and
+	 * Discord id, so it is read whole and matched on name. It is a few hundred
+	 * players, which is cheaper than any per-player request would be.
+	 */
+	private static final String HOLE_LIST = "https://holepvp.com/api/tierlist";
+
+	/** One Hole PvP player's latest test per region, by Discord id. */
+	private static final String HOLE_PLAYER = "https://holepvp.com/api/player/";
+
+	/** How long the Hole PvP list is trusted before it is read again. */
+	private static final long HOLE_TTL_MILLIS = 10 * 60 * 1000L;
+
+	/** How Hole PvP writes a test's date, e.g. "November 13, 2026 at 01:19 PM". */
+	private static final DateTimeFormatter HOLE_TESTED_AT =
+			DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' hh:mm a", Locale.ENGLISH);
+
+	/** A player on the Hole PvP list. */
+	private record HoleEntry(Tier tier, String discordId) {
+	}
+
+	/** The Hole PvP list by lower-case name; empty until first read. */
+	private volatile Map<String, HoleEntry> holeRoster = Map.of();
+
+	/**
+	 * When the Hole PvP list is next due to be read.
+	 *
+	 * <p>Pushed out by the failure backoff when a read fails, so an unreachable
+	 * site is not asked again for every player fetched in the meantime.
+	 */
+	private long holeDueAt;
+
+	private final Object holeLock = new Object();
 
 	/** PVPHQ's board runs in this tier order, best first. */
 	private static final List<String> PVPHQ_TIER_ORDER = List.of(
@@ -733,6 +773,145 @@ public class TierService {
 	}
 
 	private PlayerTiers fetchOne(TierList list, UUID uuid) throws Exception {
+		PlayerTiers result = fetchList(list, uuid);
+		if (list == TierList.SUBTIERS) {
+			addHolePvp(result, uuid);
+		}
+		return result;
+	}
+
+	/**
+	 * Adds the player's Hole PvP tier to their SubTiers result.
+	 *
+	 * <p>Hole PvP ranks one gamemode, so it rides along on the SubTiers card
+	 * as one more row rather than taking a card of its own.
+	 *
+	 * <p>Never throws: Hole PvP being down must not cost a player the
+	 * SubTiers tiers already fetched, so any failure here just leaves the row
+	 * out.
+	 */
+	private void addHolePvp(PlayerTiers result, UUID uuid) {
+		try {
+			String name = result.name();
+			if (name == null || name.isEmpty()) {
+				name = resolveName(uuid);
+			}
+			if (name == null || name.isEmpty()) {
+				return;
+			}
+			HoleEntry entry = holeRoster().get(name.toLowerCase(Locale.ROOT));
+			if (entry == null) {
+				return;
+			}
+			result.put(Gamemode.HOLE, entry.tier());
+			result.detail(Gamemode.HOLE.displayName(), holeDetail(entry.discordId()));
+		} catch (Exception e) {
+			SpogTiers.LOGGER.debug("Hole PvP lookup failed for {}: {}", uuid, e.toString());
+		}
+	}
+
+	/** The Hole PvP list, read again once it has gone stale. */
+	private Map<String, HoleEntry> holeRoster() throws Exception {
+		synchronized (holeLock) {
+			long now = System.currentTimeMillis();
+			if (now < holeDueAt) {
+				return holeRoster;
+			}
+			// Pushed out before the read, so a failure backs off rather than
+			// being retried by the next player in line.
+			holeDueAt = now + FAILURE_BACKOFF_MILLIS;
+			HttpResponse<String> response = http.send(holeRequest(HOLE_LIST),
+					HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() != 200) {
+				throw new IllegalStateException("holepvp returned HTTP " + response.statusCode());
+			}
+			Map<String, HoleEntry> roster = new HashMap<>();
+			// Keyed by tier number, each a list of the players in that tier.
+			for (var tier : JsonParser.parseString(response.body()).getAsJsonObject().entrySet()) {
+				if (!tier.getValue().isJsonArray()) {
+					continue;
+				}
+				for (JsonElement element : tier.getValue().getAsJsonArray()) {
+					if (!element.isJsonObject()) {
+						continue;
+					}
+					JsonObject player = element.getAsJsonObject();
+					String name = string(player, "mc");
+					Tier parsed = Tier.parseLabel(string(player, "tier"), 0);
+					if (!name.isEmpty() && parsed.isRanked()) {
+						roster.put(name.toLowerCase(Locale.ROOT),
+								new HoleEntry(parsed, string(player, "discord_id")));
+					}
+				}
+			}
+			holeRoster = Map.copyOf(roster);
+			holeDueAt = now + HOLE_TTL_MILLIS;
+			return holeRoster;
+		}
+	}
+
+	/**
+	 * Who tested a Hole PvP placement, and when.
+	 *
+	 * <p>The list publishes the latest test per region; the newest of those is
+	 * the one behind the tier on show. Empty when there is no Discord id to
+	 * ask by, or the request fails -- the row still draws without it.
+	 */
+	private TierDetail holeDetail(String discordId) {
+		if (discordId == null || discordId.isEmpty()
+				|| !discordId.chars().allMatch(Character::isDigit)) {
+			return TierDetail.EMPTY;
+		}
+		try {
+			HttpResponse<String> response = http.send(holeRequest(HOLE_PLAYER + discordId),
+					HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() != 200) {
+				return TierDetail.EMPTY;
+			}
+			JsonElement regions = JsonParser.parseString(response.body())
+					.getAsJsonObject().get("regions");
+			if (regions == null || !regions.isJsonObject()) {
+				return TierDetail.EMPTY;
+			}
+			long newest = -1;
+			String tester = "";
+			for (var region : regions.getAsJsonObject().entrySet()) {
+				if (!region.getValue().isJsonObject()) {
+					continue;
+				}
+				JsonObject test = region.getValue().getAsJsonObject();
+				long at = holeTestedAt(string(test, "tested_at"));
+				if (at > newest) {
+					newest = at;
+					tester = string(test, "tester");
+				}
+			}
+			return new TierDetail(Math.max(newest, 0L), 0, 0, 0, 0, "", 0, null, tester);
+		} catch (Exception e) {
+			return TierDetail.EMPTY;
+		}
+	}
+
+	/** A Hole PvP test date in epoch seconds, or 0 if it cannot be read. */
+	private static long holeTestedAt(String raw) {
+		try {
+			// No zone is given. UTC is a guess, and only shifts the time of day.
+			return LocalDateTime.parse(raw, HOLE_TESTED_AT).toEpochSecond(ZoneOffset.UTC);
+		} catch (DateTimeParseException e) {
+			return 0L;
+		}
+	}
+
+	private static HttpRequest holeRequest(String url) {
+		return HttpRequest.newBuilder(URI.create(url))
+				.header("Accept", "application/json")
+				.header("User-Agent", "SpogTiers/1.0 (Minecraft mod)")
+				.timeout(Duration.ofSeconds(10))
+				.GET()
+				.build();
+	}
+
+	private PlayerTiers fetchList(TierList list, UUID uuid) throws Exception {
 		if (list.usesNameLookup()) {
 			return fetchByName(list, uuid);
 		}

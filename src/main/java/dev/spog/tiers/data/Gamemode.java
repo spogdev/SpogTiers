@@ -33,6 +33,9 @@ public enum Gamemode {
 	OG_VANILLA("og_vanilla", "OGV", 0xFF95D5B2),
 	SPEED("speed", "Speed", 0xFF48CAE4),
 	TRIDENT("trident", "Trident", 0xFF00B4D8),
+	// Hole PvP's one mode. The list has no gamemodes of its own, so it rides
+	// on the SubTiers card as one more of its modes.
+	HOLE("hole", "Hole PvP", 0xFF8E5CD9),
 	BRIDGE("bridge", "Bridge", 0xFF7FB7E8),
 	// MCPvP ranks phases of a fight rather than a kit, so these have no
 	// equivalent on the other lists.

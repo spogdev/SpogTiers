@@ -137,8 +137,9 @@ public enum TierList {
 			// key resolves to VANILLA, so the mode is named here as it lands.
 			case PVPTIERS -> modes("axe", "mace", "neth_pot", "pot", "smp",
 					"sword", "uhc", "vanilla");
+			// Hole PvP's one mode rides on SubTiers: see TierService.addHolePvp.
 			case SUBTIERS -> modes("bed", "bow", "creeper", "debuff", "dia_crystal",
-					"dia_smp", "elytra", "manhunt", "minecart", "og_vanilla",
+					"dia_smp", "elytra", "hole", "manhunt", "minecart", "og_vanilla",
 					"speed", "trident");
 			// Straight from MCPvP's own kit list: twelve kits and three phases
 			// of a fight, as its search endpoint returns them. "shield" is its

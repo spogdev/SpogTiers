@@ -36,10 +36,10 @@ public final class ModeIcons {
 	 *
 	 * <p>Hard-coded, one past the last generated glyph: it belongs to no
 	 * TierList, so the index arithmetic below cannot reach it. If a list ever
-	 * gains a mode this must move up with it -- there are 70 generated glyphs,
-	 * E000 through E045. {@code tools/generate_icon_font.py} prints it.
+	 * gains a mode this must move up with it -- there are 71 generated glyphs,
+	 * E000 through E046. {@code tools/generate_icon_font.py} prints it.
 	 */
-	private static final int DISCORD_CODEPOINT = 0xE046;
+	private static final int DISCORD_CODEPOINT = 0xE047;
 
 
 	/**
@@ -64,7 +64,7 @@ public final class ModeIcons {
 					"axe", "crystal", "mace", "neth_pot", "pot", "smp", "sword", "uhc"),
 			TierList.SUBTIERS, List.of(
 					"bed", "bow", "creeper", "debuff", "dia_crystal", "dia_smp",
-					"elytra", "manhunt", "minecart", "og_vanilla", "speed",
+					"elytra", "hole", "manhunt", "minecart", "og_vanilla", "speed",
 					"trident"));
 
 	/** Lists in the order the generator saw them: sorted by directory name. */
