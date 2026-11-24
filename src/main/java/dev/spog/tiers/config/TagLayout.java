@@ -97,13 +97,12 @@ public class TagLayout {
 		public boolean best;
 
 		/**
-		 * Tier elements: our own Door SMP list rather than one of the six.
+		 * Set on a Door SMP tier from a layout saved before that list was
+		 * removed.
 		 *
-		 * <p>A flag rather than a value of {@link TierList}: Door SMP is a
-		 * separate service with one grade per player and no gamemodes, so it
-		 * has no place in an enum whose every member has an endpoint, a set of
-		 * modes and a shared shape. When this is set, {@link #list} and
-		 * {@link #gamemode} are both ignored.
+		 * <p>Only ever read, so {@link #normalise} can drop those elements:
+		 * without it Gson would load one as a plain tier on whatever list it
+		 * last stored, and a tag would gain a tier nobody put there.
 		 */
 		public boolean doorSmp;
 
@@ -143,7 +142,6 @@ public class TagLayout {
 			Element copy = new Element(kind, row);
 			copy.list = list;
 			copy.best = best;
-			copy.doorSmp = doorSmp;
 			copy.gamemode = gamemode;
 			copy.character = character;
 			copy.colour = colour;
@@ -156,13 +154,8 @@ public class TagLayout {
 				case NAME -> "Name";
 				case REGION -> "Region";
 				case SEPARATOR -> "Separator";
-				case TIER -> {
-					if (doorSmp) {
-						yield "Tier: Door SMP";
-					}
-					yield best || list == null
-							? "Tier: Best" : "Tier: " + list.displayName();
-				}
+				case TIER -> best || list == null
+						? "Tier: Best" : "Tier: " + list.displayName();
 			};
 		}
 	}
@@ -335,6 +328,8 @@ public class TagLayout {
 			elements = new ArrayList<>();
 		}
 		elements.removeIf(element -> element == null || element.kind == null);
+		// Door SMP is no longer a list this mod reads.
+		elements.removeIf(element -> element.kind == Kind.TIER && element.doorSmp);
 		for (Element element : elements) {
 			if (element.row == null) {
 				element.row = Row.MIDDLE;

@@ -17,7 +17,6 @@ import dev.spog.tiers.data.DiscordAccount;
 import dev.spog.tiers.data.Gamemode;
 import dev.spog.tiers.data.NameHistory;
 import dev.spog.tiers.data.SkinHistory;
-import dev.spog.tiers.data.PlayerGrade;
 import dev.spog.tiers.data.PlayerTiers;
 import dev.spog.tiers.data.Regions;
 import dev.spog.tiers.data.Tier;
@@ -85,15 +84,8 @@ public class ProfileScreen extends Screen {
 	private static final int ROW_HEIGHT = 16;
 	private static final int FACE_SIZE = 20;
 
-	/**
-	 * The gap under the name row, before the model starts.
-	 *
-	 * <p>Also the room the aura's fade-out is given above the model: the
-	 * embers are clipped {@link TierAura#TOP_BLEED} above it so they burn out
-	 * rather than meeting an edge, and that band lands in this gap. Shrinking
-	 * this below the bleed would put the last faint embers over the name.
-	 */
-	private static final int HEADER_GAP = Math.max(12, TierAura.TOP_BLEED);
+	/** The gap under the name row, before the model starts. */
+	private static final int HEADER_GAP = 12;
 
 	/**
 	 * How far below the face row the Discord line sits.
@@ -249,14 +241,6 @@ public class ProfileScreen extends Screen {
 
 	private String tagRegion = "";
 
-	/** Door SMP grade tag bounds, for the same reason. */
-	private int gradeLeft;
-	private int gradeTop;
-	private int gradeRight;
-	private int gradeBottom;
-	private boolean gradeShown;
-	private String gradeLabel = "";
-	private int gradeColor;
 	private PanelButton closeButton;
 	private IconButton refreshButton;
 	private IconButton copyButton;
@@ -282,8 +266,6 @@ public class ProfileScreen extends Screen {
 	private int historyTop;
 	private int historyBottom;
 	private AnimatedSkinWidget skinWidget;
-	/** Embers around the model, in the player's Door SMP tier colour. */
-	private final TierAura aura = new TierAura();
 	/** The model's on-screen y, restored after a capture. */
 	private int skinScreenY;
 	/** Highest the model may sit: just below the name row. */
@@ -517,7 +499,6 @@ public class ProfileScreen extends Screen {
 
 		hover = null;
 		headerHover = null;
-		aura.tick(partialTick);
 		refitSkin();
 		layoutButtons();
 		// Cards first: the panel sizes itself against them when exporting, and
@@ -578,41 +559,10 @@ public class ProfileScreen extends Screen {
 		// not painted over.
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
-		// The rest of the embers, over the model now that it has drawn, so the
-		// effect wraps the player rather than sitting flat behind them.
-		// Not gated on the Particles setting: that hides the aura in the world,
-		// where it sits on other players and is a matter of taste. Here it is
-		// part of how a graded profile looks, and turning it off left the card
-		// looking like the lookup had failed.
-		// After the widgets so the row is not painted over by the model, and
-		// before the aura so the embers still read as being in front.
-		// Measured first, then underpainted, then drawn: drawSkinTiles is what
-		// fills the tiles list, and the aura needs to know whether there is a
-		// row at all and how far down it reaches before it can sit behind it.
+		// After the widgets so the row is not painted over by the model.
 		measureSkinTiles();
-		drawTileAura(graphics);
 		drawSkinTiles(graphics, exporting ? -1 : mouseX, exporting ? -1 : mouseY);
 		drawTileMenu(graphics, mouseX, mouseY);
-
-		if (skinWidget != null && !exporting && SpogTiersClient.config().extraTierlists) {
-			// Clipped to the model, so the front layer stays a layer about the
-			// player. The row asked for embers behind it, and an unclipped
-			// front layer would scatter them across the faces as well --
-			// which reads as dirt on the tiles rather than an aura under them.
-			//
-			// The top reaches a streak's length above the model: the aura
-			// fades out over the top of its box, and the clip has to sit
-			// clear of that so what ends an ember is the fade and not an
-			// edge. Without the bleed the last faintly lit streaks were cut
-			// in half on a line just above the head.
-			graphics.enableScissor(MARGIN, skinWidget.getY() - TierAura.TOP_BLEED,
-					MARGIN + profileWidth(),
-					skinWidget.getY() + skinWidget.getHeight());
-			aura.draw(graphics, SpogTiersClient.service().grade(target),
-					skinWidget.getX(), skinWidget.getY(),
-					skinWidget.getWidth(), auraHeight(), true);
-			graphics.disableScissor();
-		}
 
 		// Tooltip last and outside the card transform, so it is never clipped
 		// or scaled with the grid.
@@ -631,10 +581,6 @@ public class ProfileScreen extends Screen {
 			drawTierTooltip(graphics, hover, mouseX, mouseY);
 		} else if (headerHover != null) {
 			drawResponseTooltip(graphics, headerHover, mouseX, mouseY);
-		} else if (gradeShown
-				&& mouseX >= gradeLeft && mouseX <= gradeRight
-				&& mouseY >= gradeTop && mouseY <= gradeBottom) {
-			drawGradeTooltip(graphics, mouseX, mouseY);
 		} else if (!tagRegion.isEmpty()
 				&& mouseX >= tagLeft && mouseX <= tagRight
 				&& mouseY >= tagTop && mouseY <= tagBottom) {
@@ -808,30 +754,16 @@ public class ProfileScreen extends Screen {
 		nameCopyRight = left + Math.round((nameX + font.width(playerName)) * scale);
 		nameCopyBottom = top + Math.round((nameY + font.lineHeight) * scale);
 
-		// Region reads as a small boxed tag beside the name, with our own grade
-		// after it. tagX only advances when a tag was actually drawn, so a
-		// player with no region gets the grade right after their name rather
-		// than a gap where the region would have been.
+		// Region reads as a small boxed tag beside the name.
 		int tagX = nameX + font.width(playerName) + 5;
 		String region = region();
 		tagRegion = region;
 		if (!region.isEmpty()) {
-			tagX += drawTag(graphics, tagX, nameY - 3, region) + 4;
-		}
-
-		PlayerGrade grade = SpogTiersClient.config().extraTierlists
-				? SpogTiersClient.service().grade(target)
-				: null;
-		gradeShown = grade != null && grade.isGraded();
-		if (gradeShown) {
-			drawGradeTag(graphics, tagX, nameY - 3, grade);
-			gradeLabel = grade.tooltipLabel();
-			gradeColor = grade.foreground();
+			drawTag(graphics, tagX, nameY - 3, region);
 		}
 
 		// The linked Discord account, under the name rather than beside it:
-		// the name row already carries the region and the grade, and a handle
-		// is longer than either.
+		// the name row already carries the region, and a handle is longer.
 		//
 		// Aligned to the face rather than to the name, so the mark starts on
 		// the panel's own left edge and the two rows read as a block instead
@@ -839,24 +771,6 @@ public class ProfileScreen extends Screen {
 		drawDiscord(graphics, innerX, y + FACE_SIZE + DISCORD_DROP);
 
 		graphics.pose().popMatrix();
-
-		// Outside the panel transform, because the model is a widget in screen
-		// space rather than something drawn into the panel. Widgets render
-		// after this method, so the embers land behind the player.
-		// As above: the Particles setting is about the world, not this card.
-		if (skinWidget != null && SpogTiersClient.config().extraTierlists) {
-			// Clipped to the model's own band, because the box now reaches
-			// past it: the band below belongs to drawTileAura, and without
-			// this both would paint the same motes there at double strength.
-			// The top carries the same bleed as the front layer, so both end
-			// on the fade rather than on an edge.
-			graphics.enableScissor(MARGIN, skinWidget.getY() - TierAura.TOP_BLEED,
-					MARGIN + profileWidth(),
-					skinWidget.getY() + skinWidget.getHeight());
-			aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
-					skinWidget.getWidth(), auraHeight(), false);
-			graphics.disableScissor();
-		}
 	}
 
 	/**
@@ -1349,47 +1263,6 @@ public class ProfileScreen extends Screen {
 		return boxWidth;
 	}
 
-	/**
-	 * The player's Door SMP grade, in the region tag's style.
-	 *
-	 * <p>Our own list, so it sits next to the region rather than in a card of
-	 * its own: it is one letter with no gamemodes behind it.
-	 *
-	 * @return the width drawn, or 0 when there is no grade to show
-	 */
-	private int drawGradeTag(GuiGraphicsExtractor graphics, int x, int y, PlayerGrade grade) {
-		Font font = this.font;
-		String text = grade.label();
-		// The door sits left of the label, as it does on a nametag, so our tag
-		// is recognisable as the same thing in both places.
-		Component icon = ModeIcons.door();
-		int iconWidth = font.width(icon) + 2;
-		int boxWidth = iconWidth + font.width(text) + 8;
-		int boxHeight = font.lineHeight + 5;
-
-		// Same panel-to-screen conversion as the region tag: this is drawn
-		// inside the panel transform, but the hover test runs outside it.
-		float scale = panelScale();
-		gradeLeft = MARGIN + Math.round(x * scale);
-		gradeTop = MARGIN + Math.round(y * scale);
-		gradeRight = MARGIN + Math.round((x + boxWidth) * scale);
-		gradeBottom = MARGIN + Math.round((y + boxHeight) * scale);
-
-		int foreground = grade.foreground();
-		int background = grade.background();
-		int border = (0xB0 << 24) | (foreground & 0xFFFFFF);
-
-		pill(graphics, x, y, boxWidth, boxHeight, background, border);
-
-		// White so the glyph keeps its own colours: tinting it with the tag's
-		// foreground would flood the artwork with a single hue.
-		// Nudged up and left by a pixel: the door's artwork sits low and right
-		// in its cell, so drawn flush it reads as off-centre against the label.
-		graphics.text(font, icon, x + 3, y + 2, 0xFFFFFFFF);
-		graphics.text(font, Component.literal(text), x + 4 + iconWidth, y + 3, foreground);
-		return boxWidth;
-	}
-
 	private static int regionForeground(String region) {
 		return switch (region) {
 			case "NA" -> 0xFFD95C6A;
@@ -1476,68 +1349,6 @@ public class ProfileScreen extends Screen {
 	}
 
 	/**
-	 * The aura's box: the model's bounds, carried down past the tile row.
-	 *
-	 * <p>Taller than the model so the embers keep rising through the row
-	 * instead of stopping at the player's feet. The box is the mote field's
-	 * own coordinate space -- {@code up()} runs 0 at the bottom to 1 at the
-	 * top -- so growing it is what moves motes through the lower band, and
-	 * clipping decides which part of that field a given layer shows.
-	 *
-	 * @return the box height, or -1 when there is no model to measure
-	 */
-	private int auraHeight() {
-		if (skinWidget == null) {
-			return -1;
-		}
-		// Only as far as the tiles actually reach: with no row drawn the box
-		// is the model's own, so a profile with no past skins looks untouched.
-		//
-		// Asked of the entries rather than of the measured tiles, because the
-		// card draws before the row is measured: reading the list there would
-		// see the previous frame's, and on the frame a row first appears the
-		// two layers would take different box heights and the embers would
-		// jump between them.
-		return skinWidget.getHeight()
-				+ (tileEntries().isEmpty() || exporting ? 0 : tileRowHeight());
-	}
-
-	/**
-	 * The embers behind the tile row.
-	 *
-	 * <p>A third layer, between the model and the tiles. The other two sit
-	 * either side of the model, and neither can do this: the back layer is
-	 * drawn before the row and would be painted over by the tile backdrops,
-	 * and the front layer is drawn after it and would put embers on top of
-	 * the faces.
-	 *
-	 * <p>Clipped to the row's own band rather than given a shorter box,
-	 * because a shorter box would be a different mote field -- the same mote
-	 * would sit at two heights in the two layers and the drift would break
-	 * at the model's feet. One field, two windows onto it.
-	 *
-	 * <p>Both depth layers are drawn here, unlike around the model. The split
-	 * exists so the model can come between them; in this band there is nothing
-	 * to come between, and taking only one would thin the row's embers to half
-	 * the model's for no visible reason.
-	 */
-	private void drawTileAura(GuiGraphicsExtractor graphics) {
-		if (skinWidget == null || exporting || tiles.isEmpty()
-				|| !SpogTiersClient.config().extraTierlists) {
-			return;
-		}
-		int top = skinWidget.getY() + skinWidget.getHeight();
-		PlayerGrade grade = SpogTiersClient.service().grade(target);
-		graphics.enableScissor(MARGIN, top, MARGIN + profileWidth(),
-				top + tileRowHeight());
-		aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
-				skinWidget.getWidth(), auraHeight(), false);
-		aura.draw(graphics, grade, skinWidget.getX(), skinWidget.getY(),
-				skinWidget.getWidth(), auraHeight(), true);
-		graphics.disableScissor();
-	}
-
-	/**
 	 * The skins the tiles offer, the worn one first.
 	 *
 	 * <p>Only skins whose texture has finished loading are included: a tile is
@@ -1563,10 +1374,8 @@ public class ProfileScreen extends Screen {
 	/**
 	 * Works out where the row of past skins goes, without drawing it.
 	 *
-	 * <p>Split from the drawing because the aura has to be laid underneath:
-	 * that needs the row's extent, and the extent is only known once the
-	 * tiles have been placed. {@link #tiles} is the result either way, so the
-	 * click test reads the same list it always did.
+	 * <p>{@link #tiles} is the result, so the click test reads the same list
+	 * the row was drawn from.
 	 *
 	 * <p>Left out of the export on purpose: the picture is of a player, and a
 	 * strip of skins they used to wear is a browser for the person looking, not
@@ -1607,7 +1416,7 @@ public class ProfileScreen extends Screen {
 	 * Draws the row {@link #measureSkinTiles} placed.
 	 *
 	 * <p>Reads the measured bounds rather than recomputing them, so the tiles
-	 * cannot land anywhere other than where the aura was just drawn.
+	 * cannot land anywhere other than where they were placed.
 	 */
 	private void drawSkinTiles(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
 		for (TileBounds tile : tiles) {
@@ -2706,22 +2515,6 @@ public class ProfileScreen extends Screen {
 		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
 		graphics.text(font, Component.literal(name),
 				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, color);
-	}
-
-	/** Names the list and the grade, in the grade's own colour. */
-	private void drawGradeTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-		Font font = this.font;
-		String text = "DoorSMP: " + gradeLabel;
-
-		int boxWidth = font.width(text) + TOOLTIP_PADDING * 2;
-		int boxHeight = font.lineHeight + TOOLTIP_PADDING * 2;
-		int boxX = Tooltips.x(mouseX, boxWidth, width);
-		int boxY = Math.clamp(mouseY - 8, 4, height - boxHeight - 4);
-
-		drawCardFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-		fillInsideFrame(graphics, boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE00E1219);
-		graphics.text(font, Component.literal(text),
-				boxX + TOOLTIP_PADDING, boxY + TOOLTIP_PADDING, gradeColor);
 	}
 
 	private static String regionName(String region) {

@@ -8,7 +8,6 @@
 		"LabelMixin",
 		"NameTagFeatureRendererMixin",
 		"NameTagStorageAccessor",
-		"AuraMixin",
 		"TextDisplayMixin",
 		"TextDisplayAboveMixin",
 		"ClientPacketListenerMixin",
