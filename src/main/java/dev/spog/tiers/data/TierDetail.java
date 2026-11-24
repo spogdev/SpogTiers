@@ -103,17 +103,15 @@ public record TierDetail(
 	}
 
 	/**
-	 * TR as the site writes it: {@code 267%} where it is a percentage,
-	 * {@code 211/114 TR} against a target, and {@code 82 TR} otherwise.
+	 * TR as a label: {@code 267%} where PVPHQ counts it as a percentage, as
+	 * it does from tier 2 up, and otherwise against its target, e.g.
+	 * {@code 82/100 TR} or {@code 211/114 TR}.
 	 */
 	public String tierPointsLabel() {
 		if ("percent".equals(trUnit)) {
 			return tierPoints + "%";
 		}
-		if ("target".equals(trUnit)) {
-			return tierPoints + "/" + tierPointTarget() + " TR";
-		}
-		return tierPoints + " TR";
+		return tierPoints + "/" + tierPointTarget() + " TR";
 	}
 
 	public boolean hasTierPoints() {
