@@ -19,8 +19,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +35,13 @@ import java.util.List;
 public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 	/** The logo drawn beside a tierlist's name. */
 	private static final int LOGO_SIZE = 14;
-	private static final ItemStack PICKAXE = new ItemStack(Items.NETHERITE_PICKAXE);
+	/**
+	 * Hole PvP's icon in the list rows. The item's texture rather than the
+	 * item: an item stack cannot be made before a world has loaded its item
+	 * components, and this screen opens from the title screen.
+	 */
+	private static final Identifier PICKAXE =
+			Identifier.withDefaultNamespace("textures/item/netherite_pickaxe.png");
 	/**
 	 * The space between the tabs and the tag editor's panels.
 	 *
@@ -406,13 +410,10 @@ public class ConfigScreen extends SporeConfigScreen<ConfigScreen.Tab> {
 			body.highlightRow();
 		}
 		// A netherite pickaxe here rather than the Hole PvP logo, which stays
-		// on the profile card. Items draw at 16, so it is scaled down to the
-		// logos beside it.
-		body.graphics().pose().pushMatrix();
-		body.graphics().pose().translate(body.x(), rowY - 4);
-		body.graphics().pose().scale(LOGO_SIZE / 16.0f);
-		body.graphics().item(PICKAXE, 0, 0);
-		body.graphics().pose().popMatrix();
+		// on the profile card.
+		body.graphics().blit(RenderPipelines.GUI_TEXTURED, PICKAXE,
+				body.x(), rowY - 4, 0.0f, 0.0f,
+				LOGO_SIZE, LOGO_SIZE, 16, 16, 16, 16);
 		body.graphics().text(body.font(), Component.literal(Gamemode.HOLE.displayName()),
 				body.x() + LOGO_SIZE + 6, rowY,
 				shown ? SporeTheme.TITLE_COLOR : SporeTheme.MUTED_COLOR);
